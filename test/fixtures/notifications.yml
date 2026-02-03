@@ -1,0 +1,15 @@
+# Read about fixtures at https://api.rubyonrails.org/classes/ActiveRecord/FixtureSet.html
+
+one:
+  delegate: one
+  type: 
+  notifiable: one
+  notifiable_type: Notifiable
+  read_at: 2026-01-29 15:30:52
+
+two:
+  delegate: two
+  type: 
+  notifiable: two
+  notifiable_type: Notifiable
+  read_at: 2026-01-29 15:30:52

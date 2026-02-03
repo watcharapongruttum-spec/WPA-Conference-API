@@ -1,0 +1,19 @@
+# Read about fixtures at https://api.rubyonrails.org/classes/ActiveRecord/FixtureSet.html
+
+one:
+  conference_date: one
+  target: one
+  booker: one
+  start_at: 2026-01-26 17:45:47
+  end_at: 2026-01-26 17:45:47
+  table_number: MyString
+  country: MyString
+
+two:
+  conference_date: two
+  target: two
+  booker: two
+  start_at: 2026-01-26 17:45:47
+  end_at: 2026-01-26 17:45:47
+  table_number: MyString
+  country: MyString

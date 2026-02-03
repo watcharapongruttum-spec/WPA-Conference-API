@@ -1,0 +1,10 @@
+# app/models/table.rb
+class Table < ApplicationRecord
+  belongs_to :conference
+  has_many :teams, dependent: :nullify
+
+
+
+
+  
+end

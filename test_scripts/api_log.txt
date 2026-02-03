@@ -1,0 +1,8 @@
+
+✅ Report generated: api_test_results/api_report_20260202_163934.html
+📊 Total: 16 | Passed: 16 | Failed: 0
+
+Open the report with:
+  firefox api_test_results/api_report_20260202_163934.html
+  or
+  google-chrome api_test_results/api_report_20260202_163934.html

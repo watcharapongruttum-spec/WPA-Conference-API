@@ -1,0 +1,11 @@
+# Read about fixtures at https://api.rubyonrails.org/classes/ActiveRecord/FixtureSet.html
+
+one:
+  chat_room: one
+  delegate: one
+  last_read_at: 2026-01-30 12:53:39
+
+two:
+  chat_room: two
+  delegate: two
+  last_read_at: 2026-01-30 12:53:39
