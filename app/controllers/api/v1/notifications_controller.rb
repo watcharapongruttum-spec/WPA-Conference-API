@@ -23,20 +23,44 @@ module Api
       
       # PATCH /api/v1/notifications/:id/mark_as_read
       def mark_as_read
-        @notification = current_delegate.notifications.find(params[:id])
+        # 🔥 FIX: Better error handling and validation
+        @notification = current_delegate.notifications.find_by(id: params[:id])
         
-        if @notification.mark_as_read!
+        if @notification.nil?
+          render json: { 
+            error: 'Notification not found or does not belong to you' 
+          }, status: :not_found
+          return
+        end
+        
+        # 🔥 FIX: Check if already read
+        if @notification.read_at.present?
+          render json: { 
+            message: 'Notification already marked as read',
+            data: Api::V1::NotificationSerializer.new(@notification).serializable_hash
+          }, status: :ok
+          return
+        end
+        
+        if @notification.update(read_at: Time.current)
           render json: @notification, serializer: Api::V1::NotificationSerializer
         else
-          render json: { error: 'Failed to mark notification as read' }, status: :unprocessable_entity
+          render json: { 
+            error: 'Failed to mark notification as read',
+            errors: @notification.errors.full_messages
+          }, status: :unprocessable_entity
         end
       end
       
       # PATCH /api/v1/notifications/mark_all_as_read
       def mark_all_as_read
-        current_delegate.notifications.unread.update_all(read_at: Time.current)
+        # 🔥 FIX: Only update unread notifications
+        updated_count = current_delegate.notifications.unread.update_all(read_at: Time.current)
         
-        render json: { message: 'All notifications marked as read' }
+        render json: { 
+          message: 'All notifications marked as read',
+          count: updated_count
+        }
       end
     end
   end

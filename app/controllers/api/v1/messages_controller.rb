@@ -1,3 +1,4 @@
+# app/controllers/api/v1/messages_controller.rb
 module Api
   module V1
     class MessagesController < ApplicationController
@@ -83,17 +84,41 @@ module Api
       
       # PATCH /api/v1/messages/:id/mark_as_read
       def mark_as_read
+        # 🔥 FIX: Find message where current user is RECIPIENT
         @message = ChatMessage.find_by(id: params[:id], recipient: current_delegate)
         
         if @message.nil?
-          render json: { error: 'Message not found' }, status: :not_found
+          # Try to find if user is sender (already read)
+          sender_message = ChatMessage.find_by(id: params[:id], sender: current_delegate)
+          
+          if sender_message
+            render json: { 
+              error: 'Cannot mark your own sent message as read',
+              message: 'This message is already marked as read because you are the sender'
+            }, status: :unprocessable_entity
+            return
+          else
+            render json: { error: 'Message not found or you are not the recipient' }, status: :not_found
+            return
+          end
+        end
+        
+        # 🔥 FIX: Check if already read
+        if @message.read_at.present?
+          render json: { 
+            message: 'Message already marked as read',
+            data: Api::V1::ChatMessageSerializer.new(@message).serializable_hash
+          }, status: :ok
           return
         end
         
-        if @message.mark_as_read!
+        if @message.update(read_at: Time.current)
           render json: @message, serializer: Api::V1::ChatMessageSerializer
         else
-          render json: { error: 'Failed to mark message as read' }, status: :unprocessable_entity
+          render json: { 
+            error: 'Failed to mark message as read',
+            errors: @message.errors.full_messages
+          }, status: :unprocessable_entity
         end
       end
     end
