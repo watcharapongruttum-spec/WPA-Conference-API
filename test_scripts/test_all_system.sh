@@ -48,10 +48,13 @@ info "TOKEN OK"
 echo ""
 echo "3. WebSocket"
 
-timeout 8s wscat -c "$WS_URL?token=$TOKEN" \
-  -H "Origin: $BASE_URL" <<EOF > /tmp/ws.log 2>&1
-{"command":"subscribe","identifier":"{\"channel\":\"ChatChannel\"}"}
-EOF
+timeout 8 bash -c "
+(
+  sleep 1
+  echo '{\"command\":\"subscribe\",\"identifier\":\"{\\\"channel\\\":\\\"ChatChannel\\\"}\"}'
+  sleep 2
+) | wscat -c '$WS_URL?token=$TOKEN' -H 'Origin: $BASE_URL'
+" > /tmp/ws.log 2>&1
 
 if grep -q '"type":"welcome"' /tmp/ws.log; then
   ok "WebSocket Welcome OK"
@@ -60,6 +63,7 @@ else
   echo "---- WS LOG ----"
   cat /tmp/ws.log
 fi
+
 
 # ---------------- REST SEND ----------------
 echo ""
@@ -94,6 +98,7 @@ CODE=$(curl -s -o /dev/null -w "%{http_code}" \
 [ "$CODE" = "200" ] && ok "Notification OK" || fail "Notification Fail"
 
 # ---------------- GROUP CHAT VIA API ----------------
+# ---------------- GROUP CHAT ----------------
 echo ""
 echo "7. Group Chat (API)"
 
@@ -106,10 +111,11 @@ ROOM_ID=$(echo $ROOM_RESPONSE | jq -r '.id')
 
 if [ -z "$ROOM_ID" ] || [ "$ROOM_ID" = "null" ]; then
   fail "Create Room Fail"
-  echo "$ROOM_RESPONSE"
+  echo "Response: $ROOM_RESPONSE"
 else
   ok "Room Created ID=$ROOM_ID"
 fi
+
 
 # ---------------- 1:1 ----------------
 echo ""

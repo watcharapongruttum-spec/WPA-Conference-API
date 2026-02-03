@@ -56,7 +56,7 @@ Rails.application.routes.draw do
       end
 
       # Chat Rooms
-      resources :chat_rooms, only: [:index]
+      resources :chat_rooms, only: [:index, :create]
 
       # Notifications
       resources :notifications, only: [:index] do

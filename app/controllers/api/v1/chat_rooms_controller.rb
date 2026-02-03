@@ -14,6 +14,20 @@ module Api
           }
         }
       end
+
+
+      def create
+        room = ChatRoom.create!(
+          title: params[:title],
+          room_kind: params[:room_kind]
+        )
+
+        render json: room, status: :created
+      rescue => e
+        render json: { error: e.message }, status: :unprocessable_entity
+      end
+
+
     end
   end
 end
