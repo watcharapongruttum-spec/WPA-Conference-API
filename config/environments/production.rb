@@ -83,4 +83,17 @@ Rails.application.configure do
 
   # Do not dump schema after migrations.
   config.active_record.dump_schema_after_migration = false
+
+
+
+  # Allow Render domain
+  config.hosts << "wpa-docker.onrender.com"
+  config.hosts << /.*\.onrender\.com/
+
+  # หรือถ้าอยากเปิดหมด (ง่ายสุดช่วงทดสอบ)
+  # config.hosts.clear
+
+
+
+
 end
