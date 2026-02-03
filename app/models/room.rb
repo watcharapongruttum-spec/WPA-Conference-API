@@ -5,7 +5,8 @@ class ChatRoom < ApplicationRecord
   has_many :chat_messages, dependent: :destroy
   
   # กำหนด enum ให้ถูกต้อง
-  enum room_kind: { direct: 0, group: 1, event: 2 }
+  enum room_kind: { direct: 0, group: 1, event: 2 }, _prefix: true
+
   
   validates :title, presence: true
 end
