@@ -10,9 +10,6 @@ Rails.application.configure do
 
   config.log_level = :info
   config.log_tags = [:request_id]
-  config.action_mailer.perform_caching = false
-  config.i18n.fallbacks = true
-  config.active_support.report_deprecations = false
   config.log_formatter = ::Logger::Formatter.new
 
   if ENV["RAILS_LOG_TO_STDOUT"].present?
@@ -22,7 +19,16 @@ Rails.application.configure do
   end
 
   config.active_record.dump_schema_after_migration = false
-
   config.hosts.clear
+
+  # SSL
   config.force_ssl = true
+
+  # Action Cable
+  config.action_cable.url = "wss://wpa-docker.onrender.com/cable"
+
+  config.action_cable.allowed_request_origins = [
+    "https://wpa-docker.onrender.com",
+    /https:\/\/.*\.onrender\.com/
+  ]
 end

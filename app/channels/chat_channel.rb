@@ -1,73 +1,72 @@
 class ChatChannel < ApplicationCable::Channel
   def subscribed
-    # ใช้ current_delegate (object) แทน current_delegate.id
     stream_for current_delegate
-    logger.info "✅ ChatChannel subscribed: delegate #{current_delegate.id}"
+    Rails.logger.info "✅ ChatChannel subscribed: delegate #{current_delegate.id}"
   end
 
   def unsubscribed
-    logger.info "⚠️ ChatChannel unsubscribed: delegate #{current_delegate.id}"
+    Rails.logger.info "⚠️ ChatChannel unsubscribed: delegate #{current_delegate.id}"
   end
 
   def send_message(data)
-    logger.info "📨 ChatChannel#send_message received: #{data.class} - #{data.inspect}"
-    
-    # แยกวิเคราะห์ข้อมูลหากเป็นสตริง JSON
+    Rails.logger.info "📨 ChatChannel#send_message received: #{data.class}"
+
     data = JSON.parse(data) if data.is_a?(String)
-    
+
     begin
-      # สร้างข้อความ
       message = ChatMessage.create!(
         sender: current_delegate,
         recipient_id: data['recipient_id'],
         content: data['content']
       )
-      
-      logger.info "✅ Message created: #{message.id} from #{current_delegate.id} to #{message.recipient_id}"
-      
-      # ส่งข้อความไปยังผู้ส่ง (ใช้ object แทน ID)
+
+      recipient = message.recipient
+      raise "Recipient not found" unless recipient
+
+      serialized = Api::V1::ChatMessageSerializer
+        .new(message)
+        .serializable_hash[:data]
+
+      # ส่งให้ผู้ส่ง
       ChatChannel.broadcast_to(
         current_delegate,
         type: 'new_message',
-        message: Api::V1::ChatMessageSerializer.new(message).serializable_hash
+        message: serialized
       )
-      
-      # ส่งข้อความไปยังผู้รับ (ใช้ object แทน ID)
+
+      # ส่งให้ผู้รับ
       ChatChannel.broadcast_to(
-        message.recipient,
+        recipient,
         type: 'new_message',
-        message: Api::V1::ChatMessageSerializer.new(message).serializable_hash
+        message: serialized
       )
-      
-      # สร้างการแจ้งเตือน
+
+      # Notification
       notification = Notification.create!(
-        delegate: message.recipient,
+        delegate: recipient,
         notification_type: 'new_message',
         notifiable: message
       )
-      
-      # ส่งการแจ้งเตือนเรียลไทม์
+
       NotificationChannel.broadcast_to(
-        message.recipient,
+        recipient,
         type: 'new_notification',
         notification: {
           id: notification.id,
           type: 'new_message',
           created_at: notification.created_at,
-          content: message.content.truncate(50),
+          content: message.content.to_s[0, 50],
           sender: {
             id: message.sender.id,
-            name: message.sender.name,
-            avatar_url: Api::V1::DelegateSerializer.new(message.sender).avatar_url
+            name: message.sender.name
           }
         }
       )
-      
-      logger.info "✅ Broadcast complete for message #{message.id}"
-      
+
+      Rails.logger.info "✅ Broadcast complete message=#{message.id}"
+
     rescue => e
-      logger.error "❌ Error in ChatChannel#send_message: #{e.class} - #{e.message}"
-      logger.error e.backtrace.first(5).join("\n")
+      Rails.logger.error "❌ ChatChannel error: #{e.class} - #{e.message}"
       transmit(type: 'error', message: e.message)
     end
   end

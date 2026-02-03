@@ -1,8 +1,8 @@
 #!/bin/bash
 set -e
 
-BASE_URL="http://localhost:3000"
-WS_URL="ws://localhost:3000/cable"
+BASE_URL="https://wpa-docker.onrender.com"
+WS_URL="wss://wpa-docker.onrender.com/cable"
 
 GREEN='\033[0;32m'
 RED='\033[0;31m'
@@ -37,6 +37,7 @@ TOKEN=$(echo $LOGIN | jq -r '.token')
 
 if [ "$TOKEN" = "null" ] || [ -z "$TOKEN" ]; then
   fail "Login Failed"
+  echo "$LOGIN"
   exit 1
 fi
 
@@ -47,13 +48,10 @@ info "TOKEN OK"
 echo ""
 echo "3. WebSocket"
 
-timeout 8 bash -c "
-(
-  sleep 1
-  echo '{\"command\":\"subscribe\",\"identifier\":\"{\\\"channel\\\":\\\"ChatChannel\\\"}\"}'
-  sleep 2
-) | wscat -c '$WS_URL?token=$TOKEN' -H 'Origin: http://localhost:3000'
-" > /tmp/ws.log 2>&1
+timeout 8s wscat -c "$WS_URL?token=$TOKEN" \
+  -H "Origin: $BASE_URL" <<EOF > /tmp/ws.log 2>&1
+{"command":"subscribe","identifier":"{\"channel\":\"ChatChannel\"}"}
+EOF
 
 if grep -q '"type":"welcome"' /tmp/ws.log; then
   ok "WebSocket Welcome OK"
@@ -95,35 +93,23 @@ CODE=$(curl -s -o /dev/null -w "%{http_code}" \
 
 [ "$CODE" = "200" ] && ok "Notification OK" || fail "Notification Fail"
 
-# ---------------- GROUP CHAT ----------------
+# ---------------- GROUP CHAT VIA API ----------------
 echo ""
-echo "7. Group Chat (Rails Runner)"
+echo "7. Group Chat (API)"
 
-rails runner "
-room = ChatRoom.create!(title:'TestRoom', room_kind:'group_chat')
+ROOM_RESPONSE=$(curl -s -X POST "$BASE_URL/api/v1/chat_rooms" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"title":"TestRoom","room_kind":"group"}')
 
-ChatRoomMember.create!(
-  chat_room: room,
-  delegate_id: 205,
-  role: :admin
-)
+ROOM_ID=$(echo $ROOM_RESPONSE | jq -r '.id')
 
-ChatRoomMember.create!(
-  chat_room: room,
-  delegate_id: 206,
-  role: :member
-)
-
-ChatMessage.create!(
-  chat_room: room,
-  sender_id: 205,
-  content: 'Hello Group'
-)
-
-puts 'OK'
-" 2>&1 | tee /tmp/group.log | grep -q OK \
-&& ok "Group OK" \
-|| { fail "Group Fail"; cat /tmp/group.log; }
+if [ -z "$ROOM_ID" ] || [ "$ROOM_ID" = "null" ]; then
+  fail "Create Room Fail"
+  echo "$ROOM_RESPONSE"
+else
+  ok "Room Created ID=$ROOM_ID"
+fi
 
 # ---------------- 1:1 ----------------
 echo ""

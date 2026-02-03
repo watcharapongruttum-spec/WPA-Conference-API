@@ -3,7 +3,7 @@
 set -e
 export PATH=$PATH:/usr/bin:/bin:/usr/local/bin
 
-BASE_URL="http://localhost:3000"
+BASE_URL="https://wpa-docker.onrender.com"
 
 EMAIL="sales@triwayslogistics.com.au"
 ORIGINAL_PASSWORD="NewPass123!"
