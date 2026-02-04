@@ -23,8 +23,12 @@ FAILED=0
 
 LOG_DIR="../log"
 LOG_FILE="$LOG_DIR/res.txt"
+REQ_FILE="$LOG_DIR/req.txt"
+
 mkdir -p $LOG_DIR
-echo "===== API LOG $(date) =====" > $LOG_FILE
+echo "===== API RES LOG $(date) =====" > $LOG_FILE
+echo "===== API REQ LOG $(date) =====" > $REQ_FILE
+
 
 ok(){ echo -e "${GREEN}✅ $1${NC}"; PASSED=$((PASSED+1)); }
 fail(){ echo -e "${RED}❌ $1${NC}"; FAILED=$((FAILED+1)); }
@@ -85,6 +89,26 @@ log_res(){
   ' >> $LOG_FILE 2>/dev/null || echo "$RES" >> $LOG_FILE
 }
 
+
+
+log_req(){
+  SECTION=$1
+  METHOD=$2
+  URL=$3
+  DATA=$4
+
+  echo "" >> $REQ_FILE
+  echo "========== $SECTION ==========" >> $REQ_FILE
+  echo "$METHOD $URL" >> $REQ_FILE
+
+  if [ -n "$DATA" ]; then
+    echo "BODY: $DATA" >> $REQ_FILE
+  fi
+}
+
+
+
+
 # ---------------- TEST ----------------
 test_api(){
   M=$1; U=$2; D=$3; S=$4
@@ -96,7 +120,9 @@ test_api(){
     PATCH) CODE=$(auth_code "$U" -X PATCH -H "Content-Type: application/json" -d "$D");;
   esac
 
+  log_req "$S" "$M" "$U" "$D"
   log_res "$S" "$M" "$U" "$D"
+
 
   if [[ "$CODE" =~ ^(200|201|204)$ ]]; then ok "$CODE"
   elif [[ "$CODE" =~ ^(403|404|422)$ ]]; then warn "$CODE"
@@ -120,6 +146,9 @@ test_api POST "$BASE_URL/api/v1/forgot_password" "{\"email\":\"$EMAIL\"}" "AUTH"
 # ================= PROFILE =================
 test_api GET "$BASE_URL/api/v1/profile" "" "PROFILE"
 
+# ================= DASHBOARD =================
+test_api GET "$BASE_URL/api/v1/dashboard" "" "DASHBOARD"
+
 # ================= DELEGATES =================
 test_api GET "$BASE_URL/api/v1/delegates" "" "DELEGATES"
 test_api GET "$BASE_URL/api/v1/delegates/search?q=test" "" "DELEGATES"
@@ -140,9 +169,7 @@ test_api GET "$BASE_URL/api/v1/tables/$TABLE_ID" "" "TABLES"
 test_api GET "$BASE_URL/api/v1/tables/grid_view" "" "TABLES"
 
 # ================= MESSAGES =================
-# ส่งหาตัวเอง
 MSG_DATA="{\"recipient_id\":$ME_ID,\"content\":\"hello self\"}"
-
 
 test_api GET "$BASE_URL/api/v1/messages" "" "MESSAGES"
 test_api GET "$BASE_URL/api/v1/messages/conversation/$OTHER_ID" "" "MESSAGES"
@@ -152,6 +179,9 @@ MSG_ID=$(get_id "$BASE_URL/api/v1/messages")
 [ -n "$MSG_ID" ] && \
 test_api PATCH "$BASE_URL/api/v1/messages/$MSG_ID/mark_as_read" '{}' "MESSAGES"
 
+# ================= MESSAGE ROOMS =================
+test_api GET "$BASE_URL/api/v1/messages/rooms" "" "MESSAGE_ROOMS"
+
 # ================= NETWORKING =================
 test_api GET "$BASE_URL/api/v1/networking/directory" "" "NETWORKING"
 test_api GET "$BASE_URL/api/v1/networking/my_connections" "" "NETWORKING"
@@ -160,7 +190,6 @@ test_api GET "$BASE_URL/api/v1/networking/pending_requests" "" "NETWORKING"
 # ================= REQUESTS =================
 REQ_DATA="{\"target_id\":$ME_ID}"
 
-
 test_api GET "$BASE_URL/api/v1/requests" "" "REQUESTS"
 test_api POST "$BASE_URL/api/v1/requests" "$REQ_DATA" "REQUESTS"
 
@@ -168,6 +197,9 @@ REQ_ID=$(get_id "$BASE_URL/api/v1/requests")
 [ -z "$REQ_ID" ] && REQ_ID=$FALLBACK_REQUEST_ID
 
 test_api PATCH "$BASE_URL/api/v1/requests/$REQ_ID/accept" '{}' "REQUESTS"
+
+# ================= REQUESTS EXTRA =================
+test_api GET "$BASE_URL/api/v1/requests/my_received" "" "REQUESTS"
 
 # ================= CHAT ROOMS =================
 ROOM_DATA="{\"title\":\"Auto Room\",\"room_kind\":$ROOM_KIND}"

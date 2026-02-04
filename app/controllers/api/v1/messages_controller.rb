@@ -109,6 +109,7 @@ module Api
 
         messages.each do |msg|
           other = msg.sender_id == me.id ? msg.recipient : msg.sender
+          next if other.nil?
           next if rooms[other.id]
 
           unread_count = ChatMessage.where(
@@ -132,7 +133,6 @@ module Api
 
         render json: rooms.values
       end
-
 
 
 
