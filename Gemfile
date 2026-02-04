@@ -64,3 +64,4 @@ gem "bcrypt", "~> 3.1"
 gem 'actioncable'
 gem 'redis', '~> 4.0'
 gem 'knock'
+gem 'rqrcode'

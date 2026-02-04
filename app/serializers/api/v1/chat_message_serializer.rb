@@ -2,24 +2,30 @@ module Api
   module V1
     class ChatMessageSerializer < ActiveModel::Serializer
       attributes :id, :content, :read_at, :created_at, :sender, :recipient
-      
+
       def sender
+        s = object.sender
+        return nil unless s
+
         {
-          id: object.sender.id,
-          name: object.sender.name,
-          title: object.sender.title,
-          company_name: object.sender.company&.name,
-          avatar_url: Api::V1::DelegateSerializer.new(object.sender).avatar_url
+          id: s.id,
+          name: s.name,
+          title: s.title,
+          company_name: s.company&.name,
+          avatar_url: Api::V1::DelegateSerializer.new(s).avatar_url
         }
       end
-      
+
       def recipient
+        r = object.recipient
+        return nil unless r
+
         {
-          id: object.recipient.id,
-          name: object.recipient.name,
-          title: object.recipient.title,
-          company_name: object.recipient.company&.name,
-          avatar_url: Api::V1::DelegateSerializer.new(object.recipient).avatar_url
+          id: r.id,
+          name: r.name,
+          title: r.title,
+          company_name: r.company&.name,
+          avatar_url: Api::V1::DelegateSerializer.new(r).avatar_url
         }
       end
     end

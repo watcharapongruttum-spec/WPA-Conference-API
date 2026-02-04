@@ -73,11 +73,79 @@ module Api
         end
       end
       
+
+
+
+
+
+
+
+
+
+
+    require 'rqrcode'
+    require 'base64'
+
+    def qr_code
+      delegate = Delegate.find(params[:id])
+
+      # ข้อมูลที่อยากให้สแกนแล้วได้
+      # ปกติจะใส่เป็น URL หรือ delegate_id
+      qr_data = {
+        id: delegate.id,
+        name: delegate.name
+      }.to_json
+
+      qr = RQRCode::QRCode.new(qr_data)
+
+      png = qr.as_png(
+        bit_depth: 1,
+        border_modules: 4,
+        color_mode: ChunkyPNG::COLOR_GRAYSCALE,
+        size: 300
+      )
+
+      base64_png = Base64.encode64(png.to_s)
+
+      render json: {
+        qr_code: "data:image/png;base64,#{base64_png}"
+      }
+    end
+
+
+
+
+
+
+
+
+
+
+
       private
       
       def delegate_params
         params.permit(:name, :title, :phone, :avatar)
       end
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     end
   end
 end
