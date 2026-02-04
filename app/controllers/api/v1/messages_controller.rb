@@ -31,56 +31,116 @@ module Api
         render json: @messages, each_serializer: Api::V1::ChatMessageSerializer
       end
       
+
+
+
+
       # POST /api/v1/messages
       def create
+        recipient_id = params[:recipient_id] || params[:receiver_id]
+
+        unless recipient_id
+          return render json: { error: "recipient_id required" }, status: :unprocessable_entity
+        end
+
         @message = ChatMessage.new(
           sender: current_delegate,
-          recipient_id: params[:recipient_id],
+          recipient_id: recipient_id,
           content: params[:content]
         )
-        
+
         if @message.save
-          # ทำเครื่องหมายว่าอ่านแล้วสำหรับผู้ส่ง
-          @message.update(read_at: Time.current) if @message.sender == current_delegate
-          
-          # 🔥 เพิ่มการ broadcast ไปยังผู้รับผ่าน WebSocket
-          ChatChannel.broadcast_to(
-            @message.recipient,
-            type: 'new_message',
-            message: Api::V1::ChatMessageSerializer.new(@message).serializable_hash
-          )
-          
-          # 🔥 สร้างและส่งการแจ้งเตือนเรียลไทม์
-          notification = Notification.create!(
-            delegate: @message.recipient,
-            notification_type: 'new_message',
-            notifiable: @message
-          )
-          
-          NotificationChannel.broadcast_to(
-            @message.recipient,
-            type: 'new_notification',
-            notification: {
-              id: notification.id,
+          @message.update(read_at: Time.current)
+
+          recipient = @message.recipient
+
+          if recipient.present?
+            ChatChannel.broadcast_to(
+              recipient,
               type: 'new_message',
-              created_at: notification.created_at,
-              content: @message.content.truncate(50),
-              sender: {
-                id: @message.sender.id,
-                name: @message.sender.name,
-                avatar_url: Api::V1::DelegateSerializer.new(@message.sender).avatar_url
-              }
-            }
-          )
-          
+              message: Api::V1::ChatMessageSerializer.new(@message).serializable_hash
+            )
+
+            notification = Notification.create(
+              delegate: recipient,
+              notification_type: 'new_message',
+              notifiable: @message
+            )
+
+            if notification
+              NotificationChannel.broadcast_to(
+                recipient,
+                type: 'new_notification',
+                notification: {
+                  id: notification.id,
+                  type: 'new_message',
+                  created_at: notification.created_at,
+                  content: @message.content.truncate(50),
+                  sender: {
+                    id: @message.sender.id,
+                    name: @message.sender.name,
+                    avatar_url: Api::V1::DelegateSerializer.new(@message.sender).avatar_url
+                  }
+                }
+              )
+            end
+          end
+
           render json: @message, serializer: Api::V1::ChatMessageSerializer, status: :created
         else
-          render json: { 
-            error: 'Failed to send message', 
-            errors: @message.errors.full_messages 
-          }, status: :unprocessable_entity
+          render json: { error: 'Failed to send message', errors: @message.errors.full_messages }, status: :unprocessable_entity
         end
       end
+
+
+      
+
+
+
+      def rooms
+        me = current_delegate
+
+        messages = ChatMessage
+          .where("sender_id = ? OR recipient_id = ?", me.id, me.id)
+          .includes(:sender, :recipient)
+          .order(created_at: :desc)
+
+        rooms = {}
+
+        messages.each do |msg|
+          other = msg.sender_id == me.id ? msg.recipient : msg.sender
+          next if rooms[other.id]
+
+          unread_count = ChatMessage.where(
+            sender_id: other.id,
+            recipient_id: me.id,
+            read_at: nil
+          ).count
+
+          rooms[other.id] = {
+            delegate: {
+              id: other.id,
+              name: other.name,
+              title: other.title,
+              avatar_url: Api::V1::DelegateSerializer.new(other).avatar_url
+            },
+            last_message: msg.content,
+            last_message_at: msg.created_at,
+            unread_count: unread_count
+          }
+        end
+
+        render json: rooms.values
+      end
+
+
+
+
+
+
+
+
+
       
       # PATCH /api/v1/messages/:id/mark_as_read
       def mark_as_read

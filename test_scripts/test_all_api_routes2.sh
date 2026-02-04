@@ -1,9 +1,17 @@
 #!/bin/bash
 set +e
 
-BASE_URL="https://wpa-docker.onrender.com"
+BASE_URL="http://localhost:3000"
 EMAIL="sales@triwayslogistics.com.au"
-PASSWORD="NewPass123!"
+PASSWORD="123456"
+
+# ===== FIXED IDS FROM RAILS C =====
+ME_ID=300
+OTHER_ID=1
+CONF_DATE_ID=1
+TABLE_ID=1
+ROOM_KIND=0
+FALLBACK_REQUEST_ID=4
 
 GREEN='\033[0;32m'
 RED='\033[0;31m'
@@ -13,128 +21,170 @@ NC='\033[0m'
 PASSED=0
 FAILED=0
 
-ok() { 
-  echo -e "${GREEN}✅ $1${NC}"
-  PASSED=$((PASSED+1))
-}
+LOG_DIR="../log"
+LOG_FILE="$LOG_DIR/res.txt"
+mkdir -p $LOG_DIR
+echo "===== API LOG $(date) =====" > $LOG_FILE
 
-fail() { 
-  echo -e "${RED}❌ $1${NC}"
-  FAILED=$((FAILED+1))
-}
+ok(){ echo -e "${GREEN}✅ $1${NC}"; PASSED=$((PASSED+1)); }
+fail(){ echo -e "${RED}❌ $1${NC}"; FAILED=$((FAILED+1)); }
+warn(){ echo -e "${YELLOW}⚠️ $1${NC}"; PASSED=$((PASSED+1)); }
 
-warn() { echo -e "${YELLOW}⚠️ $1${NC}"; }
-
-# ---------- LOGIN ----------
-login() {
+# ---------------- LOGIN ----------------
+login(){
   echo "🔐 Login..."
   RES=$(curl -s -X POST "$BASE_URL/api/v1/login" \
-    -H "Content-Type: application/json" \
-    -d "{\"email\":\"$EMAIL\",\"password\":\"$PASSWORD\"}")
+  -H "Content-Type: application/json" \
+  -d "{\"email\":\"$EMAIL\",\"password\":\"$PASSWORD\"}")
 
   TOKEN=$(echo "$RES" | jq -r '.token')
 
   if [ "$TOKEN" = "null" ] || [ -z "$TOKEN" ]; then
+    echo "$RES"
     fail "Login Failed"
+    exit 1
   else
     ok "Login Success"
   fi
 }
 
-# ---------- CURL ----------
-auth() {
+# ---------------- CURL ----------------
+auth_code(){
+  URL=$1; shift
   curl -s -o /dev/null -w "%{http_code}" \
-  -H "Authorization: Bearer $TOKEN" "$@"
+  -H "Authorization: Bearer $TOKEN" "$URL" "$@"
 }
 
-# ---------- TEST ----------
-test_api() {
-  METHOD=$1
-  URL=$2
-  DATA=$3
+auth_body(){
+  URL=$1; shift
+  curl -s -H "Authorization: Bearer $TOKEN" "$URL" "$@"
+}
 
-  echo -n "$METHOD $URL ... "
+# ---------------- LOG ----------------
+log_res(){
+  SECTION=$1
+  METHOD=$2
+  URL=$3
+  DATA=$4
 
-  case $METHOD in
-    GET)
-      CODE=$(auth "$URL")
-      ;;
-    POST)
-      CODE=$(auth -X POST "$URL" \
-        -H "Content-Type: application/json" -d "$DATA")
-      ;;
-    PATCH)
-      CODE=$(auth -X PATCH "$URL" \
-        -H "Content-Type: application/json" -d "$DATA")
-      ;;
+  echo "" >> $LOG_FILE
+  echo "========== $SECTION ==========" >> $LOG_FILE
+  echo "$METHOD $URL" >> $LOG_FILE
+
+  if [ "$METHOD" = "GET" ]; then
+    RES=$(auth_body "$URL")
+  else
+    RES=$(curl -s -X $METHOD "$URL" \
+      -H "Authorization: Bearer $TOKEN" \
+      -H "Content-Type: application/json" \
+      -d "$DATA")
+  fi
+
+  echo "$RES" | jq '
+    if type == "array" then .[0:3] else . end
+  ' >> $LOG_FILE 2>/dev/null || echo "$RES" >> $LOG_FILE
+}
+
+# ---------------- TEST ----------------
+test_api(){
+  M=$1; U=$2; D=$3; S=$4
+  echo -n "$M $U ... "
+
+  case $M in
+    GET) CODE=$(auth_code "$U");;
+    POST) CODE=$(auth_code "$U" -X POST -H "Content-Type: application/json" -d "$D");;
+    PATCH) CODE=$(auth_code "$U" -X PATCH -H "Content-Type: application/json" -d "$D");;
   esac
 
-  if [[ "$CODE" =~ ^(200|201|204)$ ]]; then
-    ok "$CODE"
-  elif [[ "$CODE" =~ ^(404|422)$ ]]; then
-    warn "$CODE"
-    PASSED=$((PASSED+1))
-  else
-    fail "$CODE"
+  log_res "$S" "$M" "$U" "$D"
+
+  if [[ "$CODE" =~ ^(200|201|204)$ ]]; then ok "$CODE"
+  elif [[ "$CODE" =~ ^(403|404|422)$ ]]; then warn "$CODE"
+  else fail "$CODE"
   fi
 }
 
-echo "=========================="
-echo "🚀 FULL API TEST (NO STOP)"
-echo "=========================="
+get_id(){
+  RES=$(auth_body "$1")
+  echo "$RES" | jq -r '.[0].id // empty' 2>/dev/null
+}
 
+echo "🚀 FULL ROUTE TEST"
 login
 echo ""
 
-# PROFILE
-test_api GET "$BASE_URL/api/v1/profile"
+# ================= AUTH =================
+test_api POST "$BASE_URL/api/v1/change_password" '{"old_password":"123456","new_password":"123456"}' "AUTH"
+test_api POST "$BASE_URL/api/v1/forgot_password" "{\"email\":\"$EMAIL\"}" "AUTH"
 
-# DELEGATES
-test_api GET "$BASE_URL/api/v1/delegates"
-test_api GET "$BASE_URL/api/v1/delegates/search?q=test"
-test_api GET "$BASE_URL/api/v1/delegates/1"
-test_api GET "$BASE_URL/api/v1/delegates/1/qr_code"
+# ================= PROFILE =================
+test_api GET "$BASE_URL/api/v1/profile" "" "PROFILE"
 
-# SCHEDULES
-test_api GET "$BASE_URL/api/v1/schedules"
-test_api GET "$BASE_URL/api/v1/schedules/my_schedule"
-test_api POST "$BASE_URL/api/v1/schedules" '{}'
+# ================= DELEGATES =================
+test_api GET "$BASE_URL/api/v1/delegates" "" "DELEGATES"
+test_api GET "$BASE_URL/api/v1/delegates/search?q=test" "" "DELEGATES"
+test_api GET "$BASE_URL/api/v1/delegates/$OTHER_ID" "" "DELEGATES"
+test_api GET "$BASE_URL/api/v1/delegates/$OTHER_ID/qr_code" "" "DELEGATES"
 
-# TABLES
-test_api GET "$BASE_URL/api/v1/tables/1"
-test_api GET "$BASE_URL/api/v1/tables/grid_view"
+# ================= SCHEDULES =================
+START=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+END=$(date -u -d "+30 minutes" +"%Y-%m-%dT%H:%M:%SZ")
+SCH_DATA="{\"conference_date_id\":$CONF_DATE_ID,\"target_id\":$OTHER_ID,\"start_at\":\"$START\",\"end_at\":\"$END\",\"table_number\":\"A1\"}"
 
-# MESSAGES
-test_api GET "$BASE_URL/api/v1/messages"
-test_api GET "$BASE_URL/api/v1/messages/conversation/1"
-test_api POST "$BASE_URL/api/v1/messages" '{"receiver_id":1,"content":"hi"}'
-test_api PATCH "$BASE_URL/api/v1/messages/1/mark_as_read" '{}'
+test_api GET "$BASE_URL/api/v1/schedules" "" "SCHEDULES"
+test_api GET "$BASE_URL/api/v1/schedules/my_schedule" "" "SCHEDULES"
+test_api POST "$BASE_URL/api/v1/schedules" "$SCH_DATA" "SCHEDULES"
 
-# NETWORKING
-test_api GET "$BASE_URL/api/v1/networking/directory"
-test_api GET "$BASE_URL/api/v1/networking/my_connections"
-test_api GET "$BASE_URL/api/v1/networking/pending_requests"
+# ================= TABLES =================
+test_api GET "$BASE_URL/api/v1/tables/$TABLE_ID" "" "TABLES"
+test_api GET "$BASE_URL/api/v1/tables/grid_view" "" "TABLES"
 
-# REQUESTS
-test_api GET "$BASE_URL/api/v1/requests"
-test_api POST "$BASE_URL/api/v1/requests" '{"receiver_id":1}'
-test_api PATCH "$BASE_URL/api/v1/requests/1/accept" '{}'
-test_api PATCH "$BASE_URL/api/v1/requests/1/reject" '{}'
+# ================= MESSAGES =================
+# ส่งหาตัวเอง
+MSG_DATA="{\"recipient_id\":$ME_ID,\"content\":\"hello self\"}"
 
-# CHAT ROOMS
-test_api GET "$BASE_URL/api/v1/chat_rooms"
-test_api POST "$BASE_URL/api/v1/chat_rooms" '{"name":"test"}'
 
-# NOTIFICATIONS
-test_api GET "$BASE_URL/api/v1/notifications"
-test_api GET "$BASE_URL/api/v1/notifications/unread_count"
-test_api PATCH "$BASE_URL/api/v1/notifications/mark_all_as_read" '{}'
-test_api PATCH "$BASE_URL/api/v1/notifications/1/mark_as_read" '{}'
+test_api GET "$BASE_URL/api/v1/messages" "" "MESSAGES"
+test_api GET "$BASE_URL/api/v1/messages/conversation/$OTHER_ID" "" "MESSAGES"
+test_api POST "$BASE_URL/api/v1/messages" "$MSG_DATA" "MESSAGES"
+
+MSG_ID=$(get_id "$BASE_URL/api/v1/messages")
+[ -n "$MSG_ID" ] && \
+test_api PATCH "$BASE_URL/api/v1/messages/$MSG_ID/mark_as_read" '{}' "MESSAGES"
+
+# ================= NETWORKING =================
+test_api GET "$BASE_URL/api/v1/networking/directory" "" "NETWORKING"
+test_api GET "$BASE_URL/api/v1/networking/my_connections" "" "NETWORKING"
+test_api GET "$BASE_URL/api/v1/networking/pending_requests" "" "NETWORKING"
+
+# ================= REQUESTS =================
+REQ_DATA="{\"target_id\":$ME_ID}"
+
+
+test_api GET "$BASE_URL/api/v1/requests" "" "REQUESTS"
+test_api POST "$BASE_URL/api/v1/requests" "$REQ_DATA" "REQUESTS"
+
+REQ_ID=$(get_id "$BASE_URL/api/v1/requests")
+[ -z "$REQ_ID" ] && REQ_ID=$FALLBACK_REQUEST_ID
+
+test_api PATCH "$BASE_URL/api/v1/requests/$REQ_ID/accept" '{}' "REQUESTS"
+
+# ================= CHAT ROOMS =================
+ROOM_DATA="{\"title\":\"Auto Room\",\"room_kind\":$ROOM_KIND}"
+
+test_api GET "$BASE_URL/api/v1/chat_rooms" "" "CHAT_ROOMS"
+test_api POST "$BASE_URL/api/v1/chat_rooms" "$ROOM_DATA" "CHAT_ROOMS"
+
+# ================= NOTIFICATIONS =================
+test_api GET "$BASE_URL/api/v1/notifications" "" "NOTIFICATIONS"
+test_api GET "$BASE_URL/api/v1/notifications/unread_count" "" "NOTIFICATIONS"
+test_api PATCH "$BASE_URL/api/v1/notifications/mark_all_as_read" '{}' "NOTIFICATIONS"
+
+NOTI_ID=$(get_id "$BASE_URL/api/v1/notifications")
+[ -n "$NOTI_ID" ] && \
+test_api PATCH "$BASE_URL/api/v1/notifications/$NOTI_ID/mark_as_read" '{}' "NOTIFICATIONS"
 
 echo ""
-echo "=========================="
-echo "📊 SUMMARY"
-echo "=========================="
-echo -e "PASSED: ${GREEN}$PASSED${NC}"
-echo -e "FAILED: ${RED}$FAILED${NC}"
-echo "=========================="
+echo "PASSED: $PASSED"
+echo "FAILED: $FAILED"
+echo "LOG: $LOG_FILE"

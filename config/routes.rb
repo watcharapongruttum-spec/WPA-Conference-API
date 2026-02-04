@@ -3,6 +3,14 @@ Rails.application.routes.draw do
 
   namespace :api do
     namespace :v1 do
+
+
+
+
+      get :dashboard, to: 'dashboard#show'
+
+
+
       # Authentication
       post 'login', to: 'sessions#create'
       post 'change_password', to: 'sessions#change_password'
@@ -42,6 +50,7 @@ Rails.application.routes.draw do
       resources :messages, only: [:index, :create] do
         collection do
           get 'conversation/:delegate_id', to: 'messages#conversation'
+          get :rooms
         end
         member do
           patch :mark_as_read
@@ -55,6 +64,11 @@ Rails.application.routes.draw do
 
       # Requests
       resources :requests, only: [:index, :create] do
+        
+        collection do
+          get :my_received
+        end
+
         member do
           patch :accept
           patch :reject

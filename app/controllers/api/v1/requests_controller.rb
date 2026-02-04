@@ -186,6 +186,41 @@ module Api
           }, status: :unprocessable_entity
         end
       end
+
+
+
+
+
+      def my_received
+        me = current_delegate
+
+        requests = ConnectionRequest
+          .where(target_id: me.id, status: "pending")
+          .includes(:requester)
+
+        render json: requests.map { |req|
+          {
+            id: req.id,
+            requester: {
+              id: req.requester.id,
+              name: req.requester.name,
+              title: req.requester.title,
+              avatar_url: Api::V1::DelegateSerializer.new(req.requester).avatar_url
+            },
+            created_at: req.created_at
+          }
+        }
+      end
+
+
+
+
+
+
+
+
+
+
     end
   end
 end
