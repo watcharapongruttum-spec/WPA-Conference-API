@@ -19,25 +19,136 @@ module Api
         render json: @schedules, each_serializer: Api::V1::ScheduleSerializer
       end
       
-      def my_schedule
-        @delegate = current_delegate
+
+
+
+
+      # def my_schedule
+      #   @delegate = current_delegate
         
-        if @delegate.nil?
-          render json: { error: 'Authentication required' }, status: :unauthorized
-          return
-        end
+      #   if @delegate.nil?
+      #     render json: { error: 'Authentication required' }, status: :unauthorized
+      #     return
+      #   end
         
-        @schedules = Schedule.where(booker: @delegate)
-                             .or(Schedule.where(target: @delegate))
-                             .includes(:conference_date, :booker, :target)
-                             .order(start_at: :asc)
+      #   @schedules = Schedule.where(booker: @delegate)
+      #                        .or(Schedule.where(target: @delegate))
+      #                        .includes(:conference_date, :booker, :target)
+      #                        .order(start_at: :asc)
         
-        render json: {
-          today: @schedules.select { |s| s.start_at.to_date == Date.today },
-          upcoming: @schedules.select { |s| s.start_at.to_date > Date.today }
-        }
-      end
+      #   render json: {
+      #     today: @schedules.select { |s| s.start_at.to_date == Date.today },
+      #     upcoming: @schedules.select { |s| s.start_at.to_date > Date.today }
+      #   }
+      # end
+
+def my_schedule
+  delegate = current_delegate
+  return render json: { error: 'Authentication required' }, status: :unauthorized if delegate.nil?
+
+  # -------- 1. YEARS THAT THIS DELEGATE HAS --------
+  delegate_years = Schedule
+    .joins(conference_date: :conference)
+    .where("schedules.booker_id = :id OR schedules.target_id = :id", id: delegate.id)
+    .pluck("conferences.conference_year")
+    .uniq
+    .sort
+
+  # -------- 2. YEAR --------
+  year = params[:year].presence || delegate_years.last || Date.today.year.to_s
+  conference = Conference.find_by(conference_year: year)
+
+  return render json: {
+    error: 'Conference not found',
+    available_years: delegate_years
+  }, status: :not_found unless conference
+
+  # -------- 3. AVAILABLE DATES IN THIS YEAR --------
+    available_dates = conference.conference_dates
+      .where("EXTRACT(YEAR FROM on_date) = ?", year.to_i)
+      .order(:on_date)
+      .pluck(:on_date)
+
+
+  # -------- 4. SELECTED DATE --------
+  if params[:date].present?
+    selected_date = Date.parse(params[:date]) rescue nil
+  else
+    selected_date = available_dates.first
+  end
+
+  return render json: {
+    error: 'No conference dates',
+    available_years: delegate_years
+  }, status: :not_found if selected_date.nil?
+
+
+
+
+  # -------- 2. DATE --------
+  if params[:date].present?
+    selected_date = Date.parse(params[:date]) rescue nil
+  else
+    cd_with_schedule = Schedule
+      .joins(:conference_date)
+      .where(conference_dates: { conference_id: conference.id })
+      .where("schedules.booker_id = :id OR schedules.target_id = :id", id: delegate.id)
+      .order("conference_dates.on_date ASC")
+      .first
+
+    selected_date =
+      cd_with_schedule&.conference_date&.on_date ||
+      conference.conference_dates.order(:on_date).first&.on_date
+  end
+
+  return render json: { error: 'No conference dates' }, status: :not_found if selected_date.nil?
+
+  # <<<<<< ตรงนี้สำคัญ
+  conference_date = conference.conference_dates.find_by(on_date: selected_date)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  # -------- 5. QUERY SCHEDULE --------
+  schedules = Schedule
+                .where(conference_date: conference_date)
+                .where(booker: delegate)
+                .or(
+                  Schedule.where(conference_date: conference_date, target: delegate)
+                )
+                .includes(:booker, :target, :conference_date)
+                .order(:start_at)
+
+  # -------- 6. RESPONSE --------
+  render json: {
+    available_years: delegate_years,
+    year: year,
+    available_dates: available_dates,
+    date: selected_date,
+    schedules: schedules
+  }
+end
+
+
       
+
+
+
+
+
+
+
       # สร้างการนัดหมายใหม่
       def create
         @delegate = current_delegate

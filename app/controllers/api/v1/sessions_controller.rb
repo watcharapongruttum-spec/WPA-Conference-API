@@ -39,6 +39,9 @@ module Api
         end
       end
 
+
+
+      
       # POST /api/v1/change_password
       def change_password
         @delegate = current_delegate
