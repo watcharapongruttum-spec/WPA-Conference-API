@@ -126,23 +126,14 @@ ActiveRecord::Schema[7.0].define(version: 202107270010001) do
     t.datetime "read_at"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.bigint "room_id"
     t.bigint "chat_room_id"
     t.index ["chat_room_id"], name: "index_chat_messages_on_chat_room_id"
     t.index ["read_at"], name: "index_chat_messages_on_read_at"
     t.index ["recipient_id"], name: "index_chat_messages_on_recipient_id"
+    t.index ["room_id"], name: "index_chat_messages_on_room_id"
     t.index ["sender_id", "recipient_id"], name: "index_chat_messages_on_sender_id_and_recipient_id"
     t.index ["sender_id"], name: "index_chat_messages_on_sender_id"
-  end
-
-  create_table "chat_room_members", force: :cascade do |t|
-    t.bigint "chat_room_id", null: false
-    t.bigint "delegate_id", null: false
-    t.datetime "last_read_at"
-    t.datetime "created_at", null: false
-    t.datetime "updated_at", null: false
-    t.integer "role"
-    t.index ["chat_room_id"], name: "index_chat_room_members_on_chat_room_id"
-    t.index ["delegate_id"], name: "index_chat_room_members_on_delegate_id"
   end
 
   create_table "chat_rooms", force: :cascade do |t|
@@ -677,14 +668,15 @@ ActiveRecord::Schema[7.0].define(version: 202107270010001) do
 
   create_table "notifications", force: :cascade do |t|
     t.bigint "delegate_id", null: false
-    t.string "notification_type"
-    t.string "notifiable_type", null: false
-    t.bigint "notifiable_id", null: false
+    t.string "notification_type", null: false
+    t.string "notifiable_type"
+    t.bigint "notifiable_id"
     t.datetime "read_at"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index ["delegate_id"], name: "index_notifications_on_delegate_id"
     t.index ["notifiable_type", "notifiable_id"], name: "index_notifications_on_notifiable"
+    t.index ["read_at"], name: "index_notifications_on_read_at"
   end
 
   create_table "on_holds", id: :serial, force: :cascade do |t|
@@ -1022,12 +1014,13 @@ ActiveRecord::Schema[7.0].define(version: 202107270010001) do
   end
 
   create_table "room_members", force: :cascade do |t|
-    t.bigint "room_id", null: false
+    t.bigint "chat_room_id", null: false
     t.bigint "delegate_id", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.integer "role"
+    t.index ["chat_room_id"], name: "index_room_members_on_chat_room_id"
     t.index ["delegate_id"], name: "index_room_members_on_delegate_id"
-    t.index ["room_id"], name: "index_room_members_on_room_id"
   end
 
   create_table "rooms", force: :cascade do |t|
@@ -1232,8 +1225,7 @@ ActiveRecord::Schema[7.0].define(version: 202107270010001) do
   add_foreign_key "chat_messages", "chat_rooms"
   add_foreign_key "chat_messages", "delegates", column: "recipient_id"
   add_foreign_key "chat_messages", "delegates", column: "sender_id"
-  add_foreign_key "chat_room_members", "chat_rooms"
-  add_foreign_key "chat_room_members", "delegates"
+  add_foreign_key "chat_messages", "rooms"
   add_foreign_key "connection_requests", "delegates", column: "requester_id"
   add_foreign_key "connection_requests", "delegates", column: "target_id"
   add_foreign_key "connections", "delegates", column: "requester_id"
@@ -1248,6 +1240,6 @@ ActiveRecord::Schema[7.0].define(version: 202107270010001) do
   add_foreign_key "precaution_gold_funds", "branches"
   add_foreign_key "precaution_gold_funds", "members"
   add_foreign_key "referral_members", "members"
+  add_foreign_key "room_members", "chat_rooms"
   add_foreign_key "room_members", "delegates"
-  add_foreign_key "room_members", "rooms"
 end

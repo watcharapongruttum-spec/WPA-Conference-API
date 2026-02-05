@@ -2,7 +2,7 @@
 set +e
 
 BASE_URL="http://localhost:3000"
-EMAIL="sales@triwayslogistics.com.au"
+EMAIL="narisara.lasan@bestgloballogistics.com"
 PASSWORD="123456"
 
 # ===== FIXED IDS FROM RAILS C =====

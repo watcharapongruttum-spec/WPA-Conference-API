@@ -24,6 +24,10 @@ module Api
                scope: current_delegate
       end
 
+
+
+
+
       # ===============================
       # MY SCHEDULE
       # ===============================
@@ -49,38 +53,40 @@ module Api
 
         # -------- 2. AVAILABLE DATES --------
         available_dates = conference.conference_dates
-                                     .order(:on_date)
-                                     .pluck(:on_date)
+                                    .order(:on_date)
+                                    .pluck(:on_date)
 
         # -------- 3. SELECT DATE --------
-        if params[:date].present?
-          selected_date = Date.parse(params[:date]) rescue nil
-        else
-          # เลือกวันที่ที่มี schedule จริงก่อน
-          cd_with_schedule = Schedule
-            .joins(:conference_date)
-            .where(conference_dates: { conference_id: conference.id })
-            .where("schedules.booker_id = :id OR schedules.target_id = :id", id: delegate.id)
-            .order("conference_dates.on_date ASC")
-            .first
+        selected_date =
+          if params[:date].present?
+            begin
+              Date.parse(params[:date])
+            rescue ArgumentError
+              nil
+            end
+          else
+            # เลือกวันที่ที่ delegate มี schedule จริงก่อน
+            cd_with_schedule = Schedule
+              .joins(:conference_date)
+              .where(conference_dates: { conference_id: conference.id })
+              .where("schedules.booker_id = :id OR schedules.target_id = :id", id: delegate.id)
+              .order("conference_dates.on_date ASC")
+              .select("schedules.*, conference_dates.on_date")
+              .first
 
-          selected_date =
-            cd_with_schedule&.conference_date&.on_date ||
-            available_dates.first
-        end
+            cd_with_schedule&.conference_date&.on_date || available_dates.first
+          end
 
         return render json: { error: 'No conference dates' }, status: :not_found if selected_date.nil?
 
         conference_date = conference.conference_dates.find_by(on_date: selected_date)
+        return render json: { error: 'Conference date not found' }, status: :not_found if conference_date.nil?
 
         # -------- 4. QUERY SCHEDULE --------
         schedules = Schedule
-          .where(conference_date: conference_date)
-          .where(booker: delegate)
-          .or(
-            Schedule.where(conference_date: conference_date, target: delegate)
-          )
           .includes(:conference_date, booker: :company, target: :company)
+          .where(conference_date_id: conference_date.id)
+          .where("schedules.booker_id = :id OR schedules.target_id = :id", id: delegate.id)
           .order(:start_at)
 
         # -------- 5. RESPONSE --------
@@ -96,6 +102,13 @@ module Api
           )
         }
       end
+
+
+
+
+
+
+
 
     end
   end
