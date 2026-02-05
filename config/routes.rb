@@ -36,6 +36,7 @@ Rails.application.routes.draw do
       resources :schedules, only: [:index, :create] do
         collection do
           get :my_schedule
+          get :schedule_others 
         end
       end
 

@@ -1,62 +1,60 @@
-module Api
-  module V1
-    class ScheduleSerializer < ActiveModel::Serializer
-      attributes :id,
-                 :start_at,
-                 :end_at,
-                 :table_number,
-                 :country,
-                 :conference_date,
-                 :delegate,
-                 :duration_minutes
+class Api::V1::ScheduleSerializer < ActiveModel::Serializer
+  attributes :id,
+             :start_at,
+             :end_at,
+             :table_number,
+             :country,
+             :conference_date,
+             :delegate,
+             :duration_minutes,
+             :leave
 
-      # -------------------------
-      # วันที่ประชุม
-      # -------------------------
-      def conference_date
-        object.conference_date&.on_date
+  def conference_date
+    object.conference_date&.on_date
+  end
+
+  def delegate
+    current_delegate = scope
+    return nil unless current_delegate
+
+    d =
+      if object.booker_id == current_delegate.id
+        object.target
+      else
+        object.booker
       end
 
-      # -------------------------
-      # ระยะเวลา
-      # -------------------------
-      def duration_minutes
-        return nil unless object.start_at && object.end_at
-        ((object.end_at - object.start_at) / 60).to_i
-      end
+    {
+      id: d&.id,
+      name: d&.name || "Unknown",
+      company: d&.company&.name || "N/A"
+    }
+  end
 
-      # -------------------------
-      # คนที่เรานัดด้วย
-      # -------------------------
-      def delegate
-        current_user = scope
+  def duration_minutes
+    return 0 unless object.start_at && object.end_at
+    ((object.end_at - object.start_at) / 60).to_i
+  end
 
-        other_delegate =
-          if current_user && object.booker_id == current_user.id
-            object.target
-          else
-            object.booker
-          end
+  # ✅ เช็คจาก schedule.id อย่างเดียว
+  def leave
+    lf = object.leave_forms
+               .order(created_at: :desc)
+               .first
 
-        return unknown_delegate unless other_delegate
+    return nil unless lf
 
-        {
-          id: other_delegate.id,
-          name: other_delegate.name.presence || "Unknown",
-          company: other_delegate.company&.name || "N/A"
-        }
-      end
-
-      # -------------------------
-      # fallback
-      # -------------------------
-      def unknown_delegate
-        {
-          id: nil,
-          name: "Unknown",
-          company: "N/A"
-        }
-      end
-    end
+    {
+      id: lf.id,
+      status: lf.status,
+      leave_type: {
+        id: lf.leave_type_id,
+        code: lf.leave_type&.code,
+        name_th: lf.leave_type&.name_th,
+        name_en: lf.leave_type&.name_en
+      },
+      explanation: lf.explanation,
+      reported_at: lf.reported_at
+    }
   end
 end

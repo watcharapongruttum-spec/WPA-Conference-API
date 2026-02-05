@@ -549,6 +549,34 @@ ActiveRecord::Schema[7.0].define(version: 202107270010001) do
     t.index ["invoice_sequence_id"], name: "index_invoices_on_invoice_sequence_id"
   end
 
+  create_table "leave_forms", force: :cascade do |t|
+    t.bigint "schedule_id", null: false
+    t.string "status"
+    t.string "reason"
+    t.text "explanation"
+    t.bigint "reported_by_id"
+    t.datetime "reported_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.bigint "leave_type_id"
+    t.index ["leave_type_id"], name: "index_leave_forms_on_leave_type_id"
+    t.index ["reported_by_id"], name: "index_leave_forms_on_reported_by_id"
+    t.index ["schedule_id"], name: "index_leave_forms_on_schedule_id"
+    t.index ["status"], name: "index_leave_forms_on_status"
+  end
+
+  create_table "leave_types", force: :cascade do |t|
+    t.string "code"
+    t.string "name"
+    t.text "description"
+    t.boolean "active", default: true
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.string "name_th"
+    t.string "name_en"
+    t.index ["code"], name: "index_leave_types_on_code", unique: true
+  end
+
   create_table "login_sessions", id: :serial, force: :cascade do |t|
     t.string "email", default: "", null: false
     t.string "encrypted_password", default: "", null: false
@@ -1231,6 +1259,9 @@ ActiveRecord::Schema[7.0].define(version: 202107270010001) do
   add_foreign_key "connections", "delegates", column: "requester_id"
   add_foreign_key "connections", "delegates", column: "target_id"
   add_foreign_key "invoices", "invoice_sequences"
+  add_foreign_key "leave_forms", "delegates", column: "reported_by_id"
+  add_foreign_key "leave_forms", "leave_types"
+  add_foreign_key "leave_forms", "schedules"
   add_foreign_key "member_services", "members"
   add_foreign_key "member_services", "services"
   add_foreign_key "messages", "delegates", column: "recipient_id"
