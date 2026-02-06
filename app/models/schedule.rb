@@ -109,19 +109,65 @@ class Schedule < ApplicationRecord
     conference_date = conference.conference_dates.find_by(on_date: selected_date)
     return { error: :date_not_found } unless conference_date
 
-    schedules = with_full_data
-                  .mine(delegate.id)
-                  .by_date(conference_date.id)
-                  .sorted
+    # ======================
+    # PERSONAL MEETINGS
+    # ======================
+    personal = with_full_data
+                .mine(delegate.id)
+                .by_date(conference_date.id)
+                .sorted
+                .to_a
+
+    # ======================
+    # GLOBAL EVENTS (ไม่เอา one-on-one)
+    # ======================
+    global = ConferenceSchedule
+              .by_date(conference_date.id)
+              .only_events
+              .sorted
+              .to_a
+
+
+    # ======================
+    # MERGE TIMELINE
+    # ======================
+    merged = []
+
+    global.each do |g|
+      merged << {
+        type: "event",
+        id: g.id,
+        title: g.title,
+        start_at: g.start_at,
+        end_at: g.end_at,
+        table_number: nil,
+        delegate: nil,
+        leave: nil
+      }
+    end
+
+    personal.each do |s|
+      merged << {
+        type: "meeting",
+        serializer: s, # ไว้ให้ controller serialize
+        start_at: s.start_at
+      }
+    end
+
+    merged.sort_by! { |x| x[:start_at] }
 
     {
       years: years,
       year: year,
       available_dates: available_dates,
       selected_date: selected_date,
-      schedules: schedules.to_a
+      schedules: merged
     }
   end
+
+
+
+
 
   # ===============================
   # INDEX (DATATABLE)
@@ -193,6 +239,34 @@ class Schedule < ApplicationRecord
 
 
 
+  def self.merge_timeline(personal:, global:)
+    items = []
+
+    # GLOBAL EVENTS
+    global.each do |g|
+      items << {
+        type: "event",
+        id: g.id,
+        title: g.title,
+        start_at: g.start_at,
+        end_at: g.end_at,
+        is_meeting: false
+      }
+    end
+
+    # PERSONAL MEETINGS
+    personal.each do |s|
+      items << {
+        type: "meeting",
+        id: s.id,
+        start_at: s.start_at,
+        end_at: s.end_at,
+        serializer: s # ไว้ให้ controller serialize
+      }
+    end
+
+    items.sort_by { |i| i[:start_at] }
+  end
 
 
 

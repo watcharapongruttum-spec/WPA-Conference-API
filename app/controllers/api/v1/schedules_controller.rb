@@ -51,17 +51,34 @@ module Api
           return render json: { error: result[:error] }, status: :not_found
         end
 
+
+
+
+
+        
+        timeline = result[:schedules].map do |item|
+          if item[:type] == "event"
+            item
+          else
+            data = ActiveModelSerializers::SerializableResource.new(
+              item[:serializer],
+              serializer: Api::V1::ScheduleSerializer,
+              scope: current_delegate
+            ).as_json
+
+            data.merge(type: "meeting")
+          end
+        end
+
         render json: {
           available_years: result[:years],
           year: result[:year],
           available_dates: result[:available_dates],
           date: result[:selected_date],
-          schedules: ActiveModelSerializers::SerializableResource.new(
-            result[:schedules] || [],
-            each_serializer: Api::V1::ScheduleSerializer,
-            scope: current_delegate
-          )
+          schedules: timeline
         }
+
+
       end
 
       # ===============================
