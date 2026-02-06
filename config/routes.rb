@@ -44,6 +44,7 @@ Rails.application.routes.draw do
       resources :tables, only: [:show] do
         collection do
           get :grid_view
+          get :time_view
         end
       end
 
@@ -89,6 +90,21 @@ Rails.application.routes.draw do
           patch :mark_as_read
         end
       end
+
+
+
+
+      # Leave Forms
+      resources :leave_forms, only: [:create]
+
+
+
+
+
+
+
+
+
     end
   end
 end

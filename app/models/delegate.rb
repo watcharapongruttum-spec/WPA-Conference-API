@@ -21,6 +21,8 @@ class Delegate < ApplicationRecord
            foreign_key: 'target_id',
            dependent: :destroy
 
+  has_many :schedules
+
   # ------------------------
   # Notifications
   # ------------------------
@@ -123,4 +125,29 @@ class Delegate < ApplicationRecord
       .or(ConnectionRequest.accepted.where(target: self))
       .map { |c| c.requester == self ? c.target : c.requester }
   end
+
+
+
+
+
+
+
+  def avatar_url
+    if avatar_file_name.present?
+      # ถ้าใช้ paperclip / active storage ก็ปรับตามจริง
+      avatar.url
+    else
+      "https://ui-avatars.com/api/?name=#{CGI.escape(name)}&background=0D8ABC&color=fff"
+    end
+  end
+
+
+
+
+
+
+
+
+
+
 end

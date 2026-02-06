@@ -6,6 +6,12 @@ class Schedule < ApplicationRecord
   belongs_to :booker, class_name: "Delegate", optional: true
   belongs_to :target, class_name: "Delegate", optional: true
 
+  belongs_to :table, optional: true
+  belongs_to :delegate, optional: true
+
+
+  
+
   has_many :leave_forms
 
   # ===============================

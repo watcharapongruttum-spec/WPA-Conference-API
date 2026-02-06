@@ -1084,10 +1084,14 @@ ActiveRecord::Schema[7.0].define(version: 202107270010001) do
     t.boolean "is_static_table", default: false
     t.datetime "created_at", precision: nil, null: false
     t.datetime "updated_at", precision: nil, null: false
+    t.bigint "table_id"
+    t.bigint "delegate_id"
     t.index ["booker_id"], name: "index_schedules_on_booker_id"
     t.index ["conference_date_id"], name: "index_schedules_on_conference_date_id"
+    t.index ["delegate_id"], name: "index_schedules_on_delegate_id"
     t.index ["end_at"], name: "index_schedules_on_end_at"
     t.index ["start_at"], name: "index_schedules_on_start_at"
+    t.index ["table_id"], name: "index_schedules_on_table_id"
   end
 
   create_table "seo_meta", id: :serial, force: :cascade do |t|
@@ -1273,4 +1277,6 @@ ActiveRecord::Schema[7.0].define(version: 202107270010001) do
   add_foreign_key "referral_members", "members"
   add_foreign_key "room_members", "chat_rooms"
   add_foreign_key "room_members", "delegates"
+  add_foreign_key "schedules", "delegates"
+  add_foreign_key "schedules", "tables"
 end
