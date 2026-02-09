@@ -151,13 +151,27 @@ module Api
 
 
       def read_all
-        ChatMessage.where(
-          recipient_id: current_delegate.id,
-          read_at: nil
-        ).update_all(read_at: Time.current)
+        messages = current_delegate.received_messages.where(read_at: nil)
+
+        messages.find_each do |msg|
+          now = Time.current
+          msg.update_column(:read_at, now)
+
+          payload = {
+            type: 'message_read',
+            message_id: msg.id,
+            read_at: now
+          }
+
+          ChatChannel.broadcast_to(msg.sender, payload)
+        end
 
         render json: { message: "All messages marked as read" }
       end
+
+
+
+
 
 
 
