@@ -8,7 +8,9 @@ class Schedule < ApplicationRecord
 
   belongs_to :table, optional: true
   belongs_to :delegate, optional: true
-
+  belongs_to :team,
+             foreign_key: :target_id,
+             optional: true
 
   
 
@@ -269,6 +271,11 @@ class Schedule < ApplicationRecord
   end
 
 
+
+  def team_delegates
+    return Delegate.none unless target_id
+    Delegate.where(team_id: target_id)
+  end
 
 
 

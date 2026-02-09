@@ -36,6 +36,8 @@ module Api
         end
       end
 
+
+
       # ===============================
       # MY SCHEDULE
       # ===============================
@@ -51,36 +53,43 @@ module Api
           return render json: { error: result[:error] }, status: :not_found
         end
 
-
-        
         timeline = result[:schedules].map do |item|
           if item[:type] == "event"
             item
           else
+            schedule = item[:serializer]
+
             data = ActiveModelSerializers::SerializableResource.new(
-              item[:serializer],
+              schedule,
               serializer: Api::V1::ScheduleSerializer,
               scope: current_delegate
-            ).as_json
+            ).as_json.except(:delegate)
 
             meeting_type =
-              data[:table_number].nil? ? "nomeeting" : "meeting"
+              schedule.table_number.nil? ? "nomeeting" : "meeting"
 
-            data.merge(type: meeting_type)
+            data.merge(
+              type: meeting_type,
+              team_delegates: (schedule.team&.delegates || []).map do |d|
+                {
+                  id: d.id,
+                  name: d.name,
+                  company: d.company&.name
+                }
+              end
+            )
           end
         end
 
 
+
         render json: {
-          available_years: result[:years],
-          year: result[:year],
-          available_dates: result[:available_dates],
           date: result[:selected_date],
           schedules: timeline
         }
-
-
       end
+
+
 
       # ===============================
       # SCHEDULE OTHERS

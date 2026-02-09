@@ -12,13 +12,20 @@ if [ -z "$1" ]; then
   exit 1
 fi
 
-MSG=$1
+RAW_MSG=$1
+DATE=$(date '+%Y-%m-%d %H:%M')
+MSG="$RAW_MSG - $DATE"
 
 # ---------------- CLEAN LOG FILES ----------------
 echo "🧹 CLEAN TEMP FILES"
-
 rm -f test_scripts/*.log
 rm -f test_scripts/*.pid
+
+# ---------------- CHECK CHANGES ----------------
+if [ -z "$(git status --porcelain)" ]; then
+  echo "⚠️  NOTHING TO COMMIT"
+  exit 0
+fi
 
 # ---------------- GIT ADD ----------------
 echo "📦 GIT ADD"
