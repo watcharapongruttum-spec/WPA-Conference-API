@@ -28,7 +28,7 @@ Rails.application.configure do
   config.action_cable.url = "wss://wpa-docker.onrender.com/cable"
 
   config.action_cable.allowed_request_origins = [
-    "https://wpa-docker.onrender.com",
-    /https:\/\/.*\.onrender\.com/
+    /https?:\/\/.*/
   ]
+
 end
