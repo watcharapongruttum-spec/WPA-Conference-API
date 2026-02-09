@@ -5,8 +5,6 @@ Rails.application.routes.draw do
     namespace :v1 do
 
 
-
-
       get :dashboard, to: 'dashboard#show'
 
 
@@ -49,15 +47,17 @@ Rails.application.routes.draw do
       end
 
       # Messages
-      resources :messages, only: [:index, :create] do
+      resources :messages, only: [:index, :create, :update, :destroy] do
         collection do
           get 'conversation/:delegate_id', to: 'messages#conversation'
           get :rooms
         end
+
         member do
           patch :mark_as_read
         end
       end
+
 
       # Networking
       get 'networking/directory', to: 'networking#directory'
@@ -78,7 +78,15 @@ Rails.application.routes.draw do
       end
 
       # Chat Rooms
-      resources :chat_rooms, only: [:index, :create]
+      resources :chat_rooms, only: [:index, :create, :destroy] do
+        member do
+          delete :leave
+        end
+      end
+
+
+
+
 
       # Notifications
       resources :notifications, only: [:index] do

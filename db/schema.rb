@@ -128,6 +128,8 @@ ActiveRecord::Schema[7.0].define(version: 202107270010001) do
     t.datetime "updated_at", null: false
     t.bigint "room_id"
     t.bigint "chat_room_id"
+    t.datetime "edited_at"
+    t.datetime "deleted_at"
     t.index ["chat_room_id"], name: "index_chat_messages_on_chat_room_id"
     t.index ["read_at"], name: "index_chat_messages_on_read_at"
     t.index ["recipient_id"], name: "index_chat_messages_on_recipient_id"
@@ -136,11 +138,24 @@ ActiveRecord::Schema[7.0].define(version: 202107270010001) do
     t.index ["sender_id"], name: "index_chat_messages_on_sender_id"
   end
 
+  create_table "chat_room_members", force: :cascade do |t|
+    t.bigint "chat_room_id", null: false
+    t.bigint "delegate_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.integer "role", default: 0, null: false
+    t.index ["chat_room_id", "delegate_id"], name: "index_chat_room_members_on_chat_room_id_and_delegate_id", unique: true
+    t.index ["chat_room_id"], name: "index_chat_room_members_on_chat_room_id"
+    t.index ["delegate_id"], name: "index_chat_room_members_on_delegate_id"
+  end
+
   create_table "chat_rooms", force: :cascade do |t|
     t.string "title"
     t.integer "room_kind"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.datetime "deleted_at"
+    t.index ["deleted_at"], name: "index_chat_rooms_on_deleted_at"
   end
 
   create_table "cities", id: :serial, force: :cascade do |t|
@@ -1258,6 +1273,8 @@ ActiveRecord::Schema[7.0].define(version: 202107270010001) do
   add_foreign_key "chat_messages", "delegates", column: "recipient_id"
   add_foreign_key "chat_messages", "delegates", column: "sender_id"
   add_foreign_key "chat_messages", "rooms"
+  add_foreign_key "chat_room_members", "chat_rooms"
+  add_foreign_key "chat_room_members", "delegates"
   add_foreign_key "connection_requests", "delegates", column: "requester_id"
   add_foreign_key "connection_requests", "delegates", column: "target_id"
   add_foreign_key "connections", "delegates", column: "requester_id"

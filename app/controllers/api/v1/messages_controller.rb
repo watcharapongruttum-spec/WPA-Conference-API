@@ -5,32 +5,40 @@ module Api
       
       # GET /api/v1/messages
       def index
-        @messages = ChatMessage.where(sender: current_delegate)
-                               .or(ChatMessage.where(recipient: current_delegate))
-                               .includes(:sender, :recipient)
-                               .order(created_at: :desc)
-                               .page(params[:page] || 1)
-                               .per(50)
-        
+        @messages = ChatMessage
+          .where(deleted_at: nil)
+          .where("sender_id = :me OR recipient_id = :me", me: current_delegate.id)
+          .includes(:sender, :recipient)
+          .order(created_at: :desc)
+          .page(params[:page] || 1)
+          .per(50)
+
         render json: @messages, each_serializer: Api::V1::ChatMessageSerializer
       end
+
+
       
       # GET /api/v1/messages/conversation/:delegate_id
       def conversation
-        other_delegate_id = params[:delegate_id]
-        
-        @messages = ChatMessage.where(
-          "(sender_id = ? AND recipient_id = ?) OR (sender_id = ? AND recipient_id = ?)",
-          current_delegate.id, other_delegate_id,
-          other_delegate_id, current_delegate.id
-        ).includes(:sender, :recipient)
-         .order(created_at: :asc)
-         .page(params[:page] || 1)
-         .per(50)
-        
+        other_id = params[:delegate_id]
+
+        @messages = ChatMessage
+          .where(deleted_at: nil)
+          .where(
+            "(sender_id = :me AND recipient_id = :other)
+            OR
+            (sender_id = :other AND recipient_id = :me)",
+            me: current_delegate.id,
+            other: other_id
+          )
+          .includes(:sender, :recipient)
+          .order(created_at: :asc)
+          .page(params[:page] || 1)
+          .per(50)
+
         render json: @messages, each_serializer: Api::V1::ChatMessageSerializer
       end
-      
+
 
 
 
@@ -50,7 +58,7 @@ module Api
         )
 
         if @message.save
-          @message.update(read_at: Time.current)
+          # @message.update(read_at: Time.current)
 
           recipient = @message.recipient
 
@@ -101,9 +109,11 @@ module Api
         me = current_delegate
 
         messages = ChatMessage
+          .where(deleted_at: nil)
           .where("sender_id = ? OR recipient_id = ?", me.id, me.id)
           .includes(:sender, :recipient)
           .order(created_at: :desc)
+
 
         rooms = {}
 
@@ -133,6 +143,77 @@ module Api
 
         render json: rooms.values
       end
+
+
+
+
+      def update
+        message = ChatMessage.find(params[:id])
+
+        return render json: { error: "Forbidden" }, status: :forbidden unless message.sender == current_delegate
+        return render json: { error: "Message deleted" }, status: 422 if message.deleted?
+
+        # กันแก้เกินเวลา
+        if message.created_at < 30.minutes.ago
+          return render json: { error: "Edit time expired" }, status: 422
+        end
+
+        # กัน content ว่าง
+        if params[:content].blank?
+          return render json: { error: "Content cannot be blank" }, status: 422
+        end
+
+        message.update!(
+          content: params[:content],
+          edited_at: Time.current
+        )
+
+        payload = {
+          type: "message_updated",
+          message_id: message.id,
+          content: message.content,
+          edited_at: message.edited_at
+        }
+
+        if message.chat_room
+          ChatRoomChannel.broadcast_to(message.chat_room, payload)
+        else
+          ChatChannel.broadcast_to(message.recipient, payload)
+        end
+
+        render json: { success: true }
+      end
+
+
+
+
+
+
+      def destroy
+        message = ChatMessage.find(params[:id])
+
+        return render json: { error: "Forbidden" }, status: :forbidden unless message.sender == current_delegate
+        return render json: { error: "Already deleted" }, status: 422 if message.deleted?
+
+        message.update!(deleted_at: Time.current)
+
+        payload = {
+          type: "message_deleted",
+          message_id: message.id
+        }
+
+        if message.chat_room
+          ChatRoomChannel.broadcast_to(message.chat_room, payload)
+        else
+          ChatChannel.broadcast_to(message.recipient, payload)
+        end
+
+        render json: { success: true }
+      end
+
+
+
+
 
 
 

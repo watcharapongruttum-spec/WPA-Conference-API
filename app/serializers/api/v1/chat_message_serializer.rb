@@ -2,6 +2,25 @@ module Api
   module V1
     class ChatMessageSerializer < ActiveModel::Serializer
       attributes :id, :content, :read_at, :created_at, :sender, :recipient
+      attribute :edited_at
+      attribute :deleted_at
+      attribute :is_deleted
+
+
+
+
+    def is_deleted
+      object.deleted_at.present?
+    end
+
+
+
+
+
+
+
+
+      
 
       def sender
         s = object.sender
