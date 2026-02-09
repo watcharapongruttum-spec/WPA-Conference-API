@@ -52,9 +52,6 @@ module Api
         end
 
 
-
-
-
         
         timeline = result[:schedules].map do |item|
           if item[:type] == "event"
@@ -66,9 +63,13 @@ module Api
               scope: current_delegate
             ).as_json
 
-            data.merge(type: "meeting")
+            meeting_type =
+              data[:table_number].nil? ? "nomeeting" : "meeting"
+
+            data.merge(type: meeting_type)
           end
         end
+
 
         render json: {
           available_years: result[:years],

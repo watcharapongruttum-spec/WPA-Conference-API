@@ -69,6 +69,57 @@ class ChatChannel < ApplicationCable::Channel
     broadcast_delete(msg)
   end
 
+
+
+
+
+
+
+
+
+  def enter_room(data)
+    data = safe_json(data)
+    other_user_id = data["user_id"]
+
+    Rails.logger.info "ENTER ROOM #{current_delegate.id} -> #{other_user_id}"
+
+    Redis.current.set(
+      "chat_open:#{current_delegate.id}:#{other_user_id}",
+      true,
+      ex: 120
+    )
+  end
+
+
+  def leave_room(data)
+    data = safe_json(data)
+
+    other_user_id = data["user_id"]
+
+    Redis.current.del(
+      "chat_open:#{current_delegate.id}:#{other_user_id}"
+    )
+  end
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   # =========================================================
   # PRIVATE
   # =========================================================
@@ -94,6 +145,9 @@ class ChatChannel < ApplicationCable::Channel
 
     ChatChannel.broadcast_to(message.sender, payload)
     ChatChannel.broadcast_to(message.recipient, payload)
+
+    auto_read_if_open(message)
+
   end
 
   # ---------- UPDATE ----------
@@ -151,4 +205,33 @@ class ChatChannel < ApplicationCable::Channel
     Rails.logger.error "❌ ChatChannel error: #{e.class} - #{e.message}"
     transmit(type: 'error', message: e.message)
   end
+
+
+
+  def auto_read_if_open(message)
+    key = "chat_open:#{message.recipient_id}:#{message.sender_id}"
+
+    Rails.logger.info "CHECK REDIS #{key}"
+    Rails.logger.info "VALUE #{Redis.current.get(key)}"
+
+    return unless Redis.current.get(key)
+
+    message.update(read_at: Time.current)
+
+    ChatChannel.broadcast_to(
+      message.sender,
+      type: 'message_read',
+      message_id: message.id,
+      read_at: message.read_at
+    )
+  end
+
+
+
+
+
+
+
+
+
 end

@@ -1,8 +1,8 @@
-# app/controllers/api/v1/messages_controller.rb
 module Api
   module V1
     class MessagesController < ApplicationController
-      
+
+      # ================= INDEX =================
       # GET /api/v1/messages
       def index
         @messages = ChatMessage
@@ -16,8 +16,7 @@ module Api
         render json: @messages, each_serializer: Api::V1::ChatMessageSerializer
       end
 
-
-      
+      # ================= CONVERSATION =================
       # GET /api/v1/messages/conversation/:delegate_id
       def conversation
         other_id = params[:delegate_id]
@@ -26,8 +25,8 @@ module Api
           .where(deleted_at: nil)
           .where(
             "(sender_id = :me AND recipient_id = :other)
-            OR
-            (sender_id = :other AND recipient_id = :me)",
+             OR
+             (sender_id = :other AND recipient_id = :me)",
             me: current_delegate.id,
             other: other_id
           )
@@ -39,10 +38,7 @@ module Api
         render json: @messages, each_serializer: Api::V1::ChatMessageSerializer
       end
 
-
-
-
-
+      # ================= CREATE =================
       # POST /api/v1/messages
       def create
         recipient_id = params[:recipient_id] || params[:receiver_id]
@@ -58,17 +54,20 @@ module Api
         )
 
         if @message.save
-          # @message.update(read_at: Time.current)
-
           recipient = @message.recipient
 
           if recipient.present?
+            # -------- NEW MESSAGE --------
             ChatChannel.broadcast_to(
               recipient,
               type: 'new_message',
               message: Api::V1::ChatMessageSerializer.new(@message).serializable_hash
             )
 
+            # -------- AUTO SEEN --------
+            auto_read_if_open(@message)
+
+            # -------- NOTIFICATION --------
             notification = Notification.create(
               delegate: recipient,
               notification_type: 'new_message',
@@ -83,7 +82,7 @@ module Api
                   id: notification.id,
                   type: 'new_message',
                   created_at: notification.created_at,
-                  content: @message.content.truncate(50),
+                  content: @message.content.to_s.truncate(50),
                   sender: {
                     id: @message.sender.id,
                     name: @message.sender.name,
@@ -96,15 +95,14 @@ module Api
 
           render json: @message, serializer: Api::V1::ChatMessageSerializer, status: :created
         else
-          render json: { error: 'Failed to send message', errors: @message.errors.full_messages }, status: :unprocessable_entity
+          render json: {
+            error: 'Failed to send message',
+            errors: @message.errors.full_messages
+          }, status: :unprocessable_entity
         end
       end
 
-
-      
-
-
-
+      # ================= ROOMS =================
       def rooms
         me = current_delegate
 
@@ -113,7 +111,6 @@ module Api
           .where("sender_id = ? OR recipient_id = ?", me.id, me.id)
           .includes(:sender, :recipient)
           .order(created_at: :desc)
-
 
         rooms = {}
 
@@ -144,12 +141,7 @@ module Api
         render json: rooms.values
       end
 
-
-
-
-
-
-
+      # ================= READ ALL =================
       def read_all
         messages = current_delegate.received_messages.where(read_at: nil)
 
@@ -157,40 +149,28 @@ module Api
           now = Time.current
           msg.update_column(:read_at, now)
 
-          payload = {
+          ChatChannel.broadcast_to(
+            msg.sender,
             type: 'message_read',
             message_id: msg.id,
             read_at: now
-          }
-
-          ChatChannel.broadcast_to(msg.sender, payload)
+          )
         end
 
         render json: { message: "All messages marked as read" }
       end
 
-
-
-
-
-
-
-
-
-
-
+      # ================= UPDATE =================
       def update
         message = ChatMessage.find(params[:id])
 
         return render json: { error: "Forbidden" }, status: :forbidden unless message.sender == current_delegate
         return render json: { error: "Message deleted" }, status: 422 if message.deleted?
 
-        # กันแก้เกินเวลา
         if message.created_at < 30.minutes.ago
           return render json: { error: "Edit time expired" }, status: 422
         end
 
-        # กัน content ว่าง
         if params[:content].blank?
           return render json: { error: "Content cannot be blank" }, status: 422
         end
@@ -207,20 +187,12 @@ module Api
           edited_at: message.edited_at
         }
 
-        if message.chat_room
-          ChatRoomChannel.broadcast_to(message.chat_room, payload)
-        else
-          ChatChannel.broadcast_to(message.recipient, payload)
-        end
+        ChatChannel.broadcast_to(message.recipient, payload)
 
         render json: { success: true }
       end
 
-
-
-
-
-
+      # ================= DESTROY =================
       def destroy
         message = ChatMessage.find(params[:id])
 
@@ -234,66 +206,52 @@ module Api
           message_id: message.id
         }
 
-        if message.chat_room
-          ChatRoomChannel.broadcast_to(message.chat_room, payload)
-        else
-          ChatChannel.broadcast_to(message.recipient, payload)
-        end
+        ChatChannel.broadcast_to(message.recipient, payload)
 
         render json: { success: true }
       end
 
-
-
-
-
-
-
-
-
-
-
-
-      
-      # PATCH /api/v1/messages/:id/mark_as_read
+      # ================= MARK AS READ =================
       def mark_as_read
-        # 🔥 FIX: Find message where current user is RECIPIENT
-        @message = ChatMessage.find_by(id: params[:id], recipient: current_delegate)
-        
-        if @message.nil?
-          # Try to find if user is sender (already read)
-          sender_message = ChatMessage.find_by(id: params[:id], sender: current_delegate)
-          
-          if sender_message
-            render json: { 
-              error: 'Cannot mark your own sent message as read',
-              message: 'This message is already marked as read because you are the sender'
-            }, status: :unprocessable_entity
-            return
-          else
-            render json: { error: 'Message not found or you are not the recipient' }, status: :not_found
-            return
-          end
+        message = ChatMessage.find_by(id: params[:id], recipient: current_delegate)
+
+        return render json: { error: 'Message not found' }, status: :not_found unless message
+
+        if message.read_at.present?
+          return render json: { message: 'Already read' }, status: :ok
         end
-        
-        # 🔥 FIX: Check if already read
-        if @message.read_at.present?
-          render json: { 
-            message: 'Message already marked as read',
-            data: Api::V1::ChatMessageSerializer.new(@message).serializable_hash
-          }, status: :ok
-          return
-        end
-        
-        if @message.update(read_at: Time.current)
-          render json: @message, serializer: Api::V1::ChatMessageSerializer
-        else
-          render json: { 
-            error: 'Failed to mark message as read',
-            errors: @message.errors.full_messages
-          }, status: :unprocessable_entity
-        end
+
+        message.update(read_at: Time.current)
+
+        render json: message, serializer: Api::V1::ChatMessageSerializer
       end
+
+      # ==================================================
+      # PRIVATE
+      # ==================================================
+      private
+
+      def auto_read_if_open(message)
+        key = "chat_open:#{message.recipient_id}:#{message.sender_id}"
+
+        Rails.logger.info "CHECK REDIS #{key}"
+        value = Redis.current.get(key)
+        Rails.logger.info "VALUE #{value}"
+
+        return unless value
+        return if message.read_at.present?
+
+        now = Time.current
+        message.update_column(:read_at, now)
+
+        ChatChannel.broadcast_to(
+          message.sender,
+          type: 'message_read',
+          message_id: message.id,
+          read_at: now
+        )
+      end
+
     end
   end
 end
