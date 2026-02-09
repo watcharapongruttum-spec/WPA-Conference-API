@@ -147,6 +147,24 @@ module Api
 
 
 
+
+
+
+      def read_all
+        ChatMessage.where(
+          recipient_id: current_delegate.id,
+          read_at: nil
+        ).update_all(read_at: Time.current)
+
+        render json: { message: "All messages marked as read" }
+      end
+
+
+
+
+
+
+
       def update
         message = ChatMessage.find(params[:id])
 

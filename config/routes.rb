@@ -51,6 +51,7 @@ Rails.application.routes.draw do
         collection do
           get 'conversation/:delegate_id', to: 'messages#conversation'
           get :rooms
+          patch :read_all
         end
 
         member do
