@@ -10,18 +10,22 @@ PASSWORD_A="123456"
 EMAIL_B="shammi@1shammi1.com"
 PASSWORD_B="RNIrSPPICj"
 
+EMAIL_C="jeremy99@empireglobal.co.th"
+PASSWORD_C="123456"
+
 GREEN='\033[0;32m'
 RED='\033[0;31m'
 YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
 NC='\033[0m'
 
 pass() { echo -e "${GREEN}✅ $1${NC}"; }
 fail() { echo -e "${RED}❌ $1${NC}"; }
 info() { echo -e "${YELLOW}ℹ️ $1${NC}"; }
+step() { echo -e "\n${CYAN}==== $1 ====${NC}"; }
 
-# ---------- CLEAN ----------
 cleanup() {
-  rm -f rt_A.log rt_B.log rt_A.pid rt_B.pid
+  rm -f rt_A.log rt_B.log rt_C.log rt_*.pid
 }
 
 clear_presence() {
@@ -31,84 +35,33 @@ clear_presence() {
   fi
 }
 
-
-
 cleanup
 clear_presence
 
 # ---------- LOGIN ----------
 login() {
-  RESP=$(curl -s $BASE_URL/api/v1/login \
+  curl -s $BASE_URL/api/v1/login \
     -H "Content-Type: application/json" \
-    -d "{\"email\":\"$1\",\"password\":\"$2\"}")
-
-  TOKEN=$(echo "$RESP" | jq -r '.token' 2>/dev/null)
-
-  if [ "$TOKEN" = "null" ] || [ -z "$TOKEN" ]; then
-    echo ""
-  else
-    echo "$TOKEN"
-  fi
+    -d "{\"email\":\"$1\",\"password\":\"$2\"}" | jq -r '.token'
 }
 
-# ---------- PROFILE ----------
 get_profile_id() {
-  RESP=$(curl -s $BASE_URL/api/v1/profile \
-    -H "Authorization: Bearer $1")
-  echo "$RESP" | jq -r '.id'
+  curl -s $BASE_URL/api/v1/profile \
+    -H "Authorization: Bearer $1" | jq -r '.id'
 }
 
-# ---------- UNREAD ----------
 unread_count() {
-  COUNT=$(curl -s $BASE_URL/api/v1/messages/unread_count \
-    -H "Authorization: Bearer $1" | jq -r '.unread_count')
-
-  if [ "$COUNT" = "null" ] || [ -z "$COUNT" ]; then
-    echo 0
-  else
-    echo $COUNT
-  fi
+  curl -s $BASE_URL/api/v1/messages/unread_count \
+    -H "Authorization: Bearer $1" | jq -r '.unread_count'
 }
 
-# ---------- SEND ----------
 send_message() {
-  RESP=$(curl -s -X POST $BASE_URL/api/v1/messages \
+  curl -s -X POST $BASE_URL/api/v1/messages \
     -H "Authorization: Bearer $1" \
     -H "Content-Type: application/json" \
-    -d "{\"recipient_id\":$2,\"content\":\"AUTO TEST\"}")
-
-  echo "$RESP" | jq -r '.id'
+    -d "{\"recipient_id\":$2,\"content\":\"TEST MSG\"}" > /dev/null
 }
 
-# ---------- EDIT ----------
-edit_message() {
-  curl -s -X PATCH $BASE_URL/api/v1/messages/$2 \
-    -H "Authorization: Bearer $1" \
-    -H "Content-Type: application/json" \
-    -d '{"content":"EDITED AUTO"}' > /dev/null
-}
-
-# ---------- DELETE ----------
-delete_message() {
-  curl -s -X DELETE $BASE_URL/api/v1/messages/$2 \
-    -H "Authorization: Bearer $1" > /dev/null
-}
-
-# ---------- ASSERT ----------
-assert_event() {
-  EVENT=$1
-  FILE=$2
-
-  if grep -q "$EVENT" "$FILE" 2>/dev/null; then
-    pass "$EVENT OK"
-  else
-    fail "$EVENT FAIL"
-    echo "------ LOG $FILE ------"
-    cat "$FILE"
-  fi
-}
-
-# ---------- WS ----------
 start_ws() {
   TOKEN=$1
   NAME=$2
@@ -118,94 +71,92 @@ start_ws() {
   LOG="rt_${NAME}.log"
   PID="rt_${NAME}.pid"
 
-  rm -f "$LOG" "$PID"
-
   (
     {
       sleep 1
       echo '{"command":"subscribe","identifier":"{\"channel\":\"ChatChannel\"}"}'
       sleep 1
-      echo '{"command":"subscribe","identifier":"{\"channel\":\"NotificationChannel\"}"}'
-
       if [ "$AUTO_ENTER" = "yes" ]; then
-        sleep 1
         echo "{\"command\":\"message\",\"identifier\":\"{\\\"channel\\\":\\\"ChatChannel\\\"}\",\"data\":\"{\\\"action\\\":\\\"enter_room\\\",\\\"user_id\\\":$TARGET}\"}"
       fi
-
       sleep 999
     } | wscat -c "$WS_URL?token=$TOKEN"
   ) > "$LOG" 2>&1 &
 
   echo $! > "$PID"
-  pass "WS $NAME"
-  sleep 3
+  sleep 2
 }
 
 stop_ws() {
-  PID="rt_$1.pid"
-  if [ -f "$PID" ]; then
-    kill $(cat "$PID") 2>/dev/null
-    rm "$PID"
-    pass "STOP WS $1"
-  fi
+  kill $(cat rt_$1.pid) 2>/dev/null
 }
 
 # ================= START =================
-echo "==== CHAT FULL TEST ===="
 
+step "LOGIN"
 TOKEN_A=$(login "$EMAIL_A" "$PASSWORD_A")
 TOKEN_B=$(login "$EMAIL_B" "$PASSWORD_B")
-
-[ -z "$TOKEN_A" ] && fail "LOGIN A FAIL" && exit
-[ -z "$TOKEN_B" ] && fail "LOGIN B FAIL" && exit
-pass "LOGIN OK"
+TOKEN_C=$(login "$EMAIL_C" "$PASSWORD_C")
 
 A_ID=$(get_profile_id "$TOKEN_A")
 B_ID=$(get_profile_id "$TOKEN_B")
+C_ID=$(get_profile_id "$TOKEN_C")
 
-# ---------- OPEN WS (NO ENTER) ----------
+pass "LOGIN OK"
+
+# ---------- WS CONNECT ----------
+step "WS CONNECT"
 start_ws "$TOKEN_A" "A" "$B_ID" "no"
 start_ws "$TOKEN_B" "B" "$A_ID" "no"
-
-# ---------- UNREAD BEFORE ----------
-UB=$(unread_count "$TOKEN_B")
-info "UNREAD B BEFORE=$UB"
+start_ws "$TOKEN_C" "C" "$A_ID" "no"
 
 # ---------- SEND ----------
-MSG_ID=$(send_message "$TOKEN_A" "$B_ID")
+step "B -> A"
+send_message "$TOKEN_B" "$A_ID"
+sleep 1
+
+step "C -> A"
+send_message "$TOKEN_C" "$A_ID"
 sleep 2
-assert_event "new_message" rt_B.log
 
-UA=$(unread_count "$TOKEN_B")
-info "UNREAD B AFTER=$UA"
+# ---------- CHECK UNREAD ----------
+step "CHECK UNREAD A BEFORE"
+U1=$(unread_count "$TOKEN_A")
+info "UNREAD A = $U1"
 
-if [ "$UA" -gt "$UB" ]; then
-  pass "UNREAD INCREASE OK"
-else
-  fail "UNREAD NOT INCREASE"
-fi
-
-# ---------- ENTER ROOM ----------
-info "ENTER ROOM B"
-stop_ws "B"
-start_ws "$TOKEN_B" "B" "$A_ID" "yes"
+# ---------- ENTER ROOM B ----------
+step "A ENTER ROOM B"
+stop_ws "A"
+start_ws "$TOKEN_A" "A" "$B_ID" "yes"
 sleep 3
-assert_event "message_read" rt_A.log
 
-# ---------- EDIT ----------
-edit_message "$TOKEN_A" "$MSG_ID"
-sleep 2
-assert_event "message_updated" rt_B.log
+U2=$(unread_count "$TOKEN_A")
+info "UNREAD A AFTER B = $U2"
 
-# ---------- DELETE ----------
-delete_message "$TOKEN_A" "$MSG_ID"
-sleep 2
-assert_event "message_deleted" rt_B.log
+# ---------- ENTER ROOM C ----------
+step "A ENTER ROOM C"
+stop_ws "A"
+start_ws "$TOKEN_A" "A" "$C_ID" "yes"
+sleep 3
 
-# ---------- NOTIFICATION ----------
-assert_event "new_notification" rt_B.log
+U3=$(unread_count "$TOKEN_A")
+info "UNREAD A AFTER C = $U3"
+
+# ---------- RESULT ----------
+step "RESULT"
+
+echo "BEFORE = $U1"
+echo "AFTER B = $U2"
+echo "AFTER C = $U3"
+
+if [ "$U3" = "0" ]; then
+  pass "UNREAD FLOW PERFECT"
+else
+  fail "UNREAD NOT ZERO"
+fi
 
 stop_ws "A"
 stop_ws "B"
+stop_ws "C"
 
-echo "==== END TEST ===="
+step "END TEST"

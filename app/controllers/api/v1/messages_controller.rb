@@ -3,7 +3,6 @@ module Api
     class MessagesController < ApplicationController
 
       # ================= INDEX =================
-      # GET /api/v1/messages
       def index
         @messages = ChatMessage
           .where(deleted_at: nil)
@@ -17,7 +16,6 @@ module Api
       end
 
       # ================= CONVERSATION =================
-      # GET /api/v1/messages/conversation/:delegate_id
       def conversation
         other_id = params[:delegate_id]
 
@@ -38,42 +36,22 @@ module Api
         render json: @messages, each_serializer: Api::V1::ChatMessageSerializer
       end
 
-
-
-
-
-
+      # ================= UNREAD COUNT (TOTAL MESSAGE) =================
       def unread_count
-        count = ChatMessage
-          .where(recipient: current_delegate, read_at: nil, deleted_at: nil)
-          .distinct
-          .count(:sender_id)
+        count = ChatMessage.where(
+          recipient_id: current_delegate.id,
+          read_at: nil,
+          deleted_at: nil
+        ).count
 
-        render json: { unread_rooms: count }
+        render json: { unread_count: count }
       end
-      def unread_count
-        count = ChatMessage
-          .where(recipient: current_delegate, read_at: nil, deleted_at: nil)
-          .distinct
-          .count(:sender_id)
-
-        render json: { unread_rooms: count }
-      end
-
-
-
-
-
-
 
       # ================= CREATE =================
-      # POST /api/v1/messages
       def create
         recipient_id = params[:recipient_id] || params[:receiver_id]
 
-        unless recipient_id
-          return render json: { error: "recipient_id required" }, status: :unprocessable_entity
-        end
+        return render json: { error: "recipient_id required" }, status: :unprocessable_entity unless recipient_id
 
         @message = ChatMessage.new(
           sender: current_delegate,
@@ -84,18 +62,15 @@ module Api
         if @message.save
           recipient = @message.recipient
 
-          mark_conversation_as_read(recipient.id)
-
           if recipient.present?
             # -------- NEW MESSAGE --------
-            ChatChannel.broadcast_to(
-              recipient,
+            payload = {
               type: 'new_message',
               message: Api::V1::ChatMessageSerializer.new(@message).serializable_hash
-            )
+            }
 
-            # -------- AUTO SEEN --------
-            # auto_read_if_open(@message)
+            ChatChannel.broadcast_to(recipient, payload)
+            ChatChannel.broadcast_to(current_delegate, payload)
 
             # -------- NOTIFICATION --------
             notification = Notification.create(
@@ -115,8 +90,7 @@ module Api
                   content: @message.content.to_s.truncate(50),
                   sender: {
                     id: @message.sender.id,
-                    name: @message.sender.name,
-                    avatar_url: Api::V1::DelegateSerializer.new(@message.sender).avatar_url
+                    name: @message.sender.name
                   }
                 }
               )
@@ -152,15 +126,15 @@ module Api
           unread_count = ChatMessage.where(
             sender_id: other.id,
             recipient_id: me.id,
-            read_at: nil
+            read_at: nil,
+            deleted_at: nil
           ).count
 
           rooms[other.id] = {
             delegate: {
               id: other.id,
               name: other.name,
-              title: other.title,
-              avatar_url: Api::V1::DelegateSerializer.new(other).avatar_url
+              title: other.title
             },
             last_message: msg.content,
             last_message_at: msg.created_at,
@@ -173,10 +147,12 @@ module Api
 
       # ================= READ ALL =================
       def read_all
-        messages = current_delegate.received_messages.where(read_at: nil)
+        messages = current_delegate.received_messages
+          .where(read_at: nil, deleted_at: nil)
+
+        now = Time.current
 
         messages.find_each do |msg|
-          now = Time.current
           msg.update_column(:read_at, now)
 
           ChatChannel.broadcast_to(
@@ -196,14 +172,7 @@ module Api
 
         return render json: { error: "Forbidden" }, status: :forbidden unless message.sender == current_delegate
         return render json: { error: "Message deleted" }, status: 422 if message.deleted?
-
-        if message.created_at < 30.minutes.ago
-          return render json: { error: "Edit time expired" }, status: 422
-        end
-
-        if params[:content].blank?
-          return render json: { error: "Content cannot be blank" }, status: 422
-        end
+        return render json: { error: "Content cannot be blank" }, status: 422 if params[:content].blank?
 
         message.update!(
           content: params[:content],
@@ -218,6 +187,7 @@ module Api
         }
 
         ChatChannel.broadcast_to(message.recipient, payload)
+        ChatChannel.broadcast_to(message.sender, payload)
 
         render json: { success: true }
       end
@@ -237,77 +207,12 @@ module Api
         }
 
         ChatChannel.broadcast_to(message.recipient, payload)
+        ChatChannel.broadcast_to(message.sender, payload)
 
         render json: { success: true }
       end
 
-      # ================= MARK AS READ =================
-      def mark_as_read
-        message = ChatMessage.find_by(id: params[:id], recipient: current_delegate)
-
-        return render json: { error: 'Message not found' }, status: :not_found unless message
-
-        if message.read_at.present?
-          return render json: { message: 'Already read' }, status: :ok
-        end
-
-        message.update(read_at: Time.current)
-
-        render json: message, serializer: Api::V1::ChatMessageSerializer
-      end
-
-      # ==================================================
-      # PRIVATE
-      # ==================================================
       private
-
-      def auto_read_if_open(message)
-        key = "chat_open:#{message.recipient_id}:#{message.sender_id}"
-
-        Rails.logger.info "CHECK REDIS #{key}"
-        value = REDIS.get(key)
-
-        Rails.logger.info "VALUE #{value}"
-
-        return unless value
-        return if message.read_at.present?
-
-        now = Time.current
-        message.update_column(:read_at, now)
-
-        ChatChannel.broadcast_to(
-          message.sender,
-          type: 'message_read',
-          message_id: message.id,
-          read_at: now
-        )
-      end
-
-
-      def mark_conversation_as_read(other_user_id)
-        unread_messages = ChatMessage.where(
-          sender_id: other_user_id,
-          recipient_id: current_delegate.id,
-          read_at: nil
-        )
-
-        now = Time.current
-
-        unread_messages.find_each do |msg|
-          msg.update_column(:read_at, now)
-
-          ChatChannel.broadcast_to(
-            msg.sender,
-            type: 'message_read',
-            message_id: msg.id,
-            read_at: now
-          )
-        end
-      end
-
-
-
-
     end
   end
 end

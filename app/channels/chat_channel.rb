@@ -70,36 +70,13 @@ class ChatChannel < ApplicationCable::Channel
   end
 
   # ================= ENTER ROOM =================
-  # เข้า ROOM = อ่านทั้งหมด
   def enter_room(data)
     data = safe_json(data)
     target_id = data["user_id"]
 
-    # set redis presence
     REDIS.set("chat_open:#{current_delegate.id}:#{target_id}", true)
 
-    # MARK READ
     mark_conversation_as_read(target_id)
-  end
-
-  # อ่านข้อความทั้งหมดในห้อง
-  def mark_conversation_as_read(target_id)
-    messages = ChatMessage.where(
-      sender_id: target_id,
-      recipient_id: current_delegate.id,
-      read_at: nil
-    )
-
-    messages.find_each do |msg|
-      msg.update(read_at: Time.current)
-
-      ChatChannel.broadcast_to(
-        msg.sender,
-        type: 'message_read',
-        message_id: msg.id,
-        read_at: msg.read_at
-      )
-    end
   end
 
   # ================= LEAVE ROOM =================
@@ -125,8 +102,28 @@ class ChatChannel < ApplicationCable::Channel
       .serializable_hash[:data]
   end
 
+  # ---------- CHECK PRESENCE ----------
+  def recipient_open_room?(message)
+    key = "chat_open:#{message.recipient_id}:#{message.sender_id}"
+    REDIS.get(key)
+  end
+
   # ---------- NEW MESSAGE ----------
   def broadcast_new_message(message)
+
+    # 🔥 AUTO SEEN IF OPEN ROOM
+    if recipient_open_room?(message) && message.read_at.nil?
+      now = Time.current
+      message.update_column(:read_at, now)
+
+      ChatChannel.broadcast_to(
+        message.sender,
+        type: 'message_read',
+        message_id: message.id,
+        read_at: now
+      )
+    end
+
     payload = {
       type: 'new_message',
       message: serializer(message)
@@ -158,6 +155,36 @@ class ChatChannel < ApplicationCable::Channel
 
     ChatChannel.broadcast_to(message.sender, payload)
     ChatChannel.broadcast_to(message.recipient, payload)
+  end
+
+  # ---------- MARK READ ----------
+  def mark_conversation_as_read(target_id)
+    messages = ChatMessage.where(
+      sender_id: target_id,
+      recipient_id: current_delegate.id,
+      read_at: nil
+    )
+
+    messages.find_each do |msg|
+      msg.update(read_at: Time.current)
+
+      ChatChannel.broadcast_to(
+        msg.sender,
+        type: 'message_read',
+        message_id: msg.id,
+        read_at: msg.read_at
+      )
+    end
+
+
+    Notification.where(
+      delegate_id: current_delegate.id,
+      notification_type: 'new_message',
+      read_at: nil,
+      notifiable_type: 'ChatMessage',
+      notifiable_id: messages.pluck(:id)
+    ).update_all(read_at: Time.current)
+
   end
 
   # ---------- NOTIFICATION ----------
