@@ -15,8 +15,21 @@ module Api
 
         connections_count = me.connected_delegates.count
 
+        # 🔔 System notifications
+        system_notifications_count = me.notifications
+          .where.not(notification_type: 'new_message')
+          .where(read_at: nil)
+          .count
+
+        # 💬 Message notifications
+        message_notifications_count = me.notifications
+          .where(notification_type: 'new_message')
+          .where(read_at: nil)
+          .count
+
         render json: {
-          unread_notifications_count: me.notifications.unread.count,
+          unread_notifications_count: system_notifications_count,
+          unread_message_notifications_count: message_notifications_count,
           pending_requests_count: ConnectionRequest.where(
             target_id: me.id,
             status: "pending"

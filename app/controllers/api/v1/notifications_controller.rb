@@ -5,21 +5,21 @@ module Api
       
       # GET /api/v1/notifications
       def index
-        @notifications = current_delegate.notifications
-                                       .includes(:notifiable)
-                                       .order(created_at: :desc)
-                                       .page(params[:page] || 1)
-                                       .per(50)
+        @notifications = current_delegate.notifications.order(created_at: :desc)
+
+
+        case params[:type]
+        when 'system'
+          @notifications = @notifications.where.not(notification_type: 'new_message')
+        when 'message'
+          @notifications = @notifications.where(notification_type: 'new_message')
+        end
+
         
         render json: @notifications, each_serializer: Api::V1::NotificationSerializer
       end
       
-      # GET /api/v1/notifications/unread_count
-      def unread_count
-        count = current_delegate.notifications.unread.count
-        
-        render json: { unread_count: count }
-      end
+
       
       # PATCH /api/v1/notifications/:id/mark_as_read
       def mark_as_read
@@ -54,14 +54,48 @@ module Api
       
       # PATCH /api/v1/notifications/mark_all_as_read
       def mark_all_as_read
-        # 🔥 FIX: Only update unread notifications
-        updated_count = current_delegate.notifications.unread.update_all(read_at: Time.current)
-        
+        scope = current_delegate.notifications.where(read_at: nil)
+
+        case params[:type]
+        when 'system'
+          scope = scope.where.not(notification_type: 'new_message')
+        when 'message'
+          scope = scope.where(notification_type: 'new_message')
+        end
+
+        updated_count = scope.count
+        scope.update_all(read_at: Time.current)
+
         render json: { 
           message: 'All notifications marked as read',
           count: updated_count
         }
       end
+
+
+      def unread_count
+        scope = current_delegate.notifications.where(read_at: nil)
+
+        case params[:type]
+        when 'system'
+          scope = scope.where.not(notification_type: 'new_message')
+        when 'message'
+          scope = scope.where(notification_type: 'new_message')
+        end
+
+        render json: { unread_count: scope.count }
+      end
+
+
+
+
+
+
+
+
+
+
+
     end
   end
 end
