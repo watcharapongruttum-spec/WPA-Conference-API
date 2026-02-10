@@ -69,61 +69,50 @@ class ChatChannel < ApplicationCable::Channel
     broadcast_delete(msg)
   end
 
-
-
-
-
-
-
-
-
+  # ================= ENTER ROOM =================
+  # เข้า ROOM = อ่านทั้งหมด
   def enter_room(data)
     data = safe_json(data)
-    other_user_id = data["user_id"]
+    target_id = data["user_id"]
 
-    Rails.logger.info "ENTER ROOM #{current_delegate.id} -> #{other_user_id}"
+    # set redis presence
+    REDIS.set("chat_open:#{current_delegate.id}:#{target_id}", true)
 
-    Redis.current.set(
-      "chat_open:#{current_delegate.id}:#{other_user_id}",
-      true,
-      ex: 120
-    )
+    # MARK READ
+    mark_conversation_as_read(target_id)
   end
 
+  # อ่านข้อความทั้งหมดในห้อง
+  def mark_conversation_as_read(target_id)
+    messages = ChatMessage.where(
+      sender_id: target_id,
+      recipient_id: current_delegate.id,
+      read_at: nil
+    )
 
+    messages.find_each do |msg|
+      msg.update(read_at: Time.current)
+
+      ChatChannel.broadcast_to(
+        msg.sender,
+        type: 'message_read',
+        message_id: msg.id,
+        read_at: msg.read_at
+      )
+    end
+  end
+
+  # ================= LEAVE ROOM =================
   def leave_room(data)
     data = safe_json(data)
-
     other_user_id = data["user_id"]
 
-    Redis.current.del(
-      "chat_open:#{current_delegate.id}:#{other_user_id}"
-    )
+    REDIS.del("chat_open:#{current_delegate.id}:#{other_user_id}")
   end
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
   # =========================================================
   # PRIVATE
   # =========================================================
-
   private
 
   def safe_json(data)
@@ -145,9 +134,6 @@ class ChatChannel < ApplicationCable::Channel
 
     ChatChannel.broadcast_to(message.sender, payload)
     ChatChannel.broadcast_to(message.recipient, payload)
-
-    auto_read_if_open(message)
-
   end
 
   # ---------- UPDATE ----------
@@ -205,33 +191,4 @@ class ChatChannel < ApplicationCable::Channel
     Rails.logger.error "❌ ChatChannel error: #{e.class} - #{e.message}"
     transmit(type: 'error', message: e.message)
   end
-
-
-
-  def auto_read_if_open(message)
-    key = "chat_open:#{message.recipient_id}:#{message.sender_id}"
-
-    Rails.logger.info "CHECK REDIS #{key}"
-    Rails.logger.info "VALUE #{Redis.current.get(key)}"
-
-    return unless Redis.current.get(key)
-
-    message.update(read_at: Time.current)
-
-    ChatChannel.broadcast_to(
-      message.sender,
-      type: 'message_read',
-      message_id: message.id,
-      read_at: message.read_at
-    )
-  end
-
-
-
-
-
-
-
-
-
 end

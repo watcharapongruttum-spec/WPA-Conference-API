@@ -52,6 +52,7 @@ Rails.application.routes.draw do
           get 'conversation/:delegate_id', to: 'messages#conversation'
           get :rooms
           patch :read_all
+          get :unread_count
         end
 
         member do

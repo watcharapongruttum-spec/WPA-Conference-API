@@ -38,6 +38,34 @@ module Api
         render json: @messages, each_serializer: Api::V1::ChatMessageSerializer
       end
 
+
+
+
+
+
+      def unread_count
+        count = ChatMessage
+          .where(recipient: current_delegate, read_at: nil, deleted_at: nil)
+          .distinct
+          .count(:sender_id)
+
+        render json: { unread_rooms: count }
+      end
+      def unread_count
+        count = ChatMessage
+          .where(recipient: current_delegate, read_at: nil, deleted_at: nil)
+          .distinct
+          .count(:sender_id)
+
+        render json: { unread_rooms: count }
+      end
+
+
+
+
+
+
+
       # ================= CREATE =================
       # POST /api/v1/messages
       def create
@@ -56,6 +84,8 @@ module Api
         if @message.save
           recipient = @message.recipient
 
+          mark_conversation_as_read(recipient.id)
+
           if recipient.present?
             # -------- NEW MESSAGE --------
             ChatChannel.broadcast_to(
@@ -65,7 +95,7 @@ module Api
             )
 
             # -------- AUTO SEEN --------
-            auto_read_if_open(@message)
+            # auto_read_if_open(@message)
 
             # -------- NOTIFICATION --------
             notification = Notification.create(
@@ -235,7 +265,8 @@ module Api
         key = "chat_open:#{message.recipient_id}:#{message.sender_id}"
 
         Rails.logger.info "CHECK REDIS #{key}"
-        value = Redis.current.get(key)
+        value = REDIS.get(key)
+
         Rails.logger.info "VALUE #{value}"
 
         return unless value
@@ -251,6 +282,31 @@ module Api
           read_at: now
         )
       end
+
+
+      def mark_conversation_as_read(other_user_id)
+        unread_messages = ChatMessage.where(
+          sender_id: other_user_id,
+          recipient_id: current_delegate.id,
+          read_at: nil
+        )
+
+        now = Time.current
+
+        unread_messages.find_each do |msg|
+          msg.update_column(:read_at, now)
+
+          ChatChannel.broadcast_to(
+            msg.sender,
+            type: 'message_read',
+            message_id: msg.id,
+            read_at: now
+          )
+        end
+      end
+
+
+
 
     end
   end
