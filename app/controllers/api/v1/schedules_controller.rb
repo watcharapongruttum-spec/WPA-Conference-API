@@ -81,13 +81,15 @@ module Api
           end
         end
 
-
-
         render json: {
+          available_years: result[:available_years] || [],
+          year: result[:selected_year],
+          available_dates: result[:available_dates] || [],
           date: result[:selected_date],
           schedules: timeline
         }
       end
+
 
 
 
