@@ -84,11 +84,9 @@ class Api::V1::ScheduleSerializer < ActiveModel::Serializer
   # PRIVATE
   # ===============================
   private
-
   def format_time(time)
     return nil unless time
-    time
-      .in_time_zone("Bangkok")
-      .strftime("%-I:%M %p") # 4:00 PM
+    time.utc.iso8601(3)
   end
+
 end

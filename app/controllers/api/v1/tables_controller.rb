@@ -132,7 +132,7 @@ module Api
           .where("delegate_id IS NOT NULL OR booker_id IS NOT NULL")
           .order(:start_at)
           .pluck(:start_at)
-          .map { |t| t.strftime("%I:%M %p") }
+          .map { |t| t.utc.iso8601(3) }
           .uniq
 
         all_days = Schedule
@@ -232,7 +232,7 @@ module Api
         render json: {
           year: target_year,
           date: datetime.to_date,
-          time: datetime.strftime("%I:%M %p"),
+          time: datetime.utc.iso8601(3),
           my_table: my_schedule&.table_number,
           layout: layout,
           tables: tables,

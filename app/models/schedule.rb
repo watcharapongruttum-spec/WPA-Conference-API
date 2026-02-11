@@ -100,8 +100,9 @@ class Schedule < ApplicationRecord
 
   def self.format_time(time)
     return nil unless time
-    time.in_time_zone("Bangkok").strftime("%-I:%M %p")
+    time.utc.iso8601(3)
   end
+
 
 
 
