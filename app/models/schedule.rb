@@ -97,6 +97,14 @@ class Schedule < ApplicationRecord
   # ===============================
   # MY SCHEDULE
   # ===============================
+
+  def self.format_time(time)
+    return nil unless time
+    time.in_time_zone("Bangkok").strftime("%-I:%M %p")
+  end
+
+
+
   def self.build_my_schedule(delegate:, params:)
     years = years_of(delegate.id)
 
@@ -121,7 +129,7 @@ class Schedule < ApplicationRecord
                 .to_a
 
     # ======================
-    # GLOBAL EVENTS (ไม่เอา one-on-one)
+    # GLOBAL EVENTS
     # ======================
     global = ConferenceSchedule
               .by_date(conference_date.id)
@@ -129,34 +137,42 @@ class Schedule < ApplicationRecord
               .sorted
               .to_a
 
-
     # ======================
     # MERGE TIMELINE
     # ======================
     merged = []
 
+    # ---------- EVENTS ----------
     global.each do |g|
       merged << {
         type: "event",
         id: g.id,
         title: g.title,
-        start_at: g.start_at,
-        end_at: g.end_at,
+        start_at: format_time(g.start_at),
+        end_at: format_time(g.end_at),
+        raw_start: g.start_at, # ไว้ sort
         table_number: nil,
         delegate: nil,
         leave: nil
       }
     end
 
+    # ---------- MEETINGS ----------
     personal.each do |s|
       merged << {
         type: "meeting",
-        serializer: s, # ไว้ให้ controller serialize
-        start_at: s.start_at
+        serializer: s,
+        start_at: format_time(s.start_at),
+        end_at: format_time(s.end_at),
+        raw_start: s.start_at
       }
     end
 
-    merged.sort_by! { |x| x[:start_at] }
+    # ---------- SORT ----------
+    merged.sort_by! { |x| x[:raw_start] }
+
+    # ---------- REMOVE raw_start ----------
+    merged.each { |x| x.delete(:raw_start) }
 
     {
       years: years,
@@ -166,6 +182,7 @@ class Schedule < ApplicationRecord
       schedules: merged
     }
   end
+
 
 
 

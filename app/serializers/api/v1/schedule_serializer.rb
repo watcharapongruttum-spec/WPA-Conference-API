@@ -9,10 +9,27 @@ class Api::V1::ScheduleSerializer < ActiveModel::Serializer
              :duration_minutes,
              :leave
 
+  # ===============================
+  # TIME FORMAT
+  # ===============================
+  def start_at
+    format_time(object.start_at)
+  end
+
+  def end_at
+    format_time(object.end_at)
+  end
+
+  # ===============================
+  # DATE
+  # ===============================
   def conference_date
     object.conference_date&.on_date
   end
 
+  # ===============================
+  # DELEGATE
+  # ===============================
   def delegate
     current_delegate = scope
     return nil unless current_delegate
@@ -31,12 +48,17 @@ class Api::V1::ScheduleSerializer < ActiveModel::Serializer
     }
   end
 
+  # ===============================
+  # DURATION
+  # ===============================
   def duration_minutes
     return 0 unless object.start_at && object.end_at
     ((object.end_at - object.start_at) / 60).to_i
   end
 
-  # ✅ เช็คจาก schedule.id อย่างเดียว
+  # ===============================
+  # LEAVE
+  # ===============================
   def leave
     lf = object.leave_forms
                .order(created_at: :desc)
@@ -56,5 +78,17 @@ class Api::V1::ScheduleSerializer < ActiveModel::Serializer
       explanation: lf.explanation,
       reported_at: lf.reported_at
     }
+  end
+
+  # ===============================
+  # PRIVATE
+  # ===============================
+  private
+
+  def format_time(time)
+    return nil unless time
+    time
+      .in_time_zone("Bangkok")
+      .strftime("%-I:%M %p") # 4:00 PM
   end
 end
