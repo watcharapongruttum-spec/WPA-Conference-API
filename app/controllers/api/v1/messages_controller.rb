@@ -29,7 +29,7 @@ module Api
             other: other_id
           )
           .includes(:sender, :recipient)
-          .order(created_at: :asc)
+          .order(created_at: :desc)
           .page(params[:page] || 1)
           .per(50)
 
