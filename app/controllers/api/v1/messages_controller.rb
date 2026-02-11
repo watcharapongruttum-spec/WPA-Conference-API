@@ -18,23 +18,37 @@ module Api
       # ================= CONVERSATION =================
       def conversation
         other_id = params[:delegate_id]
+        page = (params[:page] || 1).to_i
+        per  = (params[:per]  || 50).to_i
 
         @messages = ChatMessage
           .where(deleted_at: nil)
           .where(
             "(sender_id = :me AND recipient_id = :other)
-             OR
-             (sender_id = :other AND recipient_id = :me)",
+            OR
+            (sender_id = :other AND recipient_id = :me)",
             me: current_delegate.id,
             other: other_id
           )
           .includes(:sender, :recipient)
           .order(created_at: :desc)
-          .page(params[:page] || 1)
-          .per(50)
+          .page(page)
+          .per(per)
 
-        render json: @messages, each_serializer: Api::V1::ChatMessageSerializer
+        render json: {
+          data: ActiveModelSerializers::SerializableResource.new(
+            @messages,
+            each_serializer: Api::V1::ChatMessageSerializer
+          ),
+          meta: {
+            page: page,
+            per: per,
+            total_pages: @messages.total_pages,
+            total_count: @messages.total_count
+          }
+        }
       end
+
 
       # ================= UNREAD COUNT (TOTAL MESSAGE) =================
       def unread_count
