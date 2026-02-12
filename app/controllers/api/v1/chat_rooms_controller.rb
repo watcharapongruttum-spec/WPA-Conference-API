@@ -93,6 +93,62 @@ module Api
         render json: { success: true }
       end
 
+
+
+
+
+
+      def join
+        room = ChatRoom.find(params[:id])
+
+        # กันห้องที่ถูกลบ
+        if room.deleted_at.present?
+          return render json: { error: "Room deleted" }, status: :unprocessable_entity
+        end
+
+        member = ChatRoomMember.find_or_initialize_by(
+          chat_room: room,
+          delegate: current_delegate
+        )
+
+        is_new_member = member.new_record?
+
+        # ตั้ง role default เผื่อ model มี enum
+        member.role ||= :member
+
+        member.save!
+
+        # broadcast เฉพาะตอนเข้าใหม่จริง
+        if is_new_member
+          ChatRoomChannel.broadcast_to(
+            room,
+            type: "member_joined",
+            delegate: {
+              id: current_delegate.id,
+              name: current_delegate.name,
+              avatar_url: current_delegate.avatar_url
+            }
+          )
+        end
+
+        render json: {
+          success: true,
+          joined: is_new_member
+        }
+      end
+
+
+
+
+
+
+
+
+
+
+
+
+
     end
   end
 end

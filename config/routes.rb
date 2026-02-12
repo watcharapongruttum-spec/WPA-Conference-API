@@ -82,9 +82,11 @@ Rails.application.routes.draw do
       # Chat Rooms
       resources :chat_rooms, only: [:index, :create, :destroy] do
         member do
+          post :join
           delete :leave
         end
       end
+
 
 
 
