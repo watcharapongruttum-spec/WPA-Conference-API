@@ -5,7 +5,10 @@ Rails.application.routes.draw do
     namespace :v1 do
 
 
-      get :dashboard, to: 'dashboard#show'
+      # Profile
+      get  'profile', to: 'profile#show'
+      patch 'profile', to: 'profile#update'
+
 
 
 

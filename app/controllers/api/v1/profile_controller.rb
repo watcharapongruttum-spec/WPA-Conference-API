@@ -1,11 +1,41 @@
-# app/controllers/api/v1/profile_controller.rb
 module Api
   module V1
     class ProfileController < BaseController
-      # app/controllers/api/v1/profile_controller.rb
+
       def show
         delegate = current_delegate
-        render json: {
+        render json: profile_json(delegate)
+      end
+
+      def update
+        delegate = current_delegate
+
+        if delegate.update(profile_params)
+          render json: profile_json(delegate)
+        else
+          render json: {
+            success: false,
+            errors: delegate.errors.full_messages
+          }, status: :unprocessable_entity
+        end
+      end
+
+      private
+
+      def profile_params
+        params.permit(
+          :name,
+          :title,
+          :phone,
+          :spouse_attending,
+          :spouse_name,
+          :need_room,
+          :booking_no
+        )
+      end
+
+      def profile_json(delegate)
+        {
           id: delegate.id,
           name: delegate.name,
           title: delegate.title,
@@ -17,7 +47,6 @@ module Api
             country: delegate.company.country,
             logo_url: nil
           },
-          # ใช้ fallback avatar เสมอ
           avatar_url: "https://ui-avatars.com/api/?name=#{CGI.escape(delegate.name)}&background=0D8ABC&color=fff",
           team: delegate.team ? {
             id: delegate.team.id,
@@ -31,9 +60,6 @@ module Api
           booking_no: delegate.booking_no
         }
       end
-
-
-
 
     end
   end
