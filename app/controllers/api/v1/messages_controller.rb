@@ -54,9 +54,11 @@ module Api
       def unread_count
         count = ChatMessage.where(
           recipient_id: current_delegate.id,
+          sender_id: params[:sender_id], # เพิ่มบรรทัดนี้
           read_at: nil,
           deleted_at: nil
         ).count
+
 
         render json: { unread_count: count }
       end
@@ -64,7 +66,6 @@ module Api
       # ================= CREATE =================
       def create
         recipient_id = params[:recipient_id] || params[:receiver_id]
-
         return render json: { error: "recipient_id required" }, status: :unprocessable_entity unless recipient_id
 
         @message = ChatMessage.new(
@@ -75,43 +76,74 @@ module Api
 
         if @message.save
           recipient = @message.recipient
+          now = Time.current
 
-          if recipient.present?
-            # -------- NEW MESSAGE --------
-            payload = {
-              type: 'new_message',
-              message: Api::V1::ChatMessageSerializer.new(@message).serializable_hash
-            }
+          # ================= AUTO SEEN =================
+          key = "chat_open:#{recipient.id}:#{current_delegate.id}"
 
-            ChatChannel.broadcast_to(recipient, payload)
-            ChatChannel.broadcast_to(current_delegate, payload)
+          if REDIS.get(key) == "1"
 
-            # -------- NOTIFICATION --------
-            notification = Notification.create(
-              delegate: recipient,
-              notification_type: 'new_message',
-              notifiable: @message
+            # ---- 1. mark message ล่าสุด ----
+            @message.update_column(:read_at, now) if @message.read_at.nil?
+
+            # ---- 2. mark message เก่าทั้งห้อง ----
+            scope = ChatMessage.where(
+              sender_id: current_delegate.id,
+              recipient_id: recipient.id,
+              read_at: nil,
+              deleted_at: nil
             )
 
-            if notification
-              NotificationChannel.broadcast_to(
-                recipient,
-                type: 'new_notification',
-                notification: {
-                  id: notification.id,
-                  type: 'new_message',
-                  created_at: notification.created_at,
-                  content: @message.content.to_s.truncate(50),
-                  sender: {
-                    id: @message.sender.id,
-                    name: @message.sender.name
-                  }
-                }
-              )
-            end
+            ids = scope.pluck(:id)
+            scope.update_all(read_at: now) unless ids.empty?
+
+            # ---- 3. broadcast ทีเดียว ----
+            payload_seen = {
+              type: 'bulk_read',
+              message_ids: ids + [@message.id],
+              read_at: now
+            }
+
+            ChatChannel.broadcast_to(recipient, payload_seen)
+            ChatChannel.broadcast_to(current_delegate, payload_seen)
           end
 
-          render json: @message, serializer: Api::V1::ChatMessageSerializer, status: :created
+          # ================= NEW MESSAGE =================
+          payload = {
+            type: 'new_message',
+            message: Api::V1::ChatMessageSerializer.new(@message).serializable_hash
+          }
+
+          ChatChannel.broadcast_to(recipient, payload)
+          ChatChannel.broadcast_to(current_delegate, payload)
+
+          # ================= NOTIFICATION =================
+          notification = Notification.create(
+            delegate: recipient,
+            notification_type: 'new_message',
+            notifiable: @message
+          )
+
+          if notification
+            NotificationChannel.broadcast_to(
+              recipient,
+              type: 'new_notification',
+              notification: {
+                id: notification.id,
+                type: 'new_message',
+                created_at: notification.created_at,
+                content: @message.content.to_s.truncate(50),
+                sender: {
+                  id: @message.sender.id,
+                  name: @message.sender.name
+                }
+              }
+            )
+          end
+
+          render json: @message,
+                serializer: Api::V1::ChatMessageSerializer,
+                status: :created
         else
           render json: {
             error: 'Failed to send message',
@@ -119,6 +151,7 @@ module Api
           }, status: :unprocessable_entity
         end
       end
+
 
       # ================= ROOMS =================
       def rooms

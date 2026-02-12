@@ -8,7 +8,26 @@ class ChatChannel < ApplicationCable::Channel
     Rails.logger.info "⚠️ ChatChannel unsubscribed delegate=#{current_delegate.id}"
   end
 
-  # ================= SEND =================
+  # ================= ENTER ROOM =================
+  def enter_room(data)
+    data = safe_json(data)
+    target_id = data["user_id"]
+
+    # บอก Redis ว่าเปิดห้องอยู่
+    REDIS.set("chat_open:#{current_delegate.id}:#{target_id}", "1")
+
+    mark_conversation_as_read(target_id)
+  end
+
+  # ================= LEAVE ROOM =================
+  def leave_room(data)
+    data = safe_json(data)
+    target_id = data["user_id"]
+
+    REDIS.del("chat_open:#{current_delegate.id}:#{target_id}")
+  end
+
+  # ================= SEND MESSAGE =================
   def send_message(data)
     data = safe_json(data)
 
@@ -25,66 +44,21 @@ class ChatChannel < ApplicationCable::Channel
     handle_error(e)
   end
 
-  # ================= READ =================
+  # ================= READ MESSAGE =================
   def read_message(data)
     data = safe_json(data)
     msg = ChatMessage.find_by(id: data['message_id'])
     return unless msg && msg.recipient == current_delegate
 
-    msg.update(read_at: Time.current)
+    now = Time.current
+    msg.update_column(:read_at, now)
 
     ChatChannel.broadcast_to(
       msg.sender,
       type: 'message_read',
       message_id: msg.id,
-      read_at: msg.read_at
+      read_at: now
     )
-  end
-
-  # ================= EDIT =================
-  def edit_message(data)
-    data = safe_json(data)
-    msg = ChatMessage.find_by(id: data['message_id'])
-    return unless msg && msg.sender == current_delegate
-
-    msg.update!(
-      content: data['content'],
-      edited_at: Time.current
-    )
-
-    broadcast_update(msg)
-  end
-
-  # ================= DELETE =================
-  def delete_message(data)
-    data = safe_json(data)
-    msg = ChatMessage.find_by(id: data['message_id'])
-    return unless msg && msg.sender == current_delegate
-
-    msg.update!(
-      deleted_at: Time.current,
-      is_deleted: true
-    )
-
-    broadcast_delete(msg)
-  end
-
-  # ================= ENTER ROOM =================
-  def enter_room(data)
-    data = safe_json(data)
-    target_id = data["user_id"]
-
-    REDIS.set("chat_open:#{current_delegate.id}:#{target_id}", true)
-
-    mark_conversation_as_read(target_id)
-  end
-
-  # ================= LEAVE ROOM =================
-  def leave_room(data)
-    data = safe_json(data)
-    other_user_id = data["user_id"]
-
-    REDIS.del("chat_open:#{current_delegate.id}:#{other_user_id}")
   end
 
   # =========================================================
@@ -105,23 +79,24 @@ class ChatChannel < ApplicationCable::Channel
   # ---------- CHECK PRESENCE ----------
   def recipient_open_room?(message)
     key = "chat_open:#{message.recipient_id}:#{message.sender_id}"
-    REDIS.get(key)
+    REDIS.get(key) == "1"
   end
 
   # ---------- NEW MESSAGE ----------
   def broadcast_new_message(message)
-
-    # 🔥 AUTO SEEN IF OPEN ROOM
+    # 🔥 AUTO SEEN
     if recipient_open_room?(message) && message.read_at.nil?
       now = Time.current
       message.update_column(:read_at, now)
 
-      ChatChannel.broadcast_to(
-        message.sender,
+      payload_seen = {
         type: 'message_read',
         message_id: message.id,
         read_at: now
-      )
+      }
+
+      ChatChannel.broadcast_to(message.sender, payload_seen)
+      ChatChannel.broadcast_to(message.recipient, payload_seen)
     end
 
     payload = {
@@ -133,32 +108,10 @@ class ChatChannel < ApplicationCable::Channel
     ChatChannel.broadcast_to(message.recipient, payload)
   end
 
-  # ---------- UPDATE ----------
-  def broadcast_update(message)
-    payload = {
-      type: 'message_updated',
-      message_id: message.id,
-      content: message.content,
-      edited_at: message.edited_at
-    }
-
-    ChatChannel.broadcast_to(message.sender, payload)
-    ChatChannel.broadcast_to(message.recipient, payload)
-  end
-
-  # ---------- DELETE ----------
-  def broadcast_delete(message)
-    payload = {
-      type: 'message_deleted',
-      message_id: message.id
-    }
-
-    ChatChannel.broadcast_to(message.sender, payload)
-    ChatChannel.broadcast_to(message.recipient, payload)
-  end
-
   # ---------- MARK READ ----------
   def mark_conversation_as_read(target_id)
+    now = Time.current
+
     messages = ChatMessage.where(
       sender_id: target_id,
       recipient_id: current_delegate.id,
@@ -166,25 +119,15 @@ class ChatChannel < ApplicationCable::Channel
     )
 
     messages.find_each do |msg|
-      msg.update(read_at: Time.current)
+      msg.update_column(:read_at, now)
 
       ChatChannel.broadcast_to(
         msg.sender,
         type: 'message_read',
         message_id: msg.id,
-        read_at: msg.read_at
+        read_at: now
       )
     end
-
-
-    Notification.where(
-      delegate_id: current_delegate.id,
-      notification_type: 'new_message',
-      read_at: nil,
-      notifiable_type: 'ChatMessage',
-      notifiable_id: messages.pluck(:id)
-    ).update_all(read_at: Time.current)
-
   end
 
   # ---------- NOTIFICATION ----------

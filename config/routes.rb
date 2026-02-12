@@ -10,6 +10,7 @@ Rails.application.routes.draw do
       patch 'profile', to: 'profile#update'
 
 
+      post 'device_token', to: 'devices#update'
 
 
       # Authentication

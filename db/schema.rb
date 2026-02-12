@@ -393,6 +393,7 @@ ActiveRecord::Schema[7.0].define(version: 202107270010001) do
     t.string "password_digest"
     t.boolean "has_logged_in", default: false
     t.datetime "first_login_at"
+    t.string "device_token"
     t.index ["branch_id"], name: "index_delegates_on_branch_id"
     t.index ["company_id"], name: "index_delegates_on_company_id"
     t.index ["email"], name: "index_delegates_on_email"
