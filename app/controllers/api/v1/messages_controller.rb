@@ -63,6 +63,22 @@ module Api
         render json: { unread_count: count }
       end
 
+
+
+      def typing
+        other_id = data["target_id"]
+
+        ChatChannel.broadcast_to(
+          Delegate.find(other_id),
+          type: "typing",
+          from: current_delegate.id
+        )
+      end
+
+
+
+
+
       # ================= CREATE =================
       def create
         recipient_id = params[:recipient_id] || params[:receiver_id]
@@ -78,15 +94,16 @@ module Api
           recipient = @message.recipient
           now = Time.current
 
-          # ================= AUTO SEEN =================
+          # ===== DELIVERED (ONLY IF ROOM OPEN) =====
           key = "chat_open:#{recipient.id}:#{current_delegate.id}"
-
           if REDIS.get(key) == "1"
+            @message.update_column(:delivered_at, now)
+          end
 
-            # ---- 1. mark message ล่าสุด ----
+          # ===== AUTO SEEN =====
+          if REDIS.get(key) == "1"
             @message.update_column(:read_at, now) if @message.read_at.nil?
 
-            # ---- 2. mark message เก่าทั้งห้อง ----
             scope = ChatMessage.where(
               sender_id: current_delegate.id,
               recipient_id: recipient.id,
@@ -97,7 +114,6 @@ module Api
             ids = scope.pluck(:id)
             scope.update_all(read_at: now) unless ids.empty?
 
-            # ---- 3. broadcast ทีเดียว ----
             payload_seen = {
               type: 'bulk_read',
               message_ids: ids + [@message.id],
@@ -108,7 +124,6 @@ module Api
             ChatChannel.broadcast_to(current_delegate, payload_seen)
           end
 
-          # ================= NEW MESSAGE =================
           payload = {
             type: 'new_message',
             message: Api::V1::ChatMessageSerializer.new(@message).serializable_hash
@@ -117,31 +132,6 @@ module Api
           ChatChannel.broadcast_to(recipient, payload)
           ChatChannel.broadcast_to(current_delegate, payload)
 
-          # ================= NOTIFICATION =================
-          notification = Notification.create(
-            delegate: recipient,
-            notification_type: 'new_message',
-            notifiable: @message
-          )
-
-          if notification
-            NotificationChannel.broadcast_to(
-              recipient,
-              type: 'new_notification',
-              notification: {
-                id: notification.id,
-                type: 'new_message',
-                created_at: notification.created_at,
-                content: @message.content.to_s.truncate(50),
-                sender: {
-                  id: @message.sender.id,
-                  name: @message.sender.name
-                }
-              }
-            )
-          end
-
-          
           render json: @message,
                 serializer: Api::V1::ChatMessageSerializer,
                 status: :created

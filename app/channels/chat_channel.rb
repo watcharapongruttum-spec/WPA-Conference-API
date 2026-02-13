@@ -2,18 +2,33 @@ class ChatChannel < ApplicationCable::Channel
   def subscribed
     stream_for current_delegate
 
+    # ===== MARK DELIVERED WHEN USER ONLINE =====
     ChatMessage.where(
       recipient_id: current_delegate.id,
       delivered_at: nil,
+      read_at: nil,
       deleted_at: nil
     ).update_all(delivered_at: Time.current)
 
     Rails.logger.info "✅ ChatChannel subscribed delegate=#{current_delegate.id}"
   end
 
-
   def unsubscribed
     Rails.logger.info "⚠️ ChatChannel unsubscribed delegate=#{current_delegate.id}"
+  end
+
+  # ================= TYPING =================
+  def typing(data)
+    data = safe_json(data)
+    other_id = data["target_id"]
+
+    ChatChannel.broadcast_to(
+      Delegate.find(other_id),
+      {
+        type: "typing",
+        from: current_delegate.id
+      }
+    )
   end
 
   # ================= ENTER ROOM =================
@@ -22,17 +37,11 @@ class ChatChannel < ApplicationCable::Channel
     target_id = data["user_id"]
     user_id   = current_delegate.id
 
-    # ---------- PRESENCE TTL ----------
-    # ถ้า 60 วิ ไม่ ping จะหายเอง
     REDIS.setex("chat_open:#{user_id}:#{target_id}", 60, "1")
 
-    # ---------- DEBOUNCE READ ----------
     lock_key = "read_lock:#{user_id}:#{target_id}"
-
-    # ถ้าเพิ่งอ่านไปภายใน 2 วิ → ไม่ต้องยิงซ้ำ
     return if REDIS.get(lock_key)
 
-    # lock 2 วินาที
     REDIS.setex(lock_key, 2, "1")
 
     MessageReadService.mark_room(user_id, target_id)
@@ -46,7 +55,7 @@ class ChatChannel < ApplicationCable::Channel
     REDIS.del("chat_open:#{current_delegate.id}:#{target_id}")
   end
 
-  # ================= SEND MESSAGE =================
+  # ================= SEND MESSAGE (WS) =================
   def send_message(data)
     data = safe_json(data)
 
@@ -87,7 +96,6 @@ class ChatChannel < ApplicationCable::Channel
       .serializable_hash[:data]
   end
 
-  # ---------- CHECK PRESENCE ----------
   def recipient_open_room?(message)
     key = "chat_open:#{message.recipient_id}:#{message.sender_id}"
     REDIS.get(key) == "1"
@@ -95,7 +103,14 @@ class ChatChannel < ApplicationCable::Channel
 
   # ---------- NEW MESSAGE ----------
   def broadcast_new_message(message)
-    # 🔥 AUTO SEEN
+    now = Time.current
+
+    # ===== DELIVERED =====
+    if message.delivered_at.nil? && recipient_open_room?(message)
+      message.update_column(:delivered_at, now)
+    end
+
+    # ===== AUTO SEEN =====
     if recipient_open_room?(message) && message.read_at.nil?
       MessageReadService.mark_one(message)
     end
