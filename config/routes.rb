@@ -6,7 +6,8 @@ Rails.application.routes.draw do
 
 
       # Profile
-      get  'profile', to: 'profile#show'
+      # get  'profile', to: 'profile#show'
+      get 'profile(/:id)', to: 'profile#show'
       patch 'profile', to: 'profile#update'
 
 

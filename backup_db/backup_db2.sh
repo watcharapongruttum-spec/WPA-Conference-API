@@ -99,3 +99,4 @@ log "\n=== DONE ==="
 log "Total Time: ${DURATION}s"
 log "Backup Size: $SIZE"
 log "Log File: $LOG_FILE"
+

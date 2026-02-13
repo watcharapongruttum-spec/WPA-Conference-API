@@ -3,9 +3,18 @@ module Api
     class ProfileController < BaseController
 
       def show
-        delegate = current_delegate
+        delegate =
+          if params[:id].present?
+            Delegate.find_by(id: params[:id])
+          else
+            current_delegate
+          end
+
+        return render json: { error: "Not found" }, status: :not_found unless delegate
+
         render json: profile_json(delegate)
       end
+
 
       def update
         delegate = current_delegate
