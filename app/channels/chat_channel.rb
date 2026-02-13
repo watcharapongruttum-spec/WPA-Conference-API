@@ -1,8 +1,16 @@
 class ChatChannel < ApplicationCable::Channel
   def subscribed
     stream_for current_delegate
+
+    ChatMessage.where(
+      recipient_id: current_delegate.id,
+      delivered_at: nil,
+      deleted_at: nil
+    ).update_all(delivered_at: Time.current)
+
     Rails.logger.info "✅ ChatChannel subscribed delegate=#{current_delegate.id}"
   end
+
 
   def unsubscribed
     Rails.logger.info "⚠️ ChatChannel unsubscribed delegate=#{current_delegate.id}"
@@ -12,11 +20,22 @@ class ChatChannel < ApplicationCable::Channel
   def enter_room(data)
     data = safe_json(data)
     target_id = data["user_id"]
+    user_id   = current_delegate.id
 
-    # บอก Redis ว่าเปิดห้องอยู่
-    REDIS.set("chat_open:#{current_delegate.id}:#{target_id}", "1")
+    # ---------- PRESENCE TTL ----------
+    # ถ้า 60 วิ ไม่ ping จะหายเอง
+    REDIS.setex("chat_open:#{user_id}:#{target_id}", 60, "1")
 
-    mark_conversation_as_read(target_id)
+    # ---------- DEBOUNCE READ ----------
+    lock_key = "read_lock:#{user_id}:#{target_id}"
+
+    # ถ้าเพิ่งอ่านไปภายใน 2 วิ → ไม่ต้องยิงซ้ำ
+    return if REDIS.get(lock_key)
+
+    # lock 2 วินาที
+    REDIS.setex(lock_key, 2, "1")
+
+    MessageReadService.mark_room(user_id, target_id)
   end
 
   # ================= LEAVE ROOM =================
@@ -50,15 +69,7 @@ class ChatChannel < ApplicationCable::Channel
     msg = ChatMessage.find_by(id: data['message_id'])
     return unless msg && msg.recipient == current_delegate
 
-    now = Time.current
-    msg.update_column(:read_at, now)
-
-    ChatChannel.broadcast_to(
-      msg.sender,
-      type: 'message_read',
-      message_id: msg.id,
-      read_at: now
-    )
+    MessageReadService.mark_one(msg)
   end
 
   # =========================================================
@@ -86,17 +97,7 @@ class ChatChannel < ApplicationCable::Channel
   def broadcast_new_message(message)
     # 🔥 AUTO SEEN
     if recipient_open_room?(message) && message.read_at.nil?
-      now = Time.current
-      message.update_column(:read_at, now)
-
-      payload_seen = {
-        type: 'message_read',
-        message_id: message.id,
-        read_at: now
-      }
-
-      ChatChannel.broadcast_to(message.sender, payload_seen)
-      ChatChannel.broadcast_to(message.recipient, payload_seen)
+      MessageReadService.mark_one(message)
     end
 
     payload = {
@@ -106,28 +107,6 @@ class ChatChannel < ApplicationCable::Channel
 
     ChatChannel.broadcast_to(message.sender, payload)
     ChatChannel.broadcast_to(message.recipient, payload)
-  end
-
-  # ---------- MARK READ ----------
-  def mark_conversation_as_read(target_id)
-    now = Time.current
-
-    messages = ChatMessage.where(
-      sender_id: target_id,
-      recipient_id: current_delegate.id,
-      read_at: nil
-    )
-
-    messages.find_each do |msg|
-      msg.update_column(:read_at, now)
-
-      ChatChannel.broadcast_to(
-        msg.sender,
-        type: 'message_read',
-        message_id: msg.id,
-        read_at: now
-      )
-    end
   end
 
   # ---------- NOTIFICATION ----------

@@ -114,8 +114,8 @@ Rails.application.routes.draw do
       resources :leave_forms, only: [:create]
 
 
-
-
+      # Leave Forms
+      resources :leave_types
 
 
 

@@ -130,6 +130,7 @@ ActiveRecord::Schema[7.0].define(version: 202107270010001) do
     t.bigint "chat_room_id"
     t.datetime "edited_at"
     t.datetime "deleted_at"
+    t.datetime "delivered_at"
     t.index ["chat_room_id"], name: "index_chat_messages_on_chat_room_id"
     t.index ["read_at"], name: "index_chat_messages_on_read_at"
     t.index ["recipient_id"], name: "index_chat_messages_on_recipient_id"

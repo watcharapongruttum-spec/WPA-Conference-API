@@ -141,6 +141,7 @@ module Api
             )
           end
 
+          
           render json: @message,
                 serializer: Api::V1::ChatMessageSerializer,
                 status: :created
@@ -198,20 +199,22 @@ module Api
           .where(read_at: nil, deleted_at: nil)
 
         now = Time.current
+        ids = messages.pluck(:id, :sender_id)
 
-        messages.find_each do |msg|
-          msg.update_column(:read_at, now)
+        messages.update_all(read_at: now)
 
+        ids.each do |msg_id, sender_id|
           ChatChannel.broadcast_to(
-            msg.sender,
+            Delegate.find(sender_id),
             type: 'message_read',
-            message_id: msg.id,
+            message_id: msg_id,
             read_at: now
           )
         end
 
         render json: { message: "All messages marked as read" }
       end
+
 
       # ================= UPDATE =================
       def update
