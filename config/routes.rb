@@ -11,6 +11,7 @@ Rails.application.routes.draw do
 
 
       post 'device_token', to: 'devices#update'
+      get :dashboard, to: 'dashboard#show'
 
 
       # Authentication

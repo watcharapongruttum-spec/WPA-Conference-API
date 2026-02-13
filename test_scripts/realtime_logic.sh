@@ -47,37 +47,22 @@ get_profile_id() {
     -H "Authorization: Bearer $1" | jq -r '.id'
 }
 
-
 reset_read_for_users() {
   A=$1
   B=$2
 
-  docker exec -i my-postgres-17 psql -U postgres -d wpa_development -c "
+  docker exec -i $DB_CONTAINER psql -U $DB_USER -d $DB_NAME -c "
     UPDATE chat_messages
-    SET read_at = NOW()
-    WHERE recipient_id IN ($A, $B)
-       OR sender_id IN ($A, $B);
+    SET read_at = NOW(),
+        delivered_at = NULL;
   " > /dev/null
 }
-
-
 
 send_message() {
   curl -s -X POST $BASE_URL/api/v1/messages \
     -H "Authorization: Bearer $1" \
     -H "Content-Type: application/json" \
-    -d "{\"recipient_id\":$2,\"content\":\"TEST TTL\"}" > /dev/null
-}
-
-# ===== DB DEBUG =====
-last_read_at() {
-  docker exec -i $DB_CONTAINER psql -U $DB_USER -d $DB_NAME -t -c "
-    SELECT read_at
-    FROM chat_messages
-    WHERE recipient_id = $1
-    ORDER BY id DESC
-    LIMIT 1;
-  " | xargs
+    -d "{\"recipient_id\":$2,\"content\":\"TEST LEVEL2\"}" > /dev/null
 }
 
 last_unread_count() {
@@ -86,6 +71,16 @@ last_unread_count() {
     FROM chat_messages
     WHERE recipient_id = $1
     AND read_at IS NULL;
+  " | xargs
+}
+
+last_delivered() {
+  docker exec -i $DB_CONTAINER psql -U $DB_USER -d $DB_NAME -t -c "
+    SELECT delivered_at
+    FROM chat_messages
+    WHERE recipient_id = $1
+    ORDER BY id DESC
+    LIMIT 1;
   " | xargs
 }
 
@@ -102,21 +97,26 @@ start_ws() {
       sleep 1
       echo '{"command":"subscribe","identifier":"{\"channel\":\"ChatChannel\"}"}'
       sleep 1
+
+      # enter room
       echo "{\"command\":\"message\",\"identifier\":\"{\\\"channel\\\":\\\"ChatChannel\\\"}\",\"data\":\"{\\\"action\\\":\\\"enter_room\\\",\\\"user_id\\\":$TARGET}\"}"
       sleep 2
 
-      # ยิง enter_room ซ้ำ → Debounce
+      # debounce
       for i in {1..5}; do
         echo "{\"command\":\"message\",\"identifier\":\"{\\\"channel\\\":\\\"ChatChannel\\\"}\",\"data\":\"{\\\"action\\\":\\\"enter_room\\\",\\\"user_id\\\":$TARGET}\"}"
         sleep 0.3
       done
+
+      # typing
+      echo "{\"command\":\"message\",\"identifier\":\"{\\\"channel\\\":\\\"ChatChannel\\\"}\",\"data\":\"{\\\"action\\\":\\\"typing\\\",\\\"target_id\\\":$TARGET}\"}"
 
       sleep 999
     } | wscat -c "$WS_URL?token=$TOKEN"
   ) > "$LOG" 2>&1 &
 
   echo $! > "$PID"
-  sleep 3
+  sleep 4
 }
 
 stop_ws() {
@@ -134,13 +134,9 @@ B_ID=$(get_profile_id "$TOKEN_B")
 
 pass "LOGIN OK"
 
-
 step "RESET READ STATE"
 reset_read_for_users "$A_ID" "$B_ID"
-pass "READ RESET OK"
-
-
-
+pass "RESET OK"
 
 cleanup
 clear_presence
@@ -156,24 +152,25 @@ U1=$(last_unread_count "$A_ID")
 info "UNREAD BEFORE ENTER = $U1"
 
 # ---------- WS ENTER ----------
-step "A ENTER ROOM + DEBOUNCE TEST"
+step "A ENTER ROOM"
 start_ws "$TOKEN_A" "A" "$B_ID"
-sleep 4
 
 U2=$(last_unread_count "$A_ID")
 info "UNREAD AFTER ENTER = $U2"
 
+D1=$(last_delivered "$A_ID")
+info "DELIVERED AFTER ENTER = $D1"
+
 if [ "$U2" = "0" ]; then
-  pass "DEBOUNCE WORKS"
+  pass "AUTO SEEN OK"
 else
-  fail "DEBOUNCE FAIL"
+  fail "AUTO SEEN FAIL"
 fi
 
-# ---------- PRESENCE TTL ----------
-step "PRESENCE TTL TEST"
+# ---------- TTL ----------
+step "TTL TEST"
 stop_ws "A"
-
-info "WAIT 65s TTL EXPIRE..."
+info "WAIT 65s..."
 sleep 65
 
 send_message "$TOKEN_B" "$A_ID"
@@ -182,12 +179,13 @@ sleep 2
 U3=$(last_unread_count "$A_ID")
 info "UNREAD AFTER TTL MSG = $U3"
 
+D2=$(last_delivered "$A_ID")
+info "DELIVERED AFTER TTL MSG = $D2"
+
 if [ "$U3" = "1" ]; then
-  pass "TTL WORKS (NO AUTO SEEN)"
+  pass "TTL OK"
 else
   fail "TTL FAIL"
 fi
 
-stop_ws "A"
-
-step "END TEST"
+step "END LEVEL 2 TEST"
