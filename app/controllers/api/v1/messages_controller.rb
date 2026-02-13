@@ -65,15 +65,6 @@ module Api
 
 
 
-      def typing
-        other_id = data["target_id"]
-
-        ChatChannel.broadcast_to(
-          Delegate.find(other_id),
-          type: "typing",
-          from: current_delegate.id
-        )
-      end
 
 
 
@@ -84,64 +75,17 @@ module Api
         recipient_id = params[:recipient_id] || params[:receiver_id]
         return render json: { error: "recipient_id required" }, status: :unprocessable_entity unless recipient_id
 
-        @message = ChatMessage.new(
+        @message = Chat::SendMessageService.call(
           sender: current_delegate,
           recipient_id: recipient_id,
           content: params[:content]
         )
 
-        if @message.save
-          recipient = @message.recipient
-          now = Time.current
-
-          # ===== DELIVERED (ONLY IF ROOM OPEN) =====
-          key = "chat_open:#{recipient.id}:#{current_delegate.id}"
-          if REDIS.get(key) == "1"
-            @message.update_column(:delivered_at, now)
-          end
-
-          # ===== AUTO SEEN =====
-          if REDIS.get(key) == "1"
-            @message.update_column(:read_at, now) if @message.read_at.nil?
-
-            scope = ChatMessage.where(
-              sender_id: current_delegate.id,
-              recipient_id: recipient.id,
-              read_at: nil,
-              deleted_at: nil
-            )
-
-            ids = scope.pluck(:id)
-            scope.update_all(read_at: now) unless ids.empty?
-
-            payload_seen = {
-              type: 'bulk_read',
-              message_ids: ids + [@message.id],
-              read_at: now
-            }
-
-            ChatChannel.broadcast_to(recipient, payload_seen)
-            ChatChannel.broadcast_to(current_delegate, payload_seen)
-          end
-
-          payload = {
-            type: 'new_message',
-            message: Api::V1::ChatMessageSerializer.new(@message).serializable_hash
-          }
-
-          ChatChannel.broadcast_to(recipient, payload)
-          ChatChannel.broadcast_to(current_delegate, payload)
-
-          render json: @message,
-                serializer: Api::V1::ChatMessageSerializer,
-                status: :created
-        else
-          render json: {
-            error: 'Failed to send message',
-            errors: @message.errors.full_messages
-          }, status: :unprocessable_entity
-        end
+        render json: @message,
+              serializer: Api::V1::ChatMessageSerializer,
+              status: :created
       end
+
 
 
       # ================= ROOMS =================
@@ -185,25 +129,10 @@ module Api
 
       # ================= READ ALL =================
       def read_all
-        messages = current_delegate.received_messages
-          .where(read_at: nil, deleted_at: nil)
-
-        now = Time.current
-        ids = messages.pluck(:id, :sender_id)
-
-        messages.update_all(read_at: now)
-
-        ids.each do |msg_id, sender_id|
-          ChatChannel.broadcast_to(
-            Delegate.find(sender_id),
-            type: 'message_read',
-            message_id: msg_id,
-            read_at: now
-          )
-        end
-
+        Chat::ReadService.read_all(current_delegate)
         render json: { message: "All messages marked as read" }
       end
+
 
 
       # ================= UPDATE =================
@@ -251,6 +180,16 @@ module Api
 
         render json: { success: true }
       end
+
+
+      def online_status
+        user_id = params[:user_id]
+        online = Chat::PresenceService.online?(user_id)
+        render json: { online: online }
+      end
+
+
+
 
       private
     end

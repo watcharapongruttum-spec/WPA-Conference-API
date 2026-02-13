@@ -1,19 +1,15 @@
 class ChatChannel < ApplicationCable::Channel
+
   def subscribed
     stream_for current_delegate
-
-    # ===== MARK DELIVERED WHEN USER ONLINE =====
-    ChatMessage.where(
-      recipient_id: current_delegate.id,
-      delivered_at: nil,
-      read_at: nil,
-      deleted_at: nil
-    ).update_all(delivered_at: Time.current)
+    Chat::DeliveryService.mark_user_online(current_delegate.id)
+    Chat::PresenceService.online(current_delegate.id)
 
     Rails.logger.info "✅ ChatChannel subscribed delegate=#{current_delegate.id}"
   end
 
   def unsubscribed
+    Chat::PresenceService.offline(current_delegate.id)
     Rails.logger.info "⚠️ ChatChannel unsubscribed delegate=#{current_delegate.id}"
   end
 
@@ -44,7 +40,9 @@ class ChatChannel < ApplicationCable::Channel
 
     REDIS.setex(lock_key, 2, "1")
 
-    MessageReadService.mark_room(user_id, target_id)
+
+    Chat::ReadService.mark_room(user_id, target_id)
+
   end
 
   # ================= LEAVE ROOM =================
@@ -59,18 +57,29 @@ class ChatChannel < ApplicationCable::Channel
   def send_message(data)
     data = safe_json(data)
 
-    message = ChatMessage.create!(
+    message = Chat::SendMessageService.call(
       sender: current_delegate,
       recipient_id: data['recipient_id'],
       content: data['content']
     )
 
-    broadcast_new_message(message)
     create_notification(message)
 
   rescue => e
     handle_error(e)
   end
+
+
+
+
+
+
+
+
+
+
+
+
 
   # ================= READ MESSAGE =================
   def read_message(data)
@@ -78,7 +87,9 @@ class ChatChannel < ApplicationCable::Channel
     msg = ChatMessage.find_by(id: data['message_id'])
     return unless msg && msg.recipient == current_delegate
 
-    MessageReadService.mark_one(msg)
+
+    Chat::ReadService.mark_one(msg)
+
   end
 
   # =========================================================
@@ -101,28 +112,7 @@ class ChatChannel < ApplicationCable::Channel
     REDIS.get(key) == "1"
   end
 
-  # ---------- NEW MESSAGE ----------
-  def broadcast_new_message(message)
-    now = Time.current
 
-    # ===== DELIVERED =====
-    if message.delivered_at.nil? && recipient_open_room?(message)
-      message.update_column(:delivered_at, now)
-    end
-
-    # ===== AUTO SEEN =====
-    if recipient_open_room?(message) && message.read_at.nil?
-      MessageReadService.mark_one(message)
-    end
-
-    payload = {
-      type: 'new_message',
-      message: serializer(message)
-    }
-
-    ChatChannel.broadcast_to(message.sender, payload)
-    ChatChannel.broadcast_to(message.recipient, payload)
-  end
 
   # ---------- NOTIFICATION ----------
   def create_notification(message)
