@@ -143,23 +143,14 @@ module Api
         return render json: { error: "Message deleted" }, status: 422 if message.deleted?
         return render json: { error: "Content cannot be blank" }, status: 422 if params[:content].blank?
 
-        message.update!(
-          content: params[:content],
-          edited_at: Time.current
+        Chat::UpdateMessageService.call(
+          message: message,
+          content: params[:content]
         )
-
-        payload = {
-          type: "message_updated",
-          message_id: message.id,
-          content: message.content,
-          edited_at: message.edited_at
-        }
-
-        ChatChannel.broadcast_to(message.recipient, payload)
-        ChatChannel.broadcast_to(message.sender, payload)
 
         render json: { success: true }
       end
+
 
       # ================= DESTROY =================
       def destroy
@@ -168,18 +159,11 @@ module Api
         return render json: { error: "Forbidden" }, status: :forbidden unless message.sender == current_delegate
         return render json: { error: "Already deleted" }, status: 422 if message.deleted?
 
-        message.update!(deleted_at: Time.current)
-
-        payload = {
-          type: "message_deleted",
-          message_id: message.id
-        }
-
-        ChatChannel.broadcast_to(message.recipient, payload)
-        ChatChannel.broadcast_to(message.sender, payload)
+        Chat::DeleteMessageService.call(message: message)
 
         render json: { success: true }
       end
+
 
 
       def online_status

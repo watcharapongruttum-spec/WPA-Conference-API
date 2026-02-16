@@ -1,5 +1,8 @@
+require Rails.root.join('app/constants/chat_keys')
+
 class ChatChannel < ApplicationCable::Channel
 
+  # ================= SUBSCRIBE =================
   def subscribed
     stream_for current_delegate
     Chat::DeliveryService.mark_user_online(current_delegate.id)
@@ -15,11 +18,11 @@ class ChatChannel < ApplicationCable::Channel
 
   # ================= TYPING =================
   def typing(data)
-    data = safe_json(data)
-    other_id = data["target_id"]
+    payload = safe_json(data)
+    target_delegate_id = payload["target_id"]
 
     ChatChannel.broadcast_to(
-      Delegate.find(other_id),
+      Delegate.find(target_delegate_id),
       {
         type: "typing",
         from: current_delegate.id
@@ -29,67 +32,46 @@ class ChatChannel < ApplicationCable::Channel
 
   # ================= ENTER ROOM =================
   def enter_room(data)
-    data = safe_json(data)
-    target_id = data["user_id"]
-    user_id   = current_delegate.id
+    payload = safe_json(data)
 
-    REDIS.setex("chat_open:#{user_id}:#{target_id}", 60, "1")
+    target_delegate_id  = payload["user_id"]
+    current_delegate_id = current_delegate.id
 
-    lock_key = "read_lock:#{user_id}:#{target_id}"
-    return if REDIS.get(lock_key)
-
-    REDIS.setex(lock_key, 2, "1")
-
-
-    Chat::ReadService.mark_room(user_id, target_id)
-
+    Chat::RoomStateService.open_room(current_delegate_id, target_delegate_id)
+    Chat::RoomStateService.read_if_unlocked(current_delegate_id, target_delegate_id)
   end
 
   # ================= LEAVE ROOM =================
   def leave_room(data)
-    data = safe_json(data)
-    target_id = data["user_id"]
+    payload = safe_json(data)
+    target_delegate_id = payload["user_id"]
 
-    REDIS.del("chat_open:#{current_delegate.id}:#{target_id}")
+    Chat::RoomStateService.close_room(current_delegate.id, target_delegate_id)
   end
 
   # ================= SEND MESSAGE (WS) =================
   def send_message(data)
-    data = safe_json(data)
+    payload = safe_json(data)
 
     message = Chat::SendMessageService.call(
       sender: current_delegate,
-      recipient_id: data['recipient_id'],
-      content: data['content']
+      recipient_id: payload['recipient_id'],
+      content: payload['content']
     )
 
-    create_notification(message)
+    Notification::CreateService.call(message)
 
   rescue => e
     handle_error(e)
   end
 
-
-
-
-
-
-
-
-
-
-
-
-
   # ================= READ MESSAGE =================
   def read_message(data)
-    data = safe_json(data)
-    msg = ChatMessage.find_by(id: data['message_id'])
-    return unless msg && msg.recipient == current_delegate
+    payload = safe_json(data)
+    message = ChatMessage.find_by(id: payload['message_id'])
+    return unless message && message.recipient == current_delegate
 
-
-    Chat::ReadService.mark_one(msg)
-
+    Chat::ReadService.mark_one(message)
   end
 
   # =========================================================
@@ -97,52 +79,29 @@ class ChatChannel < ApplicationCable::Channel
   # =========================================================
   private
 
+  # ---------- JSON ----------
   def safe_json(data)
     data.is_a?(String) ? JSON.parse(data) : data
   end
 
+  # ---------- SERIALIZER ----------
   def serializer(message)
     Api::V1::ChatMessageSerializer
       .new(message)
       .serializable_hash[:data]
   end
 
+  # ---------- ROOM STATE ----------
   def recipient_open_room?(message)
-    key = "chat_open:#{message.recipient_id}:#{message.sender_id}"
-    REDIS.get(key) == "1"
-  end
-
-
-
-  # ---------- NOTIFICATION ----------
-  def create_notification(message)
-    recipient = message.recipient
-    return unless recipient
-
-    notification = Notification.create!(
-      delegate: recipient,
-      notification_type: 'new_message',
-      notifiable: message
-    )
-
-    NotificationChannel.broadcast_to(
-      recipient,
-      type: 'new_notification',
-      notification: {
-        id: notification.id,
-        type: 'new_message',
-        created_at: notification.created_at,
-        content: message.content.to_s[0, 50],
-        sender: {
-          id: message.sender.id,
-          name: message.sender.name
-        }
-      }
+    Chat::RoomStateService.recipient_open?(
+      message.recipient_id,
+      message.sender_id
     )
   end
 
-  def handle_error(e)
-    Rails.logger.error "❌ ChatChannel error: #{e.class} - #{e.message}"
-    transmit(type: 'error', message: e.message)
+  # ---------- ERROR ----------
+  def handle_error(error)
+    Rails.logger.error "❌ ChatChannel error: #{error.class} - #{error.message}"
+    transmit(type: 'error', message: error.message)
   end
 end

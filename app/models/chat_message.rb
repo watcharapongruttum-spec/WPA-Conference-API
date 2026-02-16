@@ -9,7 +9,25 @@ class ChatMessage < ApplicationRecord
   validates :content, presence: true
   validate :can_send_message
 
-  # after_create_commit :broadcast_create
+  # ================= SCOPES =================
+  scope :not_deleted, -> { where(deleted_at: nil) }
+
+  scope :unread_between, ->(sender_id, recipient_id) {
+    where(
+      sender_id: sender_id,
+      recipient_id: recipient_id,
+      read_at: nil,
+      deleted_at: nil
+    )
+  }
+
+  scope :undelivered_for, ->(recipient_id) {
+    where(
+      recipient_id: recipient_id,
+      delivered_at: nil,
+      deleted_at: nil
+    )
+  }
 
   # -------------------
   # helpers
@@ -32,24 +50,4 @@ class ChatMessage < ApplicationRecord
       errors.add(:base, "Cannot send message")
     end
   end
-
-  # def broadcast_create
-  #   payload = {
-  #     type: "message_created",
-  #     id: id,
-  #     room_id: chat_room_id,
-  #     sender_id: sender_id,
-  #     content: content,
-  #     created_at: created_at.strftime("%H:%M")
-  #   }
-
-  #   if chat_room
-  #     ChatRoomChannel.broadcast_to(chat_room, payload)
-  #   else
-  #     ChatChannel.broadcast_to(recipient, payload)
-  #   end
-  # end
-
-
-
 end

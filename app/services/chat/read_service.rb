@@ -1,5 +1,6 @@
 module Chat
   class ReadService
+
     # ================= ONE =================
     def self.mark_one(message)
       return if message.read_at.present?
@@ -21,12 +22,8 @@ module Chat
     def self.mark_room(user_id, target_id)
       now = Time.current
 
-      scope = ChatMessage.where(
-        sender_id: target_id,
-        recipient_id: user_id,
-        read_at: nil,
-        deleted_at: nil
-      )
+      scope = ChatMessage
+        .unread_between(target_id, user_id)
 
       ids = scope.pluck(:id)
       scope.update_all(read_at: now)
@@ -51,7 +48,8 @@ module Chat
       now = Time.current
 
       messages = user.received_messages
-        .where(read_at: nil, deleted_at: nil)
+        .not_deleted
+        .where(read_at: nil)
 
       ids = messages.pluck(:id, :sender_id)
       messages.update_all(read_at: now)
@@ -65,5 +63,6 @@ module Chat
         )
       end
     end
+
   end
 end

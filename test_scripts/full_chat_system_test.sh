@@ -12,6 +12,7 @@ PASSWORD_B="RNIrSPPICj"
 
 step() { echo -e "\n==== $1 ===="; }
 
+# ---------------- LOGIN ----------------
 login() {
   curl -s $BASE_URL/api/v1/login \
     -H "Content-Type: application/json" \
@@ -23,11 +24,12 @@ get_id() {
     -H "Authorization: Bearer $1" | jq -r '.id'
 }
 
+# ---------------- CHAT ----------------
 send_msg() {
   curl -s -X POST $BASE_URL/api/v1/messages \
     -H "Authorization: Bearer $1" \
     -H "Content-Type: application/json" \
-    -d "{\"recipient_id\":$2,\"content\":\"PHASE3 TEST\"}" > /dev/null
+    -d "{\"recipient_id\":$2,\"content\":\"FULL TEST\"}" > /dev/null
 }
 
 unread_count() {
@@ -40,6 +42,23 @@ online_status() {
     -H "Authorization: Bearer $1"
 }
 
+# ---------------- NOTIFICATION ----------------
+notif_count() {
+  curl -s "$BASE_URL/api/v1/notifications/unread_count" \
+    -H "Authorization: Bearer $1"
+}
+
+notif_list() {
+  curl -s "$BASE_URL/api/v1/notifications" \
+    -H "Authorization: Bearer $1" | jq .
+}
+
+mark_all_notif_read() {
+  curl -s -X PATCH "$BASE_URL/api/v1/notifications/mark_all_as_read" \
+    -H "Authorization: Bearer $1"
+}
+
+# ---------------- WEBSOCKET ----------------
 start_ws() {
   TOKEN=$1
   NAME=$2
@@ -69,31 +88,16 @@ stop_ws() {
   rm -f ws_$1.pid
 }
 
-typing_ws() {
-  TOKEN=$1
-  TARGET=$2
-  echo "{\"command\":\"message\",\"identifier\":\"{\\\"channel\\\":\\\"ChatChannel\\\"}\",\"data\":\"{\\\"action\\\":\\\"typing\\\",\\\"target_id\\\":$TARGET}\"}" \
-  | wscat -c "$WS_URL?token=$TOKEN" > /dev/null 2>&1
-}
-
-leave_room_ws() {
-  TOKEN=$1
-  TARGET=$2
-  echo "{\"command\":\"message\",\"identifier\":\"{\\\"channel\\\":\\\"ChatChannel\\\"}\",\"data\":\"{\\\"action\\\":\\\"leave_room\\\",\\\"user_id\\\":$TARGET}\"}" \
-  | wscat -c "$WS_URL?token=$TOKEN" > /dev/null 2>&1
-}
-
-redis_keys() {
-  docker exec redis redis-cli KEYS "$1"
-}
-
-# ===============================
+# ===================================================
 # START TEST
-# ===============================
+# ===================================================
 
 step "LOGIN"
 TOKEN_A=$(login "$EMAIL_A" "$PASSWORD_A")
 TOKEN_B=$(login "$EMAIL_B" "$PASSWORD_B")
+
+echo "TOKEN_A=$TOKEN_A"
+echo "TOKEN_B=$TOKEN_B"
 
 A_ID=$(get_id "$TOKEN_A")
 B_ID=$(get_id "$TOKEN_B")
@@ -104,15 +108,15 @@ echo "B_ID=$B_ID"
 # -------------------------
 step "CASE 1 — B OFFLINE SEND"
 send_msg "$TOKEN_A" "$B_ID"
-sleep 2
 echo "Expect delivered_at = null"
+sleep 2
 
 # -------------------------
 step "CASE 2 — B ONLINE ONLY"
 start_ws "$TOKEN_B" "B" "$A_ID" "no"
 send_msg "$TOKEN_A" "$B_ID"
-sleep 3
 echo "Expect delivered_at != null"
+sleep 3
 
 # -------------------------
 step "CHECK ONLINE STATUS"
@@ -124,30 +128,8 @@ step "CASE 3 — ENTER ROOM (AUTO READ)"
 stop_ws "B"
 start_ws "$TOKEN_B" "B" "$A_ID" "yes"
 send_msg "$TOKEN_A" "$B_ID"
-sleep 3
 echo "Expect read_at != null"
-
-# -------------------------
-step "CHECK REDIS CHAT PREFIX"
-redis_keys "chat:*"
-
-# -------------------------
-step "TEST TYPING EVENT"
-typing_ws "$TOKEN_A" "$B_ID"
-sleep 2
-echo "Check ws_B.log"
-
-# -------------------------
-step "TEST LEAVE ROOM"
-leave_room_ws "$TOKEN_B" "$A_ID"
-sleep 2
-redis_keys "chat:*"
-
-# -------------------------
-step "SEND AFTER LEAVE"
-send_msg "$TOKEN_A" "$B_ID"
-sleep 2
-echo "Expect read_at = null"
+sleep 3
 
 # -------------------------
 step "UNREAD COUNT"
@@ -155,20 +137,40 @@ unread_count "$TOKEN_B" "$A_ID"
 sleep 1
 
 # -------------------------
-step "CHECK NOTIFICATION LOCK"
-redis_keys "notif_lock:*"
+step "CHECK REDIS ROOM"
+docker exec redis redis-cli KEYS chat_open:*
 
 # -------------------------
-step "CHECK DB STATE"
-rails runner "m=ChatMessage.last; puts \"delivered=#{m.delivered_at} read=#{m.read_at}\""
+step "NOTIFICATION RECORD"
+rails runner "puts Notification.last.notification_type"
 
 # -------------------------
-step "SCOPE TEST"
-rails runner "puts ChatMessage.not_deleted.count"
-rails runner "puts ChatMessage.unread_between(${A_ID},${B_ID}).count"
+step "NOTIFICATION COUNT"
+notif_count "$TOKEN_B"
+
+# -------------------------
+step "NOTIFICATION LIST"
+notif_list "$TOKEN_B"
+
+# -------------------------
+step "MARK ALL NOTIFICATION READ"
+mark_all_notif_read "$TOKEN_B"
+
+step "NOTIFICATION COUNT AFTER READ"
+notif_count "$TOKEN_B"
 
 # -------------------------
 step "STOP WS"
 stop_ws "B"
+sleep 2
 
+# -------------------------
+step "CHECK REDIS AFTER LEAVE"
+docker exec redis redis-cli KEYS chat_open:*
+
+# -------------------------
+step "CHECK LAST MESSAGE DELIVERED"
+rails runner "puts ChatMessage.last.delivered_at"
+
+# -------------------------
 step "DONE"
