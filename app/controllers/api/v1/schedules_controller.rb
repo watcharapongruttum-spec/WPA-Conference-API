@@ -38,21 +38,32 @@ module Api
 
 
 
-      # ===============================
-      # MY SCHEDULE
-      # ===============================
-      def my_schedule
-        return render json: { error: 'Authentication required' }, status: :unauthorized unless current_delegate
 
+      def my_schedule
         result = Schedule.build_my_schedule(
           delegate: current_delegate,
           params: params
         )
 
-        if result[:error]
-          return render json: { error: result[:error] }, status: :not_found
-        end
+        return render json: { error: result[:error] }, status: :not_found if result[:error]
 
+        render_timeline(result, current_delegate)
+      end
+
+      def schedule_others
+        result = Schedule.build_schedule_others(
+          viewer: current_delegate,
+          params: params
+        )
+
+        return render json: { error: result[:error] }, status: :not_found if result[:error]
+
+        render_timeline(result, result[:user], include_user: true)
+      end
+
+      private
+
+      def render_timeline(result, scope_user, include_user: false)
         timeline = result[:schedules].map do |item|
           if item[:type] == "event"
             item
@@ -62,11 +73,10 @@ module Api
             data = ActiveModelSerializers::SerializableResource.new(
               schedule,
               serializer: Api::V1::ScheduleSerializer,
-              scope: current_delegate
+              scope: scope_user
             ).as_json.except(:delegate)
 
-            meeting_type =
-              schedule.table_number.nil? ? "nomeeting" : "meeting"
+            meeting_type = schedule.table_number.nil? ? "nomeeting" : "meeting"
 
             data.merge(
               type: meeting_type,
@@ -81,79 +91,20 @@ module Api
           end
         end
 
+        response = {
+          available_years: result[:years] || [],
+          year: result[:year],
+          available_dates: result[:available_dates] || [],
+          date: result[:selected_date],
+          schedules: timeline
+        }
 
-
-      render json: {
-        available_years: result[:years] || [],
-        year: result[:year],
-        available_dates: result[:available_dates] || [],
-        date: result[:selected_date],
-        schedules: timeline
-      }
-
-      end
-
-
-
-      # ===============================
-      # SCHEDULE OTHERS
-      # ===============================
-      def schedule_others
-        return render json: { error: 'Authentication required' }, status: :unauthorized unless current_delegate
-
-        result = Schedule.build_schedule_others(
-          viewer: current_delegate,
-          params: params
-        )
-
-        if result[:error]
-          return render json: { error: result[:error] }, status: :not_found
+        if include_user
+          response[:user] = Api::V1::DelegateSerializer.new(result[:user])
         end
 
-        render json: {
-          user: Api::V1::DelegateSerializer.new(result[:user]),
-          available_years: result[:years],
-          year: result[:year],
-          available_dates: result[:available_dates],
-          date: result[:selected_date],
-          schedules: ActiveModelSerializers::SerializableResource.new(
-            result[:schedules],
-            each_serializer: Api::V1::ScheduleSerializer,
-            scope: result[:user]
-
-          )
-        }
-      end
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-      private
-
-      def schedule_params
-        params.require(:schedule).permit(
-          :conference_date_id,
-          :booker_id,
-          :target_id,
-          :start_at,
-          :end_at,
-          :table_number,
-          :country
-        )
+        render json: response
       end
     end
   end
 end
-
-

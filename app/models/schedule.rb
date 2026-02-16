@@ -8,11 +8,7 @@ class Schedule < ApplicationRecord
 
   belongs_to :table, optional: true
   belongs_to :delegate, optional: true
-  belongs_to :team,
-             foreign_key: :target_id,
-             optional: true
-
-  
+  belongs_to :team, foreign_key: :target_id, optional: true
 
   has_many :leave_forms
 
@@ -47,7 +43,6 @@ class Schedule < ApplicationRecord
     allowed = %w[start_at end_at created_at table_number]
     column  = allowed.include?(sort_by) ? sort_by : "start_at"
     dir     = sort_dir == "desc" ? "desc" : "asc"
-
     order("#{column} #{dir}")
   }
 
@@ -95,18 +90,17 @@ class Schedule < ApplicationRecord
   end
 
   # ===============================
-  # MY SCHEDULE
+  # FORMAT TIME
   # ===============================
-
   def self.format_time(time)
     return nil unless time
     time.utc.iso8601(3)
   end
 
-
-
-
-  def self.build_my_schedule(delegate:, params:)
+  # =====================================================
+  # CENTRAL TIMELINE BUILDER (ใหม่)
+  # =====================================================
+  def self.build_timeline_for(delegate:, params:)
     years = years_of(delegate.id)
 
     year = params[:year].presence || years.last || Date.today.year.to_s
@@ -120,30 +114,23 @@ class Schedule < ApplicationRecord
     conference_date = conference.conference_dates.find_by(on_date: selected_date)
     return { error: :date_not_found } unless conference_date
 
-    # ======================
     # PERSONAL MEETINGS
-    # ======================
     personal = with_full_data
                 .mine(delegate.id)
                 .by_date(conference_date.id)
                 .sorted
                 .to_a
 
-    # ======================
     # GLOBAL EVENTS
-    # ======================
     global = ConferenceSchedule
               .by_date(conference_date.id)
               .only_events
               .sorted
               .to_a
 
-    # ======================
-    # MERGE TIMELINE
-    # ======================
     merged = []
 
-    # ---------- EVENTS ----------
+    # EVENTS
     global.each do |g|
       merged << {
         type: "event",
@@ -151,14 +138,14 @@ class Schedule < ApplicationRecord
         title: g.title,
         start_at: format_time(g.start_at),
         end_at: format_time(g.end_at),
-        raw_start: g.start_at, # ไว้ sort
+        raw_start: g.start_at,
         table_number: nil,
         delegate: nil,
         leave: nil
       }
     end
 
-    # ---------- MEETINGS ----------
+    # MEETINGS
     personal.each do |s|
       merged << {
         type: "meeting",
@@ -169,10 +156,8 @@ class Schedule < ApplicationRecord
       }
     end
 
-    # ---------- SORT ----------
+    # SORT
     merged.sort_by! { |x| x[:raw_start] }
-
-    # ---------- REMOVE raw_start ----------
     merged.each { |x| x.delete(:raw_start) }
 
     {
@@ -184,13 +169,26 @@ class Schedule < ApplicationRecord
     }
   end
 
-
-
-
-
+  # ===============================
+  # MY SCHEDULE (แก้ให้เรียกกลาง)
+  # ===============================
+  def self.build_my_schedule(delegate:, params:)
+    build_timeline_for(delegate: delegate, params: params)
+  end
 
   # ===============================
-  # INDEX (DATATABLE)
+  # SCHEDULE OTHERS (แก้ให้เรียกกลาง)
+  # ===============================
+  def self.build_schedule_others(viewer:, params:)
+    target_delegate = Delegate.find_by(id: params[:delegate_id])
+    return { error: :delegate_not_found } unless target_delegate
+
+    result = build_timeline_for(delegate: target_delegate, params: params)
+    result.merge(user: target_delegate)
+  end
+
+  # ===============================
+  # INDEX
   # ===============================
   def self.build_index(delegate:, params:)
     page     = params[:page].to_i > 0 ? params[:page].to_i : 1
@@ -214,55 +212,11 @@ class Schedule < ApplicationRecord
   end
 
   # ===============================
-  # SCHEDULE OTHERS
+  # MERGE TIMELINE (ของเดิม)
   # ===============================
-  def self.build_schedule_others(viewer:, params:)
-    target_delegate = Delegate.find_by(id: params[:delegate_id])
-    return { error: :delegate_not_found } unless target_delegate
-
-    years = years_of(target_delegate.id)
-
-    year = params[:year].presence || years.last || Date.today.year.to_s
-    conference = Conference.find_by(conference_year: year)
-    return { error: :conference_not_found } unless conference
-
-    available_dates = available_dates_of(conference)
-
-    selected_date =
-      if params[:date].present?
-        Date.parse(params[:date]) rescue nil
-      else
-        available_dates.first
-      end
-
-    return { error: :no_dates } unless selected_date
-
-    conference_date = conference.conference_dates.find_by(on_date: selected_date)
-    return { error: :date_not_found } unless conference_date
-
-    schedules = with_full_data
-                  .mine(target_delegate.id)
-                  .by_date(conference_date.id)
-                  .sorted
-
-    {
-      user: target_delegate,
-      years: years,
-      year: year,
-      available_dates: available_dates,
-      selected_date: selected_date,
-      schedules: schedules.to_a
-    }
-  end
-
-
-
-
-
   def self.merge_timeline(personal:, global:)
     items = []
 
-    # GLOBAL EVENTS
     global.each do |g|
       items << {
         type: "event",
@@ -274,28 +228,24 @@ class Schedule < ApplicationRecord
       }
     end
 
-    # PERSONAL MEETINGS
     personal.each do |s|
       items << {
         type: "meeting",
         id: s.id,
         start_at: s.start_at,
         end_at: s.end_at,
-        serializer: s # ไว้ให้ controller serialize
+        serializer: s
       }
     end
 
     items.sort_by { |i| i[:start_at] }
   end
 
-
-
+  # ===============================
+  # TEAM DELEGATES (ของเดิม)
+  # ===============================
   def team_delegates
     return Delegate.none unless target_id
     Delegate.where(team_id: target_id)
   end
-
-
-
-
 end
