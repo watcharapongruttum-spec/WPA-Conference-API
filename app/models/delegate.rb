@@ -1,6 +1,7 @@
 class Delegate < ApplicationRecord
   has_secure_password
-
+  
+  validates :password, length: { minimum: 6 }, allow_nil: true
   # ========================
   # Associations
   # ========================
@@ -83,6 +84,34 @@ class Delegate < ApplicationRecord
     )
   end
 
+
+  # ========================
+  # Deep Reset Password
+  # ========================
+  def generate_reset_token!
+    self.reset_password_token = SecureRandom.hex(20)
+    self.reset_password_sent_at = Time.current
+    save!(validate: false)
+  end
+
+  def reset_token_valid?
+    reset_password_sent_at && reset_password_sent_at > 2.hours.ago
+  end
+
+  def clear_reset_token!
+    update_columns(
+      reset_password_token: nil,
+      reset_password_sent_at: nil
+    )
+  end
+
+
+
+
+
+
+
+
   # ========================
   # JWT
   # ========================
@@ -146,7 +175,27 @@ class Delegate < ApplicationRecord
 
 
 
+    # =========================
+    # RESET PASSWORD METHODS
+    # =========================
 
+    def reset_token_valid?
+      reset_password_sent_at && reset_password_sent_at > 15.minutes.ago
+    end
+
+    def generate_reset_token!
+      update!(
+        reset_password_token: SecureRandom.hex(20),
+        reset_password_sent_at: Time.current
+      )
+    end
+
+    def clear_reset_token!
+      update!(
+        reset_password_token: nil,
+        reset_password_sent_at: nil
+      )
+    end
 
 
 

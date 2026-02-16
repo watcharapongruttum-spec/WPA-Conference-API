@@ -4,6 +4,7 @@ Rails.application.routes.draw do
   namespace :api do
     namespace :v1 do
      
+      post 'reset_password', to: 'sessions#reset_password'
 
 
       # Profile

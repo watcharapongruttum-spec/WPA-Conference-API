@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.0].define(version: 202107270010001) do
+ActiveRecord::Schema[7.0].define(version: 2026_02_16_072153) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -397,9 +397,12 @@ ActiveRecord::Schema[7.0].define(version: 202107270010001) do
     t.boolean "has_logged_in", default: false
     t.datetime "first_login_at"
     t.string "device_token"
+    t.string "reset_password_token"
+    t.datetime "reset_password_sent_at"
     t.index ["branch_id"], name: "index_delegates_on_branch_id"
     t.index ["company_id"], name: "index_delegates_on_company_id"
     t.index ["email"], name: "index_delegates_on_email"
+    t.index ["reset_password_token"], name: "index_delegates_on_reset_password_token", unique: true
   end
 
   create_table "ex_members", id: :serial, force: :cascade do |t|
@@ -1113,6 +1116,15 @@ ActiveRecord::Schema[7.0].define(version: 202107270010001) do
     t.index ["table_id"], name: "index_schedules_on_table_id"
   end
 
+  create_table "security_logs", force: :cascade do |t|
+    t.bigint "delegate_id", null: false
+    t.string "event"
+    t.string "ip"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["delegate_id"], name: "index_security_logs_on_delegate_id"
+  end
+
   create_table "seo_meta", id: :serial, force: :cascade do |t|
     t.integer "seo_meta_id"
     t.string "seo_meta_type"
@@ -1300,4 +1312,5 @@ ActiveRecord::Schema[7.0].define(version: 202107270010001) do
   add_foreign_key "room_members", "delegates"
   add_foreign_key "schedules", "delegates"
   add_foreign_key "schedules", "tables"
+  add_foreign_key "security_logs", "delegates"
 end
