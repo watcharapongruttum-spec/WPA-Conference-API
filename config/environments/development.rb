@@ -11,7 +11,10 @@ Rails.application.configure do
   # IMPORTANT: ENABLE CACHING FOR RACK::ATTACK
   # ===============================
   config.action_controller.perform_caching = true
-  config.cache_store = :memory_store
+  # config.cache_store = :memory_store
+  config.cache_store = :redis_cache_store, { url: ENV['REDIS_URL'] }
+
+
 
   # Active Storage
   config.active_storage.service = :local

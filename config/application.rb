@@ -18,12 +18,15 @@ module WPAConferenceApi
     # ACTIVE JOB
     # ==============================
     # Dev ใช้ async ได้
-    config.active_job.queue_adapter = :async
+    # config.active_job.queue_adapter = :async
+    config.active_job.queue_adapter = :sidekiq
 
     # ==============================
     # CACHE (จำเป็นสำหรับ Rack::Attack)
     # ==============================
-    config.cache_store = :memory_store
+    # config.cache_store = :memory_store
+      config.cache_store = :redis_cache_store, { url: ENV['REDIS_URL'] }
+
 
     # ==============================
     # RACK ATTACK
