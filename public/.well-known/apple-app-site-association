@@ -1,0 +1,10 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["TEAMID.com.yourapp.package"],
+        "paths": ["/api/v1/reset-password*"]
+      }
+    ]
+  }
+}
