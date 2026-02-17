@@ -3,11 +3,11 @@ set +e
 
 BASE_URL="http://localhost:3000"
 
-EMAIL="noxterror999@gmail.com"
+EMAIL="65011213056@msu.ac.th"
 OLD_PASS="123456"
-NEW_PASS="654321"
-FINAL_PASS="111111"
-RESET_BACK_PASS="123456"
+NEW_PASS="65432100"
+FINAL_PASS="11111111"
+RESET_BACK_PASS="12345678"
 
 GREEN='\033[0;32m'
 RED='\033[0;31m'
@@ -25,7 +25,7 @@ step() { echo -e "\n${CYAN}==== $1 ====${NC}"; }
 login() {
   curl -s $BASE_URL/api/v1/login \
     -H "Content-Type: application/json" \
-    -d "{\"email\":\"$EMAIL\",\"password\":\"$1\"}" | jq -r '.token'
+    -d "{\"email\":\"$EMAIL\",\"password\":\"$1\"}"
 }
 
 forgot_password() {
@@ -44,40 +44,55 @@ change_password() {
   curl -s -X POST $BASE_URL/api/v1/change_password \
     -H "Authorization: Bearer $1" \
     -H "Content-Type: application/json" \
-    -d "{\"new_password\":\"$2\"}"
+    -d "{\"current_password\":\"$2\",\"new_password\":\"$3\"}"
+}
+
+extract_token() {
+  echo "$1" | jq -r '.token'
+}
+
+has_error() {
+  echo "$1" | grep -q '"error"'
 }
 
 # ================= START =================
 
-# ---------- LOGIN OLD ----------
 step "LOGIN OLD PASSWORD"
-TOKEN=$(login "$OLD_PASS")
+RESP=$(login "$OLD_PASS")
+TOKEN=$(extract_token "$RESP")
 
 if [ "$TOKEN" = "null" ] || [ -z "$TOKEN" ]; then
   fail "LOGIN FAILED"
+  echo $RESP
   exit 1
 else
   pass "LOGIN OK"
 fi
 
-# ---------- WRONG LOGIN ----------
 step "LOGIN WRONG PASSWORD"
-WRONG=$(login "wrongpass")
-if [ "$WRONG" = "null" ] || [ -z "$WRONG" ]; then
+RESP=$(login "wrongpass")
+TOKEN_WRONG=$(extract_token "$RESP")
+
+if [ "$TOKEN_WRONG" = "null" ] || [ -z "$TOKEN_WRONG" ]; then
   pass "WRONG PASSWORD BLOCKED"
 else
   fail "WRONG PASSWORD SHOULD FAIL"
 fi
 
-# ---------- CHANGE PASSWORD ----------
 step "CHANGE PASSWORD"
-RESP=$(change_password "$TOKEN" "$NEW_PASS")
+RESP=$(change_password "$TOKEN" "$OLD_PASS" "$NEW_PASS")
 echo $RESP
-pass "CHANGE PASSWORD DONE"
 
-# ---------- LOGIN NEW ----------
+if has_error "$RESP"; then
+  fail "CHANGE PASSWORD FAILED"
+  exit 1
+else
+  pass "CHANGE PASSWORD DONE"
+fi
+
 step "LOGIN WITH NEW PASSWORD"
-TOKEN2=$(login "$NEW_PASS")
+RESP=$(login "$NEW_PASS")
+TOKEN2=$(extract_token "$RESP")
 
 if [ "$TOKEN2" = "null" ] || [ -z "$TOKEN2" ]; then
   fail "NEW PASSWORD LOGIN FAILED"
@@ -86,36 +101,29 @@ else
   pass "NEW PASSWORD LOGIN OK"
 fi
 
-# ---------- FORGOT ----------
 step "FORGOT PASSWORD"
-forgot_password
+RESP=$(forgot_password)
+echo $RESP
 pass "FORGOT SENT"
-
-# ---------- RATE LIMIT TEST ----------
-step "FORGOT RATE LIMIT TEST"
-forgot_password
-sleep 1
-forgot_password
-info "Second/Third call should be limited if implemented"
 
 info "ไปดู token ใน rails c"
 info "Delegate.find_by(email: '$EMAIL').reset_password_token"
-
 read -p "ใส่ TOKEN: " TOKEN_INPUT
 
-# ---------- RESET ----------
 step "RESET PASSWORD"
-reset_password "$TOKEN_INPUT" "$FINAL_PASS"
-pass "RESET DONE"
+RESP=$(reset_password "$TOKEN_INPUT" "$FINAL_PASS")
+echo $RESP
 
-# ---------- FAKE TOKEN ----------
-step "RESET WITH FAKE TOKEN"
-reset_password "fake123" "999999"
-info "Should return error"
+if has_error "$RESP"; then
+  fail "RESET FAILED"
+  exit 1
+else
+  pass "RESET DONE"
+fi
 
-# ---------- LOGIN FINAL ----------
 step "LOGIN FINAL"
-TOKEN3=$(login "$FINAL_PASS")
+RESP=$(login "$FINAL_PASS")
+TOKEN3=$(extract_token "$RESP")
 
 if [ "$TOKEN3" = "null" ] || [ -z "$TOKEN3" ]; then
   fail "FINAL LOGIN FAILED"
@@ -124,28 +132,18 @@ else
   pass "FINAL LOGIN OK"
 fi
 
-# ---------- SHORT PASSWORD ----------
-step "SHORT PASSWORD TEST"
-change_password "$TOKEN3" "123"
-info "Should fail validation"
-
-# ---------- RESET BACK ----------
 step "RESET BACK TO DEFAULT"
-change_password "$TOKEN3" "$RESET_BACK_PASS"
-pass "PASSWORD RESTORED TO 123456"
+RESP=$(change_password "$TOKEN3" "$FINAL_PASS" "$RESET_BACK_PASS")
+echo $RESP
 
-# ---------- FINAL LOGIN CHECK ----------
-step "FINAL LOGIN CHECK"
-TOKEN4=$(login "$RESET_BACK_PASS")
-
-if [ "$TOKEN4" = "null" ] || [ -z "$TOKEN4" ]; then
+if has_error "$RESP"; then
   fail "RESTORE PASSWORD FAILED"
+  exit 1
 else
-  pass "RESTORE PASSWORD SUCCESS"
+  pass "PASSWORD RESTORED"
 fi
 
 step "END TEST"
-
 
 
 

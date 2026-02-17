@@ -6,10 +6,29 @@ class ChatMessage < ApplicationRecord
              foreign_key: "recipient_id",
              optional: true
 
-  validates :content, presence: true
-  validate :can_send_message
+  # ==========================
+  # CALLBACKS
+  # ==========================
+  before_validation :normalize_content
 
-  # ================= SCOPES =================
+  # ==========================
+  # VALIDATIONS
+  # ==========================
+  validates :content, presence: { message: "cannot be blank" }
+  validates :content,
+            length: {
+              minimum: 1,
+              maximum: 2000,
+              message: "must be between 1 and 2000 characters"
+            }
+
+  validate :content_not_empty_after_strip
+  validate :can_send_message
+  validate :room_or_direct_present
+
+  # ==========================
+  # SCOPES
+  # ==========================
   scope :not_deleted, -> { where(deleted_at: nil) }
 
   scope :unread_between, ->(sender_id, recipient_id) {
@@ -29,9 +48,9 @@ class ChatMessage < ApplicationRecord
     )
   }
 
-  # -------------------
-  # helpers
-  # -------------------
+  # ==========================
+  # HELPERS
+  # ==========================
   def edited?
     edited_at.present?
   end
@@ -40,14 +59,43 @@ class ChatMessage < ApplicationRecord
     deleted_at.present?
   end
 
-  # -------------------
+  def content_preview(length = 50)
+    content.to_s.truncate(length)
+  end
+
   private
-  # -------------------
+
+  # ==========================
+  # NORMALIZE
+  # ==========================
+  def normalize_content
+    return if content.nil?
+    self.content = content.strip
+  end
+
+  # ==========================
+  # VALIDATIONS
+  # ==========================
+  def content_not_empty_after_strip
+    if content.present? && content.strip.empty?
+      errors.add(:content, "cannot be only whitespace")
+    end
+  end
 
   def can_send_message
     return if chat_room.nil?
     unless chat_room.can_send_message?(sender)
-      errors.add(:base, "Cannot send message")
+      errors.add(:base, "Cannot send message to this room")
+    end
+  end
+
+  def room_or_direct_present
+    if chat_room.nil? && recipient.nil?
+      errors.add(:base, "Message must belong to a room or have a recipient")
+    end
+
+    if chat_room.present? && recipient.present?
+      errors.add(:base, "Message cannot have both room and recipient")
     end
   end
 end

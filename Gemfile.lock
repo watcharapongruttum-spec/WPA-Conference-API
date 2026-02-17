@@ -92,6 +92,7 @@ GEM
       activesupport
     chunky_png (1.4.0)
     concurrent-ruby (1.3.6)
+    connection_pool (2.5.5)
     crass (1.0.6)
     date (3.5.1)
     debug (1.11.1)
@@ -226,6 +227,8 @@ GEM
       nio4r (~> 2.0)
     racc (1.8.1)
     rack (2.2.21)
+    rack-attack (6.8.0)
+      rack (>= 1.0, < 4)
     rack-cors (2.0.2)
       rack (>= 2.0.0)
     rack-test (2.2.0)
@@ -264,6 +267,8 @@ GEM
       psych (>= 4.0.0)
       tsort
     redis (4.8.1)
+    redis-client (0.26.4)
+      connection_pool
     reline (0.6.3)
       io-console (~> 0.5)
     responders (3.2.0)
@@ -274,6 +279,19 @@ GEM
       rqrcode_core (~> 2.0)
     rqrcode_core (2.1.0)
     securerandom (0.4.1)
+    sentry-rails (6.3.1)
+      railties (>= 5.2.0)
+      sentry-ruby (~> 6.3.1)
+    sentry-ruby (6.3.1)
+      bigdecimal
+      concurrent-ruby (~> 1.0, >= 1.0.2)
+      logger
+    sidekiq (7.3.10)
+      base64
+      connection_pool (>= 2.3.0, < 3)
+      logger
+      rack (>= 2.2.4, < 3.3)
+      redis-client (>= 0.23.0, < 1)
     signet (0.21.0)
       addressable (~> 2.8)
       faraday (>= 0.17.5, < 3.a)
@@ -319,10 +337,14 @@ DEPENDENCIES
   knock
   pg (~> 1.1)
   puma (>= 5.0)
+  rack-attack
   rack-cors (~> 2.0)
   rails (~> 7.0.10)
   redis (~> 4.0)
   rqrcode
+  sentry-rails
+  sentry-ruby
+  sidekiq (~> 7.0)
   tzinfo-data
 
 CHECKSUMS
@@ -348,6 +370,7 @@ CHECKSUMS
   case_transform (0.2) sha256=e2ad4418dceeb227cf474cc332cd5004c95c136c04186c1cceaad8ab8de6fe3b
   chunky_png (1.4.0) sha256=89d5b31b55c0cf4da3cf89a2b4ebc3178d8abe8cbaf116a1dba95668502fdcfe
   concurrent-ruby (1.3.6) sha256=6b56837e1e7e5292f9864f34b69c5a2cbc75c0cf5338f1ce9903d10fa762d5ab
+  connection_pool (2.5.5) sha256=e54ff92855753df1fd7c59fa04a398833355f27dd14c074f8c83a05f72a716ad
   crass (1.0.6) sha256=dc516022a56e7b3b156099abc81b6d2b08ea1ed12676ac7a5657617f012bd45d
   date (3.5.1) sha256=750d06384d7b9c15d562c76291407d89e368dda4d4fff957eb94962d325a0dc0
   debug (1.11.1) sha256=2e0b0ac6119f2207a6f8ac7d4a73ca8eb4e440f64da0a3136c30343146e952b6
@@ -416,6 +439,7 @@ CHECKSUMS
   puma (7.2.0) sha256=bf8ef4ab514a4e6d4554cb4326b2004eba5036ae05cf765cfe51aba9706a72a8
   racc (1.8.1) sha256=4a7f6929691dbec8b5209a0b373bc2614882b55fc5d2e447a21aaa691303d62f
   rack (2.2.21) sha256=14e2f72f0765455fe424ff601588ac5ce84e95784f59e99251ffe1527152f739
+  rack-attack (6.8.0) sha256=f2499fdebf85bcc05573a22dff57d24305ac14ec2e4156cd3c28d47cafeeecf2
   rack-cors (2.0.2) sha256=415d4e1599891760c5dc9ef0349c7fecdf94f7c6a03e75b2e7c2b54b82adda1b
   rack-test (2.2.0) sha256=005a36692c306ac0b4a9350355ee080fd09ddef1148a5f8b2ac636c720f5c463
   rails (7.0.10) sha256=866eb2c53d3184543fdb770d7ea308e4ee518063226a9e176229f3c7a9537c25
@@ -425,11 +449,15 @@ CHECKSUMS
   rake (13.3.1) sha256=8c9e89d09f66a26a01264e7e3480ec0607f0c497a861ef16063604b1b08eb19c
   rdoc (7.1.0) sha256=494899df0706c178596ca6e1d50f1b7eb285a9b2aae715be5abd742734f17363
   redis (4.8.1) sha256=387ee086694fffc9632aaeb1efe4a7b1627ca783bf373320346a8a20cd93333a
+  redis-client (0.26.4) sha256=3ad70beff5da2653e02dfeae996e7d8d7147a558da12b16b2282ad345e4c7120
   reline (0.6.3) sha256=1198b04973565b36ec0f11542ab3f5cfeeec34823f4e54cebde90968092b1835
   responders (3.2.0) sha256=89c2d6ac0ae16f6458a11524cae4a8efdceba1a3baea164d28ee9046bd3df55a
   rqrcode (3.2.0) sha256=64c1494ca6bb67d731330f38b50e3fd09eeab4f5dcd04b608e21218d1d0b9542
   rqrcode_core (2.1.0) sha256=f303b85df89c1b8fc5ee8dc19808c9dc4330e6329b660d99d4a8cbb36ca13051
   securerandom (0.4.1) sha256=cc5193d414a4341b6e225f0cb4446aceca8e50d5e1888743fac16987638ea0b1
+  sentry-rails (6.3.1) sha256=53cce0aac52520a92f411180014fe2b684770865cc85bfa2bf5978631742e9b7
+  sentry-ruby (6.3.1) sha256=b2de4e9bada1053a36f4224d75617a2b44d33157e9030b20b86a791358c2e154
+  sidekiq (7.3.10) sha256=781eb4f65ef36042534ad73d72f211283afb7fee82eec786ada4ed1972ef8e3c
   signet (0.21.0) sha256=d617e9fbf24928280d39dcfefba9a0372d1c38187ffffd0a9283957a10a8cd5b
   stringio (3.2.0) sha256=c37cb2e58b4ffbd33fe5cd948c05934af997b36e0b6ca6fdf43afa234cf222e1
   thor (1.5.0) sha256=e3a9e55fe857e44859ce104a84675ab6e8cd59c650a49106a05f55f136425e73

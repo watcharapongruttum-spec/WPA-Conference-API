@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.0].define(version: 2026_02_16_072153) do
+ActiveRecord::Schema[7.0].define(version: 2026_02_17_022343) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -33,6 +33,20 @@ ActiveRecord::Schema[7.0].define(version: 2026_02_16_072153) do
     t.string "checksum", null: false
     t.datetime "created_at", precision: nil, null: false
     t.index ["key"], name: "index_active_storage_blobs_on_key", unique: true
+  end
+
+  create_table "audit_logs", force: :cascade do |t|
+    t.bigint "delegate_id", null: false
+    t.string "action", null: false
+    t.string "auditable_type", null: false
+    t.bigint "auditable_id"
+    t.jsonb "record_changes"
+    t.string "ip_address"
+    t.string "user_agent"
+    t.datetime "created_at", null: false
+    t.index ["action"], name: "idx_audit_logs_action"
+    t.index ["auditable_type", "auditable_id"], name: "idx_audit_logs_auditable"
+    t.index ["delegate_id", "created_at"], name: "idx_audit_logs_delegate_time"
   end
 
   create_table "audits", force: :cascade do |t|
@@ -131,12 +145,16 @@ ActiveRecord::Schema[7.0].define(version: 2026_02_16_072153) do
     t.datetime "edited_at"
     t.datetime "deleted_at"
     t.datetime "delivered_at"
+    t.index ["chat_room_id", "created_at"], name: "idx_chat_messages_room_timeline"
     t.index ["chat_room_id"], name: "index_chat_messages_on_chat_room_id"
+    t.index ["delivered_at", "deleted_at"], name: "idx_chat_messages_undelivered"
     t.index ["delivered_at"], name: "index_chat_messages_on_delivered_at"
     t.index ["read_at"], name: "index_chat_messages_on_read_at"
+    t.index ["recipient_id", "read_at", "deleted_at"], name: "idx_chat_messages_recipient_unread"
     t.index ["recipient_id", "read_at"], name: "idx_unread_messages"
     t.index ["recipient_id"], name: "index_chat_messages_on_recipient_id"
     t.index ["room_id"], name: "index_chat_messages_on_room_id"
+    t.index ["sender_id", "recipient_id", "created_at"], name: "idx_chat_messages_conversation"
     t.index ["sender_id", "recipient_id"], name: "index_chat_messages_on_sender_id_and_recipient_id"
     t.index ["sender_id"], name: "index_chat_messages_on_sender_id"
   end
@@ -158,6 +176,7 @@ ActiveRecord::Schema[7.0].define(version: 2026_02_16_072153) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.datetime "deleted_at"
+    t.index ["deleted_at", "room_kind"], name: "idx_chat_rooms_active_kind"
     t.index ["deleted_at"], name: "index_chat_rooms_on_deleted_at"
   end
 
@@ -327,6 +346,7 @@ ActiveRecord::Schema[7.0].define(version: 2026_02_16_072153) do
     t.index ["requester_id", "target_id"], name: "index_connection_requests_on_pair", unique: true
     t.index ["requester_id"], name: "index_connection_requests_on_requester_id"
     t.index ["status"], name: "index_connection_requests_on_status"
+    t.index ["target_id", "status"], name: "idx_connection_requests_pending"
     t.index ["target_id"], name: "index_connection_requests_on_target_id"
   end
 
@@ -401,6 +421,7 @@ ActiveRecord::Schema[7.0].define(version: 2026_02_16_072153) do
     t.datetime "reset_password_sent_at"
     t.index ["branch_id"], name: "index_delegates_on_branch_id"
     t.index ["company_id"], name: "index_delegates_on_company_id"
+    t.index ["device_token"], name: "idx_delegates_device_token"
     t.index ["email"], name: "index_delegates_on_email"
     t.index ["reset_password_token"], name: "index_delegates_on_reset_password_token", unique: true
   end
@@ -724,6 +745,8 @@ ActiveRecord::Schema[7.0].define(version: 2026_02_16_072153) do
     t.datetime "read_at"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.index ["delegate_id", "notification_type", "read_at"], name: "idx_notifications_by_type"
+    t.index ["delegate_id", "read_at"], name: "idx_notifications_unread"
     t.index ["delegate_id"], name: "index_notifications_on_delegate_id"
     t.index ["notifiable_type", "notifiable_id"], name: "index_notifications_on_notifiable"
     t.index ["read_at"], name: "index_notifications_on_read_at"
@@ -1108,8 +1131,10 @@ ActiveRecord::Schema[7.0].define(version: 2026_02_16_072153) do
     t.datetime "updated_at", precision: nil, null: false
     t.bigint "table_id"
     t.bigint "delegate_id"
+    t.index ["booker_id", "start_at"], name: "idx_schedules_booker_upcoming"
     t.index ["booker_id"], name: "index_schedules_on_booker_id"
     t.index ["conference_date_id"], name: "index_schedules_on_conference_date_id"
+    t.index ["delegate_id", "start_at"], name: "idx_schedules_upcoming"
     t.index ["delegate_id"], name: "index_schedules_on_delegate_id"
     t.index ["end_at"], name: "index_schedules_on_end_at"
     t.index ["start_at"], name: "index_schedules_on_start_at"
@@ -1283,6 +1308,7 @@ ActiveRecord::Schema[7.0].define(version: 2026_02_16_072153) do
   end
 
   add_foreign_key "active_storage_attachments", "active_storage_blobs", column: "blob_id"
+  add_foreign_key "audit_logs", "delegates"
   add_foreign_key "branch_services", "branches"
   add_foreign_key "branch_services", "services"
   add_foreign_key "chat_messages", "chat_rooms"

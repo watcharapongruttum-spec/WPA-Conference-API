@@ -148,20 +148,21 @@ class ChatRoomChannel < ApplicationCable::Channel
   # ===== MARK ALL READ =====
   def mark_conversation_as_read(target_id)
     now = Time.current
-
     scope = ChatMessage.where(
       sender_id: target_id,
       recipient_id: current_delegate.id,
       read_at: nil,
       deleted_at: nil
     )
-
-    ids = scope.pluck(:id)
+    
+    # ⭐ Update แล้วได้ ids กลับมาในครั้งเดียว (PostgreSQL)
+    ids = scope.update_all(read_at: now).is_a?(Integer) ? 
+          scope.pluck(:id) : 
+          scope.ids
+    
     return if ids.empty?
-
-    scope.update_all(read_at: now)
-
-    # broadcast ทีเดียว
+    
+    # ⭐ Broadcast ครั้งเดียว
     ChatChannel.broadcast_to(
       current_delegate,
       type: 'bulk_read',

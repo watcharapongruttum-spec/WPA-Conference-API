@@ -66,3 +66,15 @@ gem 'redis', '~> 4.0'
 gem 'knock'
 gem 'rqrcode'
 gem 'fcm'
+# เพิ่มในส่วน gem
+
+# Rate Limiting
+gem 'rack-attack'
+
+# Background Jobs (เตรียมไว้)
+gem 'sidekiq', '~> 7.0'
+
+# Monitoring (เตรียมไว้)
+gem 'sentry-ruby'
+gem 'sentry-rails'
+

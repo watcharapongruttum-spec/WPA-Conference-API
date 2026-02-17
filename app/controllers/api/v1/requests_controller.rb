@@ -14,66 +14,51 @@ module Api
         render json: @connections, each_serializer: Api::V1::ConnectionRequestSerializer
       end
       
+
       # POST /api/v1/requests
       def create
-        # 🔥 FIX: Validate target_id
         unless params[:target_id].present?
-          render json: { 
-            error: 'Target ID is required',
-            hint: 'Use target_id parameter'
+          return render json: {
+            error: 'Target ID is required'
           }, status: :unprocessable_entity
-          return
         end
-        
-        # 🔥 FIX: Check if target exists
+
         target = Delegate.find_by(id: params[:target_id])
-        
-        unless target
-          render json: { 
-            error: 'Target delegate not found' 
-          }, status: :not_found
-          return
+        return render json: { error: 'Target delegate not found' }, status: :not_found unless target
+
+        if target.id == current_delegate.id
+          return render json: { error: 'Cannot send connection request to yourself' }, status: :unprocessable_entity
         end
-        
-        # 🔥 FIX: Check if trying to connect to self
-        if params[:target_id].to_i == current_delegate.id
-          render json: { 
-            error: 'Cannot send connection request to yourself' 
-          }, status: :unprocessable_entity
-          return
-        end
-        
-        # 🔥 FIX: Check if connection already exists
+
         existing = ConnectionRequest.find_by(
           requester_id: current_delegate.id,
-          target_id: params[:target_id]
+          target_id: target.id
         )
-        
+
         if existing
-          render json: { 
+          return render json: {
             error: 'Connection request already exists',
-            status: existing.status,
-            request: Api::V1::ConnectionRequestSerializer.new(existing).serializable_hash
+            status: existing.status
           }, status: :unprocessable_entity
-          return
         end
-        
-        @connection = ConnectionRequest.new(
-          requester: current_delegate,
-          target_id: params[:target_id]
-        )
-        
-        if @connection.save
-          # 🔥 Create notification for target
+
+        ActiveRecord::Base.transaction do
+          @connection = ConnectionRequest.create!(
+            requester: current_delegate,
+            target: target
+          )
+
           notification = Notification.create!(
-            delegate: @connection.target,
+            delegate: target,
             notification_type: 'connection_request',
             notifiable: @connection
           )
-          
-          # 🔥 Broadcast notification
+
+          # 🔥 AUDIT
+          AuditLogger.connection_request_created(@connection, request)
+
           NotificationChannel.broadcast_to(
-            @connection.target,
+            target,
             type: 'new_notification',
             notification: {
               id: notification.id,
@@ -82,51 +67,44 @@ module Api
               requester: {
                 id: current_delegate.id,
                 name: current_delegate.name,
-                avatar_url: Api::V1::DelegateSerializer.new(current_delegate).avatar_url
+                avatar_url: current_delegate.avatar_url
               }
             }
           )
-          
-          render json: @connection, serializer: Api::V1::ConnectionRequestSerializer, status: :created
-        else
-          render json: { 
-            error: 'Failed to create connection request', 
-            errors: @connection.errors.full_messages 
-          }, status: :unprocessable_entity
         end
+
+        render json: @connection,
+              serializer: Api::V1::ConnectionRequestSerializer,
+              status: :created
+
+      rescue ActiveRecord::RecordInvalid => e
+        render json: { error: e.message }, status: :unprocessable_entity
       end
-      
+
+
+
+
+
+
       # PATCH /api/v1/requests/:id/accept
       def accept
-        # 🔥 FIX: Only target can accept
-        @connection = ConnectionRequest.pending.find_by(id: params[:id], target: current_delegate)
-        
-        if @connection.nil?
-          # Check if request exists but wrong user
-          wrong_user = ConnectionRequest.find_by(id: params[:id])
-          
-          if wrong_user
-            render json: { 
-              error: 'Only the target of the connection request can accept it',
-              hint: 'You must be the person who received this request'
-            }, status: :forbidden
-            return
-          else
-            render json: { 
-              error: 'Connection request not found or already processed' 
-            }, status: :not_found
-            return
-          end
-        end
-        
-        if @connection.accept
-          # 🔥 Notify requester
+        @connection = ConnectionRequest.pending
+                        .find_by(id: params[:id], target: current_delegate)
+
+        return render_not_found unless @connection
+
+        ActiveRecord::Base.transaction do
+          @connection.accept!
+
           notification = Notification.create!(
             delegate: @connection.requester,
             notification_type: 'connection_accepted',
             notifiable: @connection
           )
-          
+
+          # 🔥 AUDIT
+          AuditLogger.connection_accepted(@connection, request)
+
           NotificationChannel.broadcast_to(
             @connection.requester,
             type: 'new_notification',
@@ -137,56 +115,48 @@ module Api
               accepter: {
                 id: current_delegate.id,
                 name: current_delegate.name,
-                avatar_url: Api::V1::DelegateSerializer.new(current_delegate).avatar_url
+                avatar_url: current_delegate.avatar_url
               }
             }
           )
-          
-          render json: @connection, serializer: Api::V1::ConnectionRequestSerializer
-        else
-          render json: { 
-            error: 'Failed to accept connection',
-            errors: @connection.errors.full_messages
-          }, status: :unprocessable_entity
         end
+
+        render json: @connection,
+              serializer: Api::V1::ConnectionRequestSerializer
+
+      rescue ActiveRecord::RecordInvalid => e
+        render json: { error: e.message }, status: :unprocessable_entity
       end
+
+
+
+
+
+
+
       
       # PATCH /api/v1/requests/:id/reject
       def reject
-        # 🔥 FIX: Only target can reject
-        @connection = ConnectionRequest.pending.find_by(id: params[:id], target: current_delegate)
-        
-        if @connection.nil?
-          # Check if request exists but wrong user
-          wrong_user = ConnectionRequest.find_by(id: params[:id])
-          
-          if wrong_user
-            render json: { 
-              error: 'Only the target of the connection request can reject it',
-              hint: 'You must be the person who received this request'
-            }, status: :forbidden
-            return
-          else
-            render json: { 
-              error: 'Connection request not found or already processed' 
-            }, status: :not_found
-            return
-          end
-        end
-        
-        if @connection.reject
-          render json: { 
-            message: 'Connection rejected successfully',
-            request: Api::V1::ConnectionRequestSerializer.new(@connection).serializable_hash
-          }
-        else
-          render json: { 
-            error: 'Failed to reject connection',
-            errors: @connection.errors.full_messages
-          }, status: :unprocessable_entity
-        end
-      end
+        @connection = ConnectionRequest.pending
+                        .find_by(id: params[:id], target: current_delegate)
 
+        return render_not_found unless @connection
+
+        ActiveRecord::Base.transaction do
+          @connection.reject!
+
+          # 🔥 AUDIT
+          AuditLogger.connection_rejected(@connection, request)
+        end
+
+        render json: {
+          message: 'Connection rejected successfully',
+          request: Api::V1::ConnectionRequestSerializer.new(@connection).serializable_hash
+        }
+
+      rescue ActiveRecord::RecordInvalid => e
+        render json: { error: e.message }, status: :unprocessable_entity
+      end
 
 
 
@@ -217,6 +187,13 @@ module Api
 
 
 
+      private
+
+      def render_not_found
+        render json: {
+          error: 'Connection request not found or already processed'
+        }, status: :not_found
+      end
 
 
 
