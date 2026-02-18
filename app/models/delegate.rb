@@ -170,6 +170,30 @@ class Delegate < ApplicationRecord
   end
 
 
+  def connection_status_with(me)
+    return 'none' if me.nil? || me.id == id
+
+    connection = ConnectionRequest
+                  .where(
+                    "(requester_id = :me AND target_id = :other)
+                      OR (requester_id = :other AND target_id = :me)",
+                    me: me.id,
+                    other: id
+                  )
+                  .order(created_at: :desc)
+                  .first
+
+    return 'none' unless connection
+
+    case connection.status
+    when 'accepted'
+      'connected'
+    when 'pending'
+      connection.requester_id == me.id ? 'requested_by_me' : 'requested_to_me'
+    else
+      'none'
+    end
+  end
 
 
 

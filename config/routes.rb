@@ -69,6 +69,9 @@ Rails.application.routes.draw do
       get 'networking/directory', to: 'networking#directory'
       get 'networking/my_connections', to: 'networking#my_connections'
       get 'networking/pending_requests', to: 'networking#pending_requests'
+
+
+      
       
       # Requests
       resources :requests, only: [:index, :create] do
