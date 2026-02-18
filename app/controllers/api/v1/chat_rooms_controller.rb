@@ -1,11 +1,14 @@
 module Api
   module V1
     class ChatRoomsController < ApplicationController
+      before_action :set_room, only: [:destroy, :join, :leave]
+
       # ================= INDEX =================
       def index
         rooms = current_delegate.chat_rooms
           .where(deleted_at: nil)
           .includes(:chat_room_members)
+
         render json: rooms.map { |room|
           {
             id: room.id,
@@ -18,64 +21,58 @@ module Api
 
       # ================= CREATE =================
       def create
-        room = ChatRoom.create!(
-          title: params[:title],
-          room_kind: params[:room_kind]
-        )
-        
+        room = ChatRoom.create!(room_params)
+
         room.chat_room_members.create!(
           delegate: current_delegate,
           role: :admin
         )
-        
-        # ⭐ AUDIT LOG
+
         AuditLogger.room_created(room, current_delegate, request)
-        
-        render json: room, status: :created
-      rescue => e
-        render json: { error: e.message }, status: :unprocessable_entity
+
+        render json: {
+          id: room.id,
+          title: room.title,
+          room_kind: room.room_kind
+        }, status: :created
       end
 
       # ================= DESTROY =================
       def destroy
-        room = ChatRoom.find(params[:id])
-        member = room.chat_room_members.find_by(delegate: current_delegate)
-        return render json: { error: "Not member" }, status: 404 unless member
-        return render json: { error: "Admin only" }, status: 403 unless member.admin?
-        return render json: { error: "Already deleted" }, status: 422 if room.deleted_at.present?
-        
-        room.update!(deleted_at: Time.current)
-        
+        member = @room.chat_room_members.find_by(delegate: current_delegate)
+        return render json: { error: "Not member" }, status: :not_found unless member
+        return render json: { error: "Admin only" }, status: :forbidden unless member.admin?
+        return render json: { error: "Already deleted" }, status: :unprocessable_entity if @room.deleted_at.present?
+
+        @room.update!(deleted_at: Time.current)
+
         ChatRoomChannel.broadcast_to(
-          room,
+          @room,
           type: "room_deleted",
-          room_id: room.id
+          room_id: @room.id
         )
-        
-        # ⭐ AUDIT LOG
-        AuditLogger.room_deleted(room, current_delegate, request)
-        
+
+        AuditLogger.room_deleted(@room, current_delegate, request)
+
         render json: { success: true }
       end
 
       # ================= JOIN =================
       def join
-        room = ChatRoom.find(params[:id])
-        if room.deleted_at.present?
-          return render json: { error: "Room deleted" }, status: :unprocessable_entity
-        end
-        
+        return render json: { error: "Room deleted" }, status: :unprocessable_entity if @room.deleted_at.present?
+
         member = ChatRoomMember.find_or_initialize_by(
-          chat_room: room,
+          chat_room: @room,
           delegate: current_delegate
         )
+
         is_new_member = member.new_record?
         member.role ||= :member
         member.save!
-        
+
         if is_new_member
           ChatRoomChannel.broadcast_to(
-            room,
+            @room,
             type: "member_joined",
             delegate: {
               id: current_delegate.id,
@@ -83,36 +80,45 @@ module Api
               avatar_url: current_delegate.avatar_url
             }
           )
-          
-          # ⭐ AUDIT LOG
-          AuditLogger.room_joined(room, current_delegate, request)
+
+          AuditLogger.room_joined(@room, current_delegate, request)
         end
-        
+
         render json: { success: true, joined: is_new_member }
       end
 
       # ================= LEAVE =================
       def leave
-        room = ChatRoom.find(params[:id])
-        member = room.chat_room_members.find_by(delegate: current_delegate)
-        return render json: { error: "Not member" }, status: 404 unless member
-        
-        if member.admin? && room.chat_room_members.where(role: :admin).count == 1
-          return render json: { error: "Last admin cannot leave" }, status: 422
+        member = @room.chat_room_members.find_by(delegate: current_delegate)
+        return render json: { error: "Not member" }, status: :not_found unless member
+
+        if member.admin? && @room.chat_room_members.where(role: :admin).count == 1
+          return render json: { error: "Last admin cannot leave" }, status: :unprocessable_entity
         end
-        
+
         member.destroy
-        
+
         ChatRoomChannel.broadcast_to(
-          room,
+          @room,
           type: "member_left",
           delegate_id: current_delegate.id
         )
-        
-        # ⭐ AUDIT LOG
-        AuditLogger.room_left(room, current_delegate, request)
-        
+
+        AuditLogger.room_left(@room, current_delegate, request)
+
         render json: { success: true }
+      end
+
+      private
+
+      # ================= STRONG PARAMS =================
+      def room_params
+        params.require(:chat_room).permit(:title, :room_kind)
+      end
+
+      # ================= CALLBACK =================
+      def set_room
+        @room = ChatRoom.find(params[:id])
       end
     end
   end

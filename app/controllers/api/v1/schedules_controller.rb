@@ -8,7 +8,7 @@ module Api
       def index
         result = Schedule.build_index(
           delegate: current_delegate,
-          params: params
+          params: index_params
         )
 
         render json: {
@@ -36,13 +36,13 @@ module Api
         end
       end
 
-
-
-
+      # ===============================
+      # MY SCHEDULE
+      # ===============================
       def my_schedule
         result = Schedule.build_my_schedule(
           delegate: current_delegate,
-          params: params
+          params: timeline_params
         )
 
         return render json: { error: result[:error] }, status: :not_found if result[:error]
@@ -50,10 +50,13 @@ module Api
         render_timeline(result, current_delegate)
       end
 
+      # ===============================
+      # SCHEDULE OTHERS
+      # ===============================
       def schedule_others
         result = Schedule.build_schedule_others(
           viewer: current_delegate,
-          params: params
+          params: timeline_params
         )
 
         return render json: { error: result[:error] }, status: :not_found if result[:error]
@@ -63,6 +66,47 @@ module Api
 
       private
 
+      # ===============================
+      # STRONG PARAMS
+      # ===============================
+
+      # สำหรับสร้าง schedule
+      def schedule_params
+        params.require(:schedule).permit(
+          :start_time,
+          :end_time,
+          :date,
+          :table_number,
+          :team_id,
+          :location,
+          :note
+        )
+      end
+
+      # สำหรับ index (pagination / filter)
+      def index_params
+        params.permit(
+          :page,
+          :per_page,
+          :year,
+          :date,
+          :team_id,
+          :delegate_id
+        )
+      end
+
+      # สำหรับ my_schedule / schedule_others
+      def timeline_params
+        params.permit(
+          :year,
+          :date,
+          :delegate_id
+        )
+      end
+
+      # ===============================
+      # RENDER TIMELINE (เหมือนเดิม 100%)
+      # ===============================
       def render_timeline(result, scope_user, include_user: false)
         timeline = result[:schedules].map do |item|
           if item[:type] == "event"

@@ -3,9 +3,9 @@
     "relation": ["delegate_permission/common.handle_all_urls"],
     "target": {
       "namespace": "android_app",
-      "package_name": "com.wpa.mobile",
+      "package_name": "com.example.test_wpa",
       "sha256_cert_fingerprints": [
-        "12:34:56:AB:CD:..."
+        "ค่า SHA256 ที่ได้มา"
       ]
     }
   }

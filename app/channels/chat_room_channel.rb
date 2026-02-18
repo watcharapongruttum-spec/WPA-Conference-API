@@ -146,23 +146,45 @@ class ChatRoomChannel < ApplicationCable::Channel
   end
 
   # ===== MARK ALL READ =====
+
+  # def mark_conversation_as_read(target_id)
+  #   now = Time.current
+
+  #   scope = ChatMessage.where(
+  #     sender_id: target_id,
+  #     recipient_id: current_delegate.id,
+  #     read_at: nil,
+  #     deleted_at: nil
+  #   )
+
+  #   ids = scope.pluck(:id)
+  #   return if ids.empty?
+
+  #   ChatMessage.where(id: ids).update_all(read_at: now)
+
+  #   ChatChannel.broadcast_to(
+  #     current_delegate,
+  #     type: 'bulk_read',
+  #     message_ids: ids,
+  #     read_at: now
+  #   )
+  # end
+
   def mark_conversation_as_read(target_id)
     now = Time.current
+
     scope = ChatMessage.where(
       sender_id: target_id,
       recipient_id: current_delegate.id,
       read_at: nil,
       deleted_at: nil
     )
-    
-    # ⭐ Update แล้วได้ ids กลับมาในครั้งเดียว (PostgreSQL)
-    ids = scope.update_all(read_at: now).is_a?(Integer) ? 
-          scope.pluck(:id) : 
-          scope.ids
-    
+
+    ids = scope.pluck(:id)
     return if ids.empty?
-    
-    # ⭐ Broadcast ครั้งเดียว
+
+    ChatMessage.where(id: ids).update_all(read_at: now)
+
     ChatChannel.broadcast_to(
       current_delegate,
       type: 'bulk_read',
@@ -170,7 +192,6 @@ class ChatRoomChannel < ApplicationCable::Channel
       read_at: now
     )
   end
-
 
 
 

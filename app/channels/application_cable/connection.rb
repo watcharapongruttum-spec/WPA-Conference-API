@@ -16,16 +16,27 @@ module ApplicationCable
       token = request.params[:token]
       raise "Missing token" if token.blank?
 
+      # payload, = JWT.decode(
+      #   token,
+      #   ENV["JWT_SECRET"],
+      #   true,
+      #   {
+      #     algorithm: JWT_CONFIG[:algorithm],
+      #     iss: JWT_CONFIG[:issuer],
+      #     verify_iss: true
+      #   }
+      # )
+
+      
       payload, = JWT.decode(
         token,
-        ENV["JWT_SECRET"],
+        JWT_CONFIG[:secret],
         true,
-        {
-          algorithm: JWT_CONFIG[:algorithm],
-          iss: JWT_CONFIG[:issuer],
-          verify_iss: true
-        }
+        algorithm: JWT_CONFIG[:algorithm],
+        iss: JWT_CONFIG[:issuer],
+        verify_iss: true
       )
+
 
       delegate = Delegate.find_by(id: payload["delegate_id"])
       raise "Delegate not found" unless delegate

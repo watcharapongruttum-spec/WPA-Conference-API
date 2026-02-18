@@ -35,7 +35,14 @@ class ApplicationController < ActionController::API
       return nil if token.blank?
 
       begin
-        decoded = JWT.decode(token, JWT_SECRET, true, algorithm: JWT_CONFIG[:algorithm])
+        # decoded = JWT.decode(token, JWT_SECRET, true, algorithm: JWT_CONFIG[:algorithm])
+        decoded = JWT.decode(
+          token,
+          JWT_CONFIG[:secret],
+          true,
+          algorithm: JWT_CONFIG[:algorithm]
+        )
+
         delegate_id = decoded[0]['delegate_id']
         Delegate.find(delegate_id)
       rescue JWT::DecodeError, JWT::ExpiredSignature => e
