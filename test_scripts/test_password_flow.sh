@@ -3,8 +3,8 @@ set +e
 
 BASE_URL="http://localhost:3000"
 
-EMAIL="65011213056@msu.ac.th"
-OLD_PASS="123456"
+EMAIL="noxterror999@gmail.com"
+OLD_PASS="12345678"
 NEW_PASS="65432100"
 FINAL_PASS="11111111"
 RESET_BACK_PASS="12345678"
@@ -20,50 +20,70 @@ fail() { echo -e "${RED}❌ $1${NC}"; }
 info() { echo -e "${YELLOW}ℹ️ $1${NC}"; }
 step() { echo -e "\n${CYAN}==== $1 ====${NC}"; }
 
-# ---------- FUNCTIONS ----------
+# ---------- REQUEST HELPER ----------
+
+request() {
+  curl -s -w "\n%{http_code}" "$@"
+}
+
+extract_body() {
+  echo "$1" | head -n -1
+}
+
+extract_status() {
+  echo "$1" | tail -n1
+}
+
+extract_token() {
+  echo "$1" | jq -r '.token // empty'
+}
+
+has_error() {
+  echo "$1" | jq -e '.error // .errors' >/dev/null 2>&1
+}
+
+# ---------- API FUNCTIONS ----------
 
 login() {
-  curl -s $BASE_URL/api/v1/login \
+  request -X POST $BASE_URL/api/v1/login \
     -H "Content-Type: application/json" \
     -d "{\"email\":\"$EMAIL\",\"password\":\"$1\"}"
 }
 
 forgot_password() {
-  curl -s -X POST $BASE_URL/api/v1/forgot_password \
+  request -X POST $BASE_URL/api/v1/forgot_password \
     -H "Content-Type: application/json" \
     -d "{\"email\":\"$EMAIL\"}"
 }
 
 reset_password() {
-  curl -s -X POST $BASE_URL/api/v1/reset_password \
+  request -X POST $BASE_URL/api/v1/reset_password \
     -H "Content-Type: application/json" \
     -d "{\"token\":\"$1\",\"password\":\"$2\",\"password_confirmation\":\"$2\"}"
 }
 
 change_password() {
-  curl -s -X POST $BASE_URL/api/v1/change_password \
+  request -X POST $BASE_URL/api/v1/change_password \
     -H "Authorization: Bearer $1" \
     -H "Content-Type: application/json" \
-    -d "{\"current_password\":\"$2\",\"new_password\":\"$3\"}"
-}
-
-extract_token() {
-  echo "$1" | jq -r '.token'
-}
-
-has_error() {
-  echo "$1" | grep -q '"error"'
+    -d "{
+      \"current_password\":\"$2\",
+      \"new_password\":\"$3\",
+      \"new_password_confirmation\":\"$3\"
+    }"
 }
 
 # ================= START =================
 
 step "LOGIN OLD PASSWORD"
 RESP=$(login "$OLD_PASS")
-TOKEN=$(extract_token "$RESP")
+BODY=$(extract_body "$RESP")
+STATUS=$(extract_status "$RESP")
+TOKEN=$(extract_token "$BODY")
 
-if [ "$TOKEN" = "null" ] || [ -z "$TOKEN" ]; then
+if [ "$STATUS" != "200" ] || [ -z "$TOKEN" ]; then
   fail "LOGIN FAILED"
-  echo $RESP
+  echo "$BODY"
   exit 1
 else
   pass "LOGIN OK"
@@ -71,9 +91,10 @@ fi
 
 step "LOGIN WRONG PASSWORD"
 RESP=$(login "wrongpass")
-TOKEN_WRONG=$(extract_token "$RESP")
+BODY=$(extract_body "$RESP")
+STATUS=$(extract_status "$RESP")
 
-if [ "$TOKEN_WRONG" = "null" ] || [ -z "$TOKEN_WRONG" ]; then
+if [ "$STATUS" != "200" ]; then
   pass "WRONG PASSWORD BLOCKED"
 else
   fail "WRONG PASSWORD SHOULD FAIL"
@@ -81,9 +102,11 @@ fi
 
 step "CHANGE PASSWORD"
 RESP=$(change_password "$TOKEN" "$OLD_PASS" "$NEW_PASS")
-echo $RESP
+BODY=$(extract_body "$RESP")
+STATUS=$(extract_status "$RESP")
+echo "$BODY"
 
-if has_error "$RESP"; then
+if [ "$STATUS" != "200" ]; then
   fail "CHANGE PASSWORD FAILED"
   exit 1
 else
@@ -92,9 +115,11 @@ fi
 
 step "LOGIN WITH NEW PASSWORD"
 RESP=$(login "$NEW_PASS")
-TOKEN2=$(extract_token "$RESP")
+BODY=$(extract_body "$RESP")
+STATUS=$(extract_status "$RESP")
+TOKEN2=$(extract_token "$BODY")
 
-if [ "$TOKEN2" = "null" ] || [ -z "$TOKEN2" ]; then
+if [ "$STATUS" != "200" ] || [ -z "$TOKEN2" ]; then
   fail "NEW PASSWORD LOGIN FAILED"
   exit 1
 else
@@ -103,7 +128,8 @@ fi
 
 step "FORGOT PASSWORD"
 RESP=$(forgot_password)
-echo $RESP
+BODY=$(extract_body "$RESP")
+echo "$BODY"
 pass "FORGOT SENT"
 
 info "ไปดู token ใน rails c"
@@ -112,9 +138,11 @@ read -p "ใส่ TOKEN: " TOKEN_INPUT
 
 step "RESET PASSWORD"
 RESP=$(reset_password "$TOKEN_INPUT" "$FINAL_PASS")
-echo $RESP
+BODY=$(extract_body "$RESP")
+STATUS=$(extract_status "$RESP")
+echo "$BODY"
 
-if has_error "$RESP"; then
+if [ "$STATUS" != "200" ]; then
   fail "RESET FAILED"
   exit 1
 else
@@ -123,9 +151,11 @@ fi
 
 step "LOGIN FINAL"
 RESP=$(login "$FINAL_PASS")
-TOKEN3=$(extract_token "$RESP")
+BODY=$(extract_body "$RESP")
+STATUS=$(extract_status "$RESP")
+TOKEN3=$(extract_token "$BODY")
 
-if [ "$TOKEN3" = "null" ] || [ -z "$TOKEN3" ]; then
+if [ "$STATUS" != "200" ] || [ -z "$TOKEN3" ]; then
   fail "FINAL LOGIN FAILED"
   exit 1
 else
@@ -134,9 +164,11 @@ fi
 
 step "RESET BACK TO DEFAULT"
 RESP=$(change_password "$TOKEN3" "$FINAL_PASS" "$RESET_BACK_PASS")
-echo $RESP
+BODY=$(extract_body "$RESP")
+STATUS=$(extract_status "$RESP")
+echo "$BODY"
 
-if has_error "$RESP"; then
+if [ "$STATUS" != "200" ]; then
   fail "RESTORE PASSWORD FAILED"
   exit 1
 else
@@ -144,6 +176,3 @@ else
 fi
 
 step "END TEST"
-
-
-

@@ -1,45 +1,91 @@
 module AuditLogger
-  # ===== AUTH =====
-  def self.login(delegate, request)
+
+    # ================= AUTH =================
+
+  def self.login(delegate: nil, request: nil, email: nil, metadata: nil, success: true)
     AuditLog.log(
       delegate: delegate,
       action: 'login',
       auditable: delegate,
-      record_changes: { ip: request&.remote_ip, email: delegate.email },
+      record_changes: {
+        success: success,
+        email: email || delegate&.email,
+        ip: metadata&.dig(:ip) || request&.remote_ip,
+        user_agent: metadata&.dig(:user_agent)
+      },
       request: request
     )
+  rescue => e
+    Rails.logger.error("[AuditLogger] login failed: #{e.message}")
   end
-  
-  def self.logout(delegate, request)
+
+  def self.logout(delegate:, request:)
     AuditLog.log(
       delegate: delegate,
       action: 'logout',
       auditable: delegate,
-      record_changes: { ip: request&.remote_ip },
+      record_changes: { ip: request.remote_ip },
       request: request
     )
   end
-  
-  def self.password_change(delegate, request)
+
+  def self.password_change(delegate:, request:, success: true)
     AuditLog.log(
       delegate: delegate,
       action: 'password_change',
       auditable: delegate,
-      record_changes: { changed_at: Time.current },
+      record_changes: {
+        success: success,
+        changed_at: Time.current
+      },
       request: request
     )
+  rescue => e
+    Rails.logger.error("[AuditLogger] password_change failed: #{e.message}")
   end
-  
-  def self.password_reset(delegate, request)
+
+  def self.password_reset_request(delegate:, request:)
     AuditLog.log(
       delegate: delegate,
-      action: 'password_reset',
+      action: 'password_reset_request',
       auditable: delegate,
-      record_changes: { reset_at: Time.current },
+      record_changes: {
+        ip: request.remote_ip,
+        requested_at: Time.current
+      },
       request: request
     )
+  rescue => e
+    Rails.logger.error("[AuditLogger] password_reset_request failed: #{e.message}")
   end
+
+  def self.password_reset(delegate:, request:, success:)
+    AuditLog.log(
+      delegate: delegate,
+      action: success ? 'password_reset_success' : 'password_reset_failed',
+      auditable: delegate,
+      record_changes: {
+        ip: request.remote_ip
+      },
+      request: request
+    )
+  rescue => e
+    Rails.logger.error("[AuditLogger] password_reset failed: #{e.message}")
+  end
+
+  # ================= OTHER SECTIONS (เหมือนเดิมได้) =================
+
   
+
+
+
+
+
+
+
+
+
+
   # ===== MESSAGES =====
   def self.message_created(message, request)
     AuditLog.log(

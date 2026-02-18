@@ -3,23 +3,50 @@ module Api
     class MessagesController < ApplicationController
       before_action :set_message, only: [:update, :destroy]
 
-      # def read_all
-      #   now = Time.current
+      def rooms
+        me = current_delegate.id
 
-      #   scope = current_delegate.received_messages
-      #                           .where(read_at: nil)
+        messages = ChatMessage
+                    .not_deleted
+                    .where("sender_id = :me OR recipient_id = :me", me: me)
 
-      #   ids = scope.pluck(:id)
+        # หา id ของคู่สนทนา
+        partner_ids = messages.pluck(:sender_id, :recipient_id)
+                              .flatten
+                              .uniq
+                              .reject { |id| id == me }
 
-      #   return render json: { updated: 0 } if ids.empty?
+        rooms = partner_ids.map do |partner_id|
+          conversation = ChatMessage
+                          .not_deleted
+                          .where(
+                            "(sender_id = :me AND recipient_id = :other)
+                              OR
+                              (sender_id = :other AND recipient_id = :me)",
+                            me: me,
+                            other: partner_id
+                          )
 
-      #   ChatMessage.where(id: ids).update_all(read_at: now)
+          last_message = conversation.order(created_at: :desc).first
+          unread_count = conversation.where(
+                          recipient_id: me,
+                          read_at: nil
+                        ).count
 
-      #   render json: {
-      #     updated: ids.count,
-      #     read_at: now
-      #   }
-      # end
+          {
+            partner: Delegate.find(partner_id),
+            last_message: last_message,
+            unread_count: unread_count
+          }
+        end
+
+        # sort ล่าสุดก่อน
+        rooms.sort_by! { |r| r[:last_message]&.created_at || Time.at(0) }
+        rooms.reverse!
+
+        render json: rooms
+      end
+
 
 
       # ================= INDEX =================
