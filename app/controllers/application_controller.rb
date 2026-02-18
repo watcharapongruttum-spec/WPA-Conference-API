@@ -22,7 +22,7 @@ class ApplicationController < ActionController::API
   # rescue_from StandardError, with: :handle_unexpected_error
   rescue_from StandardError, with: :handle_unexpected_error if Rails.env.production?
 
-
+  before_action :set_active_storage_host
   before_action :authenticate_delegate!
 
   private
@@ -95,5 +95,27 @@ class ApplicationController < ActionController::API
       render json: { error: 'Invalid or expired token' }, status: :unauthorized
     end
   end
+
+
+
+
+
+
+
+
+
+  private
+
+  def set_active_storage_host
+    ActiveStorage::Current.url_options = {
+      host: request.base_url
+    }
+  end
+
+
+
+
+
+
 
 end

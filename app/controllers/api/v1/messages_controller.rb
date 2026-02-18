@@ -6,46 +6,58 @@ module Api
       def rooms
         me = current_delegate.id
 
-        messages = ChatMessage
-                    .not_deleted
-                    .where("sender_id = :me OR recipient_id = :me", me: me)
+        conversations = ChatMessage
+          .not_deleted
+          .where("sender_id = :me OR recipient_id = :me", me: me)
 
-        # หา id ของคู่สนทนา
-        partner_ids = messages.pluck(:sender_id, :recipient_id)
-                              .flatten
-                              .uniq
-                              .reject { |id| id == me }
+        partner_ids = conversations
+                        .pluck(:sender_id, :recipient_id)
+                        .flatten
+                        .uniq
+                        .reject { |id| id == me }
 
         rooms = partner_ids.map do |partner_id|
-          conversation = ChatMessage
-                          .not_deleted
-                          .where(
-                            "(sender_id = :me AND recipient_id = :other)
-                              OR
-                              (sender_id = :other AND recipient_id = :me)",
-                            me: me,
-                            other: partner_id
-                          )
+          convo = ChatMessage
+                    .not_deleted
+                    .where(
+                      "(sender_id = :me AND recipient_id = :other)
+                      OR
+                      (sender_id = :other AND recipient_id = :me)",
+                      me: me,
+                      other: partner_id
+                    )
 
-          last_message = conversation.order(created_at: :desc).first
-          unread_count = conversation.where(
-                          recipient_id: me,
-                          read_at: nil
-                        ).count
+          last_msg = convo.order(created_at: :desc).first
+
+          unread = convo.where(
+            recipient_id: me,
+            read_at: nil
+          ).count
+
+          partner = Delegate.find(partner_id)
 
           {
-            partner: Delegate.find(partner_id),
-            last_message: last_message,
-            unread_count: unread_count
+            id: partner_id, # ใช้ partner_id เป็น room id สำหรับ direct
+            room_kind: "direct",
+            delegate: {
+              id: partner.id,
+              name: partner.name,
+              title: partner.title,
+              avatar_url: partner.avatar&.url
+
+            },
+            last_message: last_msg&.content,
+            last_message_at: last_msg&.created_at,
+            unread_count: unread
           }
         end
 
-        # sort ล่าสุดก่อน
-        rooms.sort_by! { |r| r[:last_message]&.created_at || Time.at(0) }
+        rooms.sort_by! { |r| r[:last_message_at] || Time.at(0) }
         rooms.reverse!
 
         render json: rooms
       end
+
 
 
 
