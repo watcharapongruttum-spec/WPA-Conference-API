@@ -57,20 +57,8 @@ module Api
           # 🔥 AUDIT
           AuditLogger.connection_request_created(@connection, request)
 
-          NotificationChannel.broadcast_to(
-            target,
-            type: 'new_notification',
-            notification: {
-              id: notification.id,
-              type: 'connection_request',
-              created_at: notification.created_at,
-              requester: {
-                id: current_delegate.id,
-                name: current_delegate.name,
-                avatar_url: current_delegate.avatar_url
-              }
-            }
-          )
+          Notification::BroadcastService.call(notification)
+
         end
 
         render json: @connection,
@@ -105,20 +93,17 @@ module Api
           # 🔥 AUDIT
           AuditLogger.connection_accepted(@connection, request)
 
-          NotificationChannel.broadcast_to(
-            @connection.requester,
-            type: 'new_notification',
-            notification: {
-              id: notification.id,
-              type: 'connection_accepted',
-              created_at: notification.created_at,
-              accepter: {
-                id: current_delegate.id,
-                name: current_delegate.name,
-                avatar_url: current_delegate.avatar_url
-              }
-            }
-          )
+          Notification::BroadcastService.call(notification)
+
+
+
+
+
+
+
+
+
+
         end
 
         render json: @connection,

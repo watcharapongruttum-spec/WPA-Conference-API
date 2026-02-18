@@ -1,7 +1,8 @@
 class Delegate < ApplicationRecord
   has_secure_password
-  
+
   validates :password, length: { minimum: 6 }, allow_nil: true
+
   # ========================
   # Associations
   # ========================
@@ -71,6 +72,7 @@ class Delegate < ApplicationRecord
   # ========================
   # Login helpers
   # ========================
+
   def first_login?
     !has_logged_in
   end
@@ -84,50 +86,9 @@ class Delegate < ApplicationRecord
     )
   end
 
-
-  # ========================
-  # Deep Reset Password
-  # ========================
-  def generate_reset_token!
-    self.reset_password_token = SecureRandom.hex(20)
-    self.reset_password_sent_at = Time.current
-    save!(validate: false)
-  end
-
-  def reset_token_valid?
-    reset_password_sent_at && reset_password_sent_at > 2.hours.ago
-  end
-
-  def clear_reset_token!
-    update_columns(
-      reset_password_token: nil,
-      reset_password_sent_at: nil
-    )
-  end
-
-
-
-
-
-
-
-
   # ========================
   # JWT
   # ========================
-  # def generate_jwt_token
-  #   payload = {
-  #     delegate_id: id,
-  #     iss: JWT_CONFIG[:issuer],
-  #     exp: Time.now.to_i + JWT_CONFIG[:expiration_time]
-  #   }
-
-  #   JWT.encode(
-  #     payload,
-  #     JWT_SECRET,
-  #     JWT_CONFIG[:algorithm]
-  #   )
-  # end
 
   def generate_jwt_token
     payload = {
@@ -139,10 +100,32 @@ class Delegate < ApplicationRecord
     JWT.encode(payload, JWT_CONFIG[:secret], JWT_CONFIG[:algorithm])
   end
 
-
   # ========================
   # Password reset
   # ========================
+
+  def reset_token_valid?
+    reset_password_sent_at && reset_password_sent_at > 15.minutes.ago
+  end
+
+  def generate_reset_token!
+    update!(
+      reset_password_token: SecureRandom.hex(20),
+      reset_password_sent_at: Time.current
+    )
+  end
+
+  def clear_reset_token!
+    update!(
+      reset_password_token: nil,
+      reset_password_sent_at: nil
+    )
+  end
+
+  # ========================
+  # Temporary Password
+  # ========================
+
   def generate_temporary_password(overwrite: false)
     return nil if password_digest.present? && !overwrite
 
@@ -159,54 +142,31 @@ class Delegate < ApplicationRecord
   # ========================
   # Connections helpers
   # ========================
+
   def connected_delegates
     ConnectionRequest.accepted
       .where(requester: self)
       .or(ConnectionRequest.accepted.where(target: self))
+      .includes(:requester, :target)
       .map { |c| c.requester == self ? c.target : c.requester }
   end
 
-
-
-
-
-
+  # ========================
+  # Avatar
+  # ========================
 
   def avatar_url
-    if avatar_file_name.present?
-      # ถ้าใช้ paperclip / active storage ก็ปรับตามจริง
-      avatar.url
-    else
-      "https://ui-avatars.com/api/?name=#{CGI.escape(name)}&background=0D8ABC&color=fff"
-    end
+    return nil unless avatar.attached?
+
+    Rails.application.routes.url_helpers.rails_blob_url(
+      avatar,
+      only_path: true
+    )
   end
 
 
 
 
-
-
-    # =========================
-    # RESET PASSWORD METHODS
-    # =========================
-
-    def reset_token_valid?
-      reset_password_sent_at && reset_password_sent_at > 15.minutes.ago
-    end
-
-    def generate_reset_token!
-      update!(
-        reset_password_token: SecureRandom.hex(20),
-        reset_password_sent_at: Time.current
-      )
-    end
-
-    def clear_reset_token!
-      update!(
-        reset_password_token: nil,
-        reset_password_sent_at: nil
-      )
-    end
 
 
 

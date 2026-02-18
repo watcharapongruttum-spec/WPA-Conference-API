@@ -3,21 +3,40 @@ module Api
   module V1
     class NotificationsController < ApplicationController
       
-      # GET /api/v1/notifications
-      def index
-        @notifications = current_delegate.notifications.order(created_at: :desc)
 
+    # GET /api/v1/notifications
+    def index
+      notifications = current_delegate.notifications
 
-        case params[:type]
-        when 'system'
-          @notifications = @notifications.where.not(notification_type: 'new_message')
-        when 'message'
-          @notifications = @notifications.where(notification_type: 'new_message')
-        end
-
-        
-        render json: @notifications, each_serializer: Api::V1::NotificationSerializer
+      # ------------------------
+      # Filter ก่อน
+      # ------------------------
+      case params[:type]
+      when 'system'
+        notifications = notifications.where.not(notification_type: 'new_message')
+      when 'message'
+        notifications = notifications.where(notification_type: 'new_message')
       end
+
+      # ------------------------
+      # Order + Limit + Includes (แก้ N+1 avatar)
+      # ------------------------
+      @notifications = notifications
+        .order(created_at: :desc)
+        .limit(50)
+        .includes(
+          notifiable: [
+            { sender: { avatar_attachment: :blob } },
+            { requester: { avatar_attachment: :blob } },
+            { target: { avatar_attachment: :blob } }
+          ]
+        )
+
+      render json: @notifications,
+            each_serializer: Api::V1::NotificationSerializer
+    end
+
+
       
 
       

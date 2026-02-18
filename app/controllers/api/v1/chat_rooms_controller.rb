@@ -19,9 +19,14 @@ module Api
         }
       end
 
+
+
       # ================= CREATE =================
       def create
-        room = ChatRoom.create!(room_params)
+        params = room_params
+        return unless params
+
+        room = ChatRoom.create!(params)
 
         room.chat_room_members.create!(
           delegate: current_delegate,
@@ -35,7 +40,14 @@ module Api
           title: room.title,
           room_kind: room.room_kind
         }, status: :created
+
+      rescue ActiveRecord::RecordInvalid => e
+        render json: {
+          error: "Validation failed",
+          messages: e.record.errors.full_messages
+        }, status: :unprocessable_entity
       end
+
 
       # ================= DESTROY =================
       def destroy
@@ -114,7 +126,13 @@ module Api
       # ================= STRONG PARAMS =================
       def room_params
         params.require(:chat_room).permit(:title, :room_kind)
+      rescue ActionController::ParameterMissing => e
+        render json: {
+          error: "Missing parameter: #{e.param}"
+        }, status: :bad_request
+        nil
       end
+
 
       # ================= CALLBACK =================
       def set_room

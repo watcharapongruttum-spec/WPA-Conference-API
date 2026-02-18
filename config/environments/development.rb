@@ -15,6 +15,8 @@ Rails.application.configure do
   config.cache_store = :redis_cache_store, { url: ENV['REDIS_URL'] }
 
 
+  # ActiveStorage URL host
+  Rails.application.routes.default_url_options[:host] = "localhost:3000"
 
   # Active Storage
   config.active_storage.service = :local

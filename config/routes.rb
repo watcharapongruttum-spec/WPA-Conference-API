@@ -7,6 +7,10 @@ Rails.application.routes.draw do
       post 'reset_password', to: 'sessions#reset_password'
       get "/reset-password", to: "deeplink#reset_password"
 
+      # routes.rb
+      post 'messages/read_all', to: 'messages#read_all'
+
+
       
       # Profile
       get 'profile(/:id)', to: 'profile#show'

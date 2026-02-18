@@ -1,0 +1,61 @@
+API REGRESSION TEST Wed Feb 18 10:42:14 +07 2026
+=============================
+---- LOGIN TEST ----
+✅ LOGIN SUCCESS
+Profile status: 200 (expect 200)
+
+---- STRONG PARAM TEST ----
+Invalid room create status: 400 (expect 400/422)
+
+---- MESSAGE VALIDATION ----
+Blank message status: 422 (expect 422)
+Long message status: 422 (expect 422)
+
+---- BULK READ TEST ----
+Read all status: 200 (expect 200)
+Unread count after read_all: 0 (expect 0 or small number)
+
+---- NOTIFICATION STRUCTURE ----
+Notification keys:
+[
+  "created_at",
+  "id",
+  "notifiable",
+  "read_at",
+  "type",
+  "unread?"
+]
+
+---- NOTIFICATION PERFORMANCE ----
+Single request time: 0.097739s
+✅ PERFORMANCE OK
+
+---- NOTIFICATION STRESS TEST (20 requests) ----
+Request 1: 0.033250 s
+Request 2: 0.039077 s
+Request 3: 0.033557 s
+Request 4: 0.033852 s
+Request 5: 0.042260 s
+Request 6: 0.030306 s
+Request 7: 0.076355 s
+Request 8: 0.030271 s
+Request 9: 0.029206 s
+Request 10: 0.029897 s
+Request 11: 0.067014 s
+Request 12: 0.057991 s
+Request 13: 0.038792 s
+Request 14: 0.029764 s
+Request 15: 0.028569 s
+Request 16: 0.036575 s
+Request 17: 0.029173 s
+Request 18: 0.028236 s
+Request 19: 0.029336 s
+Request 20: 0.075830 s
+Average time: 0.0399656 s
+✅ STRESS PERFORMANCE OK
+
+---- JWT TAMPER TEST ----
+Tampered JWT status: 401 (expect 401)
+
+=============================
+TEST COMPLETE
