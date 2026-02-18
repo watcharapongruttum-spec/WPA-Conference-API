@@ -17,12 +17,18 @@ module Api
 
       # ---------------- SHOW ----------------
       def show
-        @delegate = current_delegate || Delegate.find(params[:id])
+        @delegate = Delegate.find(params[:id])
+
+        # ไม่ให้ดูตัวเองผ่าน /delegates/:id
+        if @delegate.id == current_delegate.id
+          return render json: { error: "Use /profile for self" }, status: :unprocessable_entity
+        end
 
         render json: @delegate,
-               serializer: Api::V1::DelegateSerializer,
-               scope: current_delegate
+              serializer: Api::V1::DelegateSerializer,
+              scope: current_delegate
       end
+
 
       # ---------------- SEARCH ----------------
       def search
