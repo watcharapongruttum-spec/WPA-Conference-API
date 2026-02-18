@@ -3,23 +3,23 @@ module Api
     class MessagesController < ApplicationController
       before_action :set_message, only: [:update, :destroy]
 
-      def read_all
-        now = Time.current
+      # def read_all
+      #   now = Time.current
 
-        scope = current_delegate.received_messages
-                                .where(read_at: nil)
+      #   scope = current_delegate.received_messages
+      #                           .where(read_at: nil)
 
-        ids = scope.pluck(:id)
+      #   ids = scope.pluck(:id)
 
-        return render json: { updated: 0 } if ids.empty?
+      #   return render json: { updated: 0 } if ids.empty?
 
-        ChatMessage.where(id: ids).update_all(read_at: now)
+      #   ChatMessage.where(id: ids).update_all(read_at: now)
 
-        render json: {
-          updated: ids.count,
-          read_at: now
-        }
-      end
+      #   render json: {
+      #     updated: ids.count,
+      #     read_at: now
+      #   }
+      # end
 
 
       # ================= INDEX =================

@@ -4,14 +4,16 @@ module Api
 
       # PATCH /api/v1/device_token
       def update
-        if device_params[:device_token].blank?
-          return render json: { error: "device_token required" }, status: :unprocessable_entity
-        end
+        token = device_params[:device_token]
 
-        current_delegate.update!(device_params)
+        return render json: { error: "device_token required" }, status: :unprocessable_entity if token.blank?
+        return render json: { success: true } if current_delegate.device_token == token
+
+        current_delegate.update!(device_token: token)
 
         render json: { success: true }
       end
+
 
       private
 

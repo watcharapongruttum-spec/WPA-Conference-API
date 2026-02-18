@@ -1,7 +1,5 @@
 # app/controllers/api/v1/chat_messages_controller.rb
 class Api::V1::ChatMessagesController < ApplicationController
-
-
   def create
     room = ChatRoom.find(params[:chat_room_id])
 
@@ -14,19 +12,16 @@ class Api::V1::ChatMessagesController < ApplicationController
       content: params[:content]
     )
 
-    ChatRoomChannel.broadcast_to(room, message)
-    render json: message
-  end
+    serialized = Api::V1::ChatMessageSerializer
+                   .new(message)
+                   .serializable_hash[:data]
 
+    ChatRoomChannel.broadcast_to(room, {
+      type: "room_message",
+      room_id: room.id,
+      message: serialized
+    })
 
-  private
-
-  def serialize(message)
-    {
-      id: message.id,
-      content: message.content,
-      sender_id: message.sender_id,
-      created_at: message.created_at
-    }
+    render json: message, serializer: Api::V1::ChatMessageSerializer
   end
 end

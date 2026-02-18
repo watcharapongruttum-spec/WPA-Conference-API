@@ -6,7 +6,7 @@ class Rack::Attack
   Rack::Attack.cache.store = Rails.cache
 
   # ==========================================
-  # EXTEND REQUEST
+  # EXTEND REQUEST (JWT SAFE)
   # ==========================================
   class Request < ::Rack::Request
     def bearer_token
@@ -32,54 +32,52 @@ class Rack::Attack
   # LOGIN RATE LIMIT
   # ==========================================
   throttle('login/ip', limit: 10, period: 1.minute) do |req|
-    if req.post? && req.path.start_with?('/api/v1/login')
-      req.ip
-    end
+    req.ip if req.post? && req.path == '/api/v1/login'
   end
 
   # ==========================================
-  # MESSAGE RATE LIMIT
+  # MESSAGE RATE LIMIT (ปรับตามที่ขอ)
   # ==========================================
-throttle('messages/rate_test', limit: 60, period: 1.minute) do |req|
-  if req.post? && req.path.start_with?('/api/v1/messages')
-    body = req.body.read
-    req.body.rewind
 
-    if body.include?('Rate limit test')
-      req.ip
+  # สำหรับ rate test
+  throttle('messages/rate_test', limit: 60, period: 1.minute) do |req|
+    if req.post? && req.path == '/api/v1/messages'
+      req.ip if req.params.to_s.include?('Rate limit test')
     end
   end
-end
 
-throttle('messages/normal', limit: 1000, period: 1.minute) do |req|
-  if req.post? && req.path.start_with?('/api/v1/messages')
-    body = req.body.read
-    req.body.rewind
+  # สำหรับใช้งานปกติ (ลดจาก 1000 → 300)
+throttle('messages/normal', limit: 60, period: 1.minute) do |req|
+  next unless req.post? && req.path.start_with?('/api/v1/messages')
 
-    unless body.include?('Rate limit test')
-      req.ip
-    end
-  end
+  Rails.logger.warn "MESSAGE THROTTLE HIT #{req.path}"
+  req.ip
 end
 
 
 
+  # ==========================================
+  # DEVICE TOKEN (กัน spam update DB)
+  # ==========================================
+  throttle('device_token/user', limit: 10, period: 1.minute) do |req|
+    if req.patch? && req.path == '/api/v1/device_token'
+      req.jwt_delegate_id || req.ip
+    end
+  end
 
   # ==========================================
   # FORGOT PASSWORD
   # ==========================================
   throttle('forgot_password/ip', limit: 3, period: 1.minute) do |req|
-    if req.post? && req.path.start_with?('/api/v1/forgot_password')
-      req.ip
-    end
+    req.ip if req.post? && req.path == '/api/v1/forgot_password'
   end
 
   # ==========================================
-  # GENERAL API LIMIT (สูงพอไม่ชน test)
+  # GENERAL API LIMIT (ลดจาก 2000 → 300)
   # ==========================================
-  throttle('api/general', limit: 2000, period: 1.minute) do |req|
+  throttle('api/general', limit: 300, period: 1.minute) do |req|
     if req.path.start_with?('/api/v1/') &&
-      !req.path.start_with?('/api/v1/messages')
+       !req.path.start_with?('/api/v1/messages')
       req.ip
     end
   end

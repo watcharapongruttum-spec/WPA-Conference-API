@@ -15,7 +15,7 @@ Rails.application.routes.draw do
       # Profile
       get 'profile(/:id)', to: 'profile#show'
       patch 'profile', to: 'profile#update'
-      post 'device_token', to: 'devices#update'
+      patch  'device_token', to: 'devices#update'
       get :dashboard, to: 'dashboard#show'
       
       # Authentication

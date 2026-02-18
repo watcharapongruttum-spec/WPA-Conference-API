@@ -189,4 +189,121 @@ echo "" >> $LOG_FILE
 echo "=============================" >> $LOG_FILE
 echo "TEST COMPLETE" >> $LOG_FILE
 
+
+# -------------------------
+# DEVICE TOKEN VALIDATION TEST
+# -------------------------
+echo "" >> $LOG_FILE
+echo "---- DEVICE TOKEN VALIDATION ----" >> $LOG_FILE
+
+INVALID_DEVICE=$(curl -s -w "\nHTTP_STATUS:%{http_code}" \
+  -X PATCH "$BASE_URL/api/v1/device_token" \
+  -H "$AUTH_HEADER" \
+  -H "Content-Type: application/json" \
+  -d '{"device":{"device_token":""}}')
+
+STATUS=$(echo "$INVALID_DEVICE" | tr -d '\n' | sed -e 's/.*HTTP_STATUS://')
+echo "Blank device_token status: $STATUS (expect 422)" >> $LOG_FILE
+
+
+BAD_FORMAT_DEVICE=$(curl -s -w "\nHTTP_STATUS:%{http_code}" \
+  -X PATCH "$BASE_URL/api/v1/device_token" \
+  -H "$AUTH_HEADER" \
+  -H "Content-Type: application/json" \
+  -d '{"device":{"device_token":"@@@invalid@@@"}}')
+
+STATUS=$(echo "$BAD_FORMAT_DEVICE" | tr -d '\n' | sed -e 's/.*HTTP_STATUS://')
+echo "Invalid format device_token status: $STATUS (expect 422)" >> $LOG_FILE
+
+
+# -------------------------
+# DEVICE TOKEN RATE LIMIT TEST
+# -------------------------
+echo "" >> $LOG_FILE
+echo "---- DEVICE TOKEN RATE LIMIT ----" >> $LOG_FILE
+
+RATE_LIMIT_HIT=0
+
+for i in {1..15}
+do
+  TOKEN_VALUE="testtoken$i-abcdefghijklmnopqrstuvwxyz123456"
+
+  STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+    -X PATCH "$BASE_URL/api/v1/device_token" \
+    -H "$AUTH_HEADER" \
+    -H "Content-Type: application/json" \
+    -d "{\"device\":{\"device_token\":\"$TOKEN_VALUE\"}}")
+
+  echo "Attempt $i: $STATUS" >> $LOG_FILE
+
+  if [ "$STATUS" = "429" ]; then
+    RATE_LIMIT_HIT=1
+  fi
+done
+
+if [ "$RATE_LIMIT_HIT" = "1" ]; then
+  echo "✅ Device token rate limit working" >> $LOG_FILE
+else
+  echo "❌ Device token rate limit NOT triggered" >> $LOG_FILE
+fi
+
+
+# -------------------------
+# MESSAGE RATE LIMIT TEST
+# -------------------------
+echo "" >> $LOG_FILE
+echo "---- MESSAGE RATE LIMIT ----" >> $LOG_FILE
+
+RATE_LIMIT_MSG=0
+
+for i in {1..80}
+do
+  STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+    -X POST "$BASE_URL/api/v1/messages" \
+    -H "$AUTH_HEADER" \
+    -H "Content-Type: application/json" \
+    -d '{"recipient_id":2,"content":"spam test"}')
+
+  if [ "$STATUS" = "429" ]; then
+    RATE_LIMIT_MSG=1
+    break
+  fi
+done
+
+if [ "$RATE_LIMIT_MSG" = "1" ]; then
+  echo "✅ Message rate limit working" >> $LOG_FILE
+else
+  echo "❌ Message rate limit NOT triggered" >> $LOG_FILE
+fi
+
+
+# -------------------------
+# GENERAL API RATE LIMIT TEST
+# -------------------------
+echo "" >> $LOG_FILE
+echo "---- GENERAL API RATE LIMIT ----" >> $LOG_FILE
+
+GENERAL_LIMIT_HIT=0
+
+for i in {1..400}
+do
+  STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+    "$BASE_URL/api/v1/profile" \
+    -H "$AUTH_HEADER")
+
+  if [ "$STATUS" = "429" ]; then
+    GENERAL_LIMIT_HIT=1
+    break
+  fi
+done
+
+if [ "$GENERAL_LIMIT_HIT" = "1" ]; then
+  echo "✅ General API rate limit working" >> $LOG_FILE
+else
+  echo "⚠️ General API rate limit not triggered (check limit config)" >> $LOG_FILE
+fi
+
+
+
+
 echo "✅ Regression + Performance test finished. Check $LOG_FILE"

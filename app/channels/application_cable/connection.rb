@@ -14,38 +14,29 @@ module ApplicationCable
 
     def find_verified_delegate
       token = request.params[:token]
-      raise "Missing token" if token.blank?
-
-      # payload, = JWT.decode(
-      #   token,
-      #   ENV["JWT_SECRET"],
-      #   true,
-      #   {
-      #     algorithm: JWT_CONFIG[:algorithm],
-      #     iss: JWT_CONFIG[:issuer],
-      #     verify_iss: true
-      #   }
-      # )
-
-      
-      payload, = JWT.decode(
-        token,
-        JWT_CONFIG[:secret],
-        true,
-        algorithm: JWT_CONFIG[:algorithm],
-        iss: JWT_CONFIG[:issuer],
-        verify_iss: true
-      )
-
+      payload = JwtDecoder.decode!(token)
 
       delegate = Delegate.find_by(id: payload["delegate_id"])
       raise "Delegate not found" unless delegate
 
       delegate
+
     rescue JWT::ExpiredSignature
       raise "Token expired"
     rescue JWT::DecodeError => e
       raise "JWT invalid: #{e.message}"
     end
+
+
+
+
+
+
+
+
+
+
+
+
   end
 end

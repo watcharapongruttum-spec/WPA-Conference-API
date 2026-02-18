@@ -1,4 +1,4 @@
-API REGRESSION TEST Wed Feb 18 10:42:14 +07 2026
+API REGRESSION TEST Wed Feb 18 11:23:41 +07 2026
 =============================
 ---- LOGIN TEST ----
 ✅ LOGIN SUCCESS
@@ -27,31 +27,31 @@ Notification keys:
 ]
 
 ---- NOTIFICATION PERFORMANCE ----
-Single request time: 0.097739s
+Single request time: 0.093550s
 ✅ PERFORMANCE OK
 
 ---- NOTIFICATION STRESS TEST (20 requests) ----
-Request 1: 0.033250 s
-Request 2: 0.039077 s
-Request 3: 0.033557 s
-Request 4: 0.033852 s
-Request 5: 0.042260 s
-Request 6: 0.030306 s
-Request 7: 0.076355 s
-Request 8: 0.030271 s
-Request 9: 0.029206 s
-Request 10: 0.029897 s
-Request 11: 0.067014 s
-Request 12: 0.057991 s
-Request 13: 0.038792 s
-Request 14: 0.029764 s
-Request 15: 0.028569 s
-Request 16: 0.036575 s
-Request 17: 0.029173 s
-Request 18: 0.028236 s
-Request 19: 0.029336 s
-Request 20: 0.075830 s
-Average time: 0.0399656 s
+Request 1: 0.037766 s
+Request 2: 0.031210 s
+Request 3: 0.030078 s
+Request 4: 0.040704 s
+Request 5: 0.031671 s
+Request 6: 0.030053 s
+Request 7: 0.053390 s
+Request 8: 0.040515 s
+Request 9: 0.028740 s
+Request 10: 0.028483 s
+Request 11: 0.028460 s
+Request 12: 0.030636 s
+Request 13: 0.059573 s
+Request 14: 0.028174 s
+Request 15: 0.026669 s
+Request 16: 0.028984 s
+Request 17: 0.027258 s
+Request 18: 0.035578 s
+Request 19: 0.030611 s
+Request 20: 0.027484 s
+Average time: 0.0338019 s
 ✅ STRESS PERFORMANCE OK
 
 ---- JWT TAMPER TEST ----
@@ -59,3 +59,31 @@ Tampered JWT status: 401 (expect 401)
 
 =============================
 TEST COMPLETE
+
+---- DEVICE TOKEN VALIDATION ----
+Blank device_token status: 422 (expect 422)
+Invalid format device_token status: 422 (expect 422)
+
+---- DEVICE TOKEN RATE LIMIT ----
+Attempt 1: 200
+Attempt 2: 200
+Attempt 3: 200
+Attempt 4: 200
+Attempt 5: 200
+Attempt 6: 200
+Attempt 7: 200
+Attempt 8: 200
+Attempt 9: 429
+Attempt 10: 429
+Attempt 11: 429
+Attempt 12: 429
+Attempt 13: 429
+Attempt 14: 429
+Attempt 15: 429
+✅ Device token rate limit working
+
+---- MESSAGE RATE LIMIT ----
+✅ Message rate limit working
+
+---- GENERAL API RATE LIMIT ----
+✅ General API rate limit working

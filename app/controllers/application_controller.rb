@@ -19,7 +19,9 @@ class ApplicationController < ActionController::API
   # ==============================
   # Catch unexpected LAST
   # ==============================
-  rescue_from StandardError, with: :handle_unexpected_error
+  # rescue_from StandardError, with: :handle_unexpected_error
+  rescue_from StandardError, with: :handle_unexpected_error if Rails.env.production?
+
 
   before_action :authenticate_delegate!
 
@@ -74,27 +76,18 @@ class ApplicationController < ActionController::API
     token = request.headers['Authorization']&.split(' ')&.last
     return nil if token.blank?
 
-    begin
-      payload, = JWT.decode(
-        token,
-        JWT_CONFIG[:secret],
-        true,
-        algorithm: JWT_CONFIG[:algorithm],
-        iss: JWT_CONFIG[:issuer],
-        verify_iss: true
-      )
+    payload = JwtDecoder.decode!(token)
+    Delegate.find(payload['delegate_id'])
 
-      Delegate.find(payload['delegate_id'])
+  rescue JWT::DecodeError,
+        JWT::ExpiredSignature,
+        JWT::VerificationError,
+        JWT::InvalidIssuerError => e
 
-    rescue JWT::DecodeError,
-          JWT::ExpiredSignature,
-          JWT::VerificationError,
-          JWT::InvalidIssuerError => e
-
-      Rails.logger.warn "JWT Error: #{e.class} - #{e.message}"
-      nil
-    end
+    Rails.logger.warn "JWT Error: #{e.class} - #{e.message}"
+    nil
   end
+
 
 
   def authenticate_delegate!
