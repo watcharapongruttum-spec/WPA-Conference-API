@@ -24,11 +24,25 @@ class ChatChannel < ApplicationCable::Channel
     ChatChannel.broadcast_to(
       Delegate.find(target_delegate_id),
       {
-        type: "typing",
+        type: "typing_start",
         from: current_delegate.id
       }
     )
   end
+
+  def stop_typing(data)
+    payload = safe_json(data)
+    target_delegate_id = payload["target_id"]
+
+    ChatChannel.broadcast_to(
+      Delegate.find(target_delegate_id),
+      {
+        type: "typing_stop",
+        from: current_delegate.id
+      }
+    )
+  end
+
 
   # ================= ENTER ROOM =================
   def enter_room(data)
