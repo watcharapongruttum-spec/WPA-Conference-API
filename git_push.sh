@@ -2,41 +2,53 @@
 
 echo "========== GIT AUTO PUSH =========="
 
-# ---------------- CONFIG ----------------
-BRANCH="main"
+MAIN_BRANCH="main"
 
-# ---------------- CHECK MESSAGE ----------------
 if [ -z "$1" ]; then
   echo "❌ กรุณาใส่ commit message"
-  echo "ตัวอย่าง: ./git_push.sh \"fix auto seen\""
   exit 1
 fi
 
 RAW_MSG=$1
 DATE=$(date '+%Y-%m-%d %H:%M')
 MSG="$RAW_MSG - $DATE"
+BRANCH="temp-$(date +%H%M%S)"
 
-# ---------------- CLEAN LOG FILES ----------------
 echo "🧹 CLEAN TEMP FILES"
 rm -f test_scripts/*.log
 rm -f test_scripts/*.pid
 
-# ---------------- CHECK CHANGES ----------------
 if [ -z "$(git status --porcelain)" ]; then
-  echo "⚠️  NOTHING TO COMMIT"
+  echo "⚠️ NOTHING TO COMMIT"
   exit 0
 fi
 
-# ---------------- GIT ADD ----------------
+echo "🌿 CREATE TEMP BRANCH"
+git checkout -b $BRANCH
+
 echo "📦 GIT ADD"
 git add .
 
-# ---------------- COMMIT ----------------
 echo "📝 COMMIT: $MSG"
 git commit -m "$MSG"
 
-# ---------------- PUSH ----------------
-echo "🚀 PUSH TO $BRANCH"
+echo "🚀 PUSH TEMP BRANCH"
 git push origin $BRANCH
+
+echo "🔁 SWITCH BACK TO MAIN"
+git checkout $MAIN_BRANCH
+
+echo "⬇️ PULL LATEST MAIN"
+git pull origin $MAIN_BRANCH
+
+echo "🔀 MERGE TEMP INTO MAIN"
+git merge $BRANCH --no-edit
+
+echo "🚀 PUSH MAIN"
+git push origin $MAIN_BRANCH
+
+echo "🗑 DELETE TEMP BRANCH"
+git branch -D $BRANCH
+git push origin --delete $BRANCH
 
 echo "========== DONE =========="
