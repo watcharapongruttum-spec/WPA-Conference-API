@@ -23,6 +23,27 @@ module Api
         }, status: :internal_server_error
       end
 
+
+
+      
+      def unfriend
+        friend = Delegate.find(params[:delegate_id])
+
+        connection = Connection.find_by(requester: current_delegate, target: friend) ||
+                    Connection.find_by(requester: friend, target: current_delegate)
+
+        if connection
+          connection.destroy
+          render json: { success: true, message: "Unfriended successfully" }
+        else
+          render json: { error: "Connection not found" }, status: :not_found
+        end
+      rescue ActiveRecord::RecordNotFound
+        render json: { error: "Delegate not found" }, status: :not_found
+      end
+
+
+
       # GET /api/v1/networking/my_connections
       def my_connections
         @connections = Connection.accepted
