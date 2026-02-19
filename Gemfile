@@ -65,7 +65,7 @@ gem 'actioncable'
 gem 'redis', '~> 4.0'
 # gem 'knock'
 gem 'rqrcode'
-gem 'firebase-admin'
+# gem 'firebase-admin'
 gem 'googleauth'
 
 # jwt เวอร์ชันใหม่

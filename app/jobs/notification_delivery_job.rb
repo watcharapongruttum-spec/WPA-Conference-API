@@ -14,11 +14,13 @@ class NotificationDeliveryJob < ApplicationJob
       body: notification_body(notification),
       data: {
         type: notification.notification_type,
-        notification_id: notification.id,
-        notifiable_type: notification.notifiable_type,
-        notifiable_id: notification.notifiable_id
+        notification_id: notification.id.to_s,       
+        notifiable_type: notification.notifiable_type.to_s,  
+        notifiable_id: notification.notifiable_id.to_s     
       }
     )
+
+
   rescue => e
     Rails.logger.error "[NotificationDeliveryJob] Failed: #{e.message}"
   end

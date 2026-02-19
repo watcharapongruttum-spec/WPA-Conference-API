@@ -9,5 +9,10 @@ class Notification::BroadcastService
       type: 'new_notification',
       notification: serialized
     )
+
+        # FCM Push (เมื่อแอปปิดอยู่)
+    NotificationDeliveryJob.perform_later(notification.id)
+
+    
   end
 end

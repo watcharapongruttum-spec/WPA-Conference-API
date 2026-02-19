@@ -47,9 +47,6 @@ send_msg(){
 
 # ─── WebSocket helpers ───────────────────────────────────────────────────────
 
-# start_ws NAME TOKEN [with_id]
-#   เปิด WS connection เก็บ log ไว้ที่ rt_NAME.log
-#   ถ้าส่ง with_id → subscribe พร้อม params (ใช้ใน enter_room ด้วย)
 start_ws(){
   local NAME=$1
   local TOKEN=$2
@@ -73,9 +70,6 @@ start_ws(){
   sleep 2
 }
 
-# enter_room NAME TOKEN TARGET_ID
-#   เปิด WS connection แบบ background (persistent) แล้วส่ง enter_room action
-#   connection จะอยู่จนกว่าจะ cleanup — Redis key จึงไม่หายก่อนเวลา
 enter_room(){
   local NAME=$1
   local TOKEN=$2
@@ -92,12 +86,47 @@ enter_room(){
     } | timeout 120 wscat -c '${WS_URL}?token=${TOKEN}'
   " >> "rt_${NAME}_room.log" 2>&1 &
 
-  sleep 2   # รอให้ enter_room action ถูกประมวลผลก่อน
+  sleep 2
 }
+
+# leave_room TOKEN TARGET_ID
+#   ส่ง leave_room action → ล้าง active_room Redis key ก่อน disconnect
+leave_room(){
+  local TOKEN=$1
+  local TARGET_ID=$2
+  local IDENTIFIER="{\\\"channel\\\":\\\"ChatChannel\\\"}"
+
+  bash -c "
+    {
+      sleep 0.3
+      echo '{\"command\":\"subscribe\",\"identifier\":\"${IDENTIFIER}\"}'
+      sleep 0.5
+      echo '{\"command\":\"message\",\"identifier\":\"${IDENTIFIER}\",\"data\":\"{\\\"action\\\":\\\"leave_room\\\",\\\"user_id\\\":${TARGET_ID}}\"}'
+      sleep 1
+    } | timeout 10 wscat -c '${WS_URL}?token=${TOKEN}'
+  " >> "rt_leave.log" 2>&1
+  sleep 1
+}
+
+# cleanup_room A_TOKEN B_TOKEN A_ID B_ID
+#   ส่ง leave_room ก่อนเสมอ → ล้าง active_room Redis key → แล้วค่อย kill wscat
+cleanup_room(){
+  local TOKEN_A=$1
+  local TOKEN_B=$2
+  local A_ID=$3
+  local B_ID=$4
+
+  leave_room "$TOKEN_A" "$B_ID" 2>/dev/null
+  leave_room "$TOKEN_B" "$A_ID" 2>/dev/null
+  pkill -f "wscat" 2>/dev/null || true
+  sleep 1
+  rm -f rt_*.log 2>/dev/null || true
+}
+
 cleanup(){
   pkill -f "wscat" 2>/dev/null || true
   sleep 1
-  rm -f rt_A.log rt_B.log rt_A_room.log rt_B_room.log || true
+  rm -f rt_*.log 2>/dev/null || true
 }
 trap cleanup EXIT
 
@@ -136,15 +165,17 @@ curl -s -X PATCH $BASE_URL/api/v1/messages/read_all \
   -H "Authorization: Bearer $TOKEN_A" > /dev/null
 curl -s -X PATCH $BASE_URL/api/v1/messages/read_all \
   -H "Authorization: Bearer $TOKEN_B" > /dev/null
-sleep 1
+# ล้าง Redis active_room key ของทั้งคู่ก่อนเริ่ม
+leave_room "$TOKEN_A" "$B_ID"
+leave_room "$TOKEN_B" "$A_ID"
+cleanup
 pass "State clean"
 
 ############################################################
 step "CASE 1 — B ONLINE แต่ยังไม่ enter_room → ต้อง unread ยังอยู่"
 
-cleanup
 start_ws "A" "$TOKEN_A"
-start_ws "B" "$TOKEN_B"   # B online แต่ไม่ได้เปิดห้องแชทกับ A
+start_ws "B" "$TOKEN_B"   # B online แต่ไม่ enter_room
 
 send_msg "$TOKEN_A" "$B_ID" "hello before enter"
 sleep 2
@@ -153,13 +184,12 @@ U=$(unread "$A_ID" "$TOKEN_B")
 if [ "$U" -ge 1 ]; then
   pass "Correct: unread=$U (B online แต่ยังไม่เปิดห้อง)"
 else
-  fail "Case 1 failed: ข้อความถูก mark read ทั้งที่ B ยังไม่เปิดห้องแชท (unread=$U)"
+  fail "Case 1 failed: unread=$U — ตรวจสอบว่า subscribed ใน chat_channel.rb ไม่มี mark_all_for_user"
 fi
 
 ############################################################
 step "CASE 2 — B enter_room → ต้อง unread = 0"
 
-# B กดเข้าห้องแชทกับ A
 enter_room "B" "$TOKEN_B" "$A_ID"
 sleep 2
 
@@ -186,9 +216,10 @@ fi
 ############################################################
 step "CASE 4 — B OFFLINE → ต้อง unread สะสม"
 
-cleanup   # disconnect ทุก WS
+# ล้าง active_room key ก่อน disconnect เพื่อไม่ให้ค้าง
+cleanup_room "$TOKEN_A" "$TOKEN_B" "$A_ID" "$B_ID"
 start_ws "A" "$TOKEN_A"
-# B ไม่ได้ connect เลย
+# B ไม่ connect เลย
 
 for i in {1..10}; do
   send_msg "$TOKEN_A" "$B_ID" "offline msg $i"
@@ -205,14 +236,14 @@ fi
 ############################################################
 step "CASE 5 — B CONNECTS แต่ไม่ enter_room → unread ยังอยู่"
 
-start_ws "B" "$TOKEN_B"   # B online แต่ไม่ enter_room
+start_ws "B" "$TOKEN_B"
 sleep 2
 
 U=$(unread "$A_ID" "$TOKEN_B")
 if [ "$U" -eq 10 ]; then
   pass "Correct: connect เฉยๆ ไม่ mark read (=$U)"
 else
-  fail "Case 5 failed: expected 10 got $U (ถูก mark read ทั้งที่ไม่ได้ enter_room)"
+  fail "Case 5 failed: expected 10 got $U — ตรวจสอบว่า subscribed ไม่มี mark_all_for_user"
 fi
 
 ############################################################
@@ -231,11 +262,10 @@ fi
 ############################################################
 step "CASE 7 — RACE CHAT (ส่งข้อความพร้อมกัน แล้ว enter_room เพื่อ mark read)"
 
-cleanup
+cleanup_room "$TOKEN_A" "$TOKEN_B" "$A_ID" "$B_ID"
 start_ws "A" "$TOKEN_A"
 start_ws "B" "$TOKEN_B"
 
-# ส่งข้อความจากทั้งสองฝั่งพร้อมกัน
 PIDS=()
 for i in {1..10}; do
   send_msg "$TOKEN_A" "$B_ID" "A says $i" &
@@ -246,12 +276,10 @@ done
 for pid in "${PIDS[@]}"; do wait $pid; done
 sleep 1
 
-# ตรวจว่ามี unread ก่อน enter_room
 UA=$(unread "$B_ID" "$TOKEN_A")
 UB=$(unread "$A_ID" "$TOKEN_B")
 echo "  Before enter_room: A unread=$UA, B unread=$UB"
 
-# ทั้งคู่ enter_room
 enter_room "A" "$TOKEN_A" "$B_ID"
 enter_room "B" "$TOKEN_B" "$A_ID"
 sleep 2
@@ -279,19 +307,93 @@ for i in {1..30}; do
 done
 sleep 3
 
-COUNT=$(grep -c "new_message" rt_B.log 2>/dev/null || echo 0)
-if [ "$COUNT" -ge 30 ]; then
+COUNT=$(grep -c "new_message" rt_B.log 2>/dev/null | tail -1 || echo 0)
+COUNT=$(echo "$COUNT" | tr -d '[:space:]')
+if [ "${COUNT:-0}" -ge 30 ]; then
   pass "Burst realtime OK ($COUNT/30)"
 else
   warn "Burst incomplete ($COUNT/30)"
 fi
 
+# ════════════════════════════════════════════════════════════════════════════
+# BUG FIX TESTS
+# ════════════════════════════════════════════════════════════════════════════
+
+############################################################
+step "BUG 1 — MULTI-CONNECTION: ปิด 1 tab ไม่ควรลบ active_room ของ tab อื่น"
+
+cleanup_room "$TOKEN_A" "$TOKEN_B" "$A_ID" "$B_ID"
+enter_room "B_tab1" "$TOKEN_B" "$A_ID"
+start_ws   "B_tab2" "$TOKEN_B"
+sleep 1
+
+send_msg "$TOKEN_A" "$B_ID" "msg while B has 2 connections"
+sleep 2
+
+U=$(unread "$A_ID" "$TOKEN_B")
+if [ "$U" -eq 0 ]; then
+  pass "Multi-connection OK: active_room ยังอยู่ auto-mark ทำงาน (unread=$U)"
+else
+  fail "Multi-connection failed: unread=$U (active_room หายเพราะ connection อื่น)"
+fi
+
+############################################################
+step "BUG 2 — LEAVE_ROOM: ออกจากห้องแล้วต้องไม่ auto-mark"
+
+cleanup_room "$TOKEN_A" "$TOKEN_B" "$A_ID" "$B_ID"
+enter_room "B" "$TOKEN_B" "$A_ID"
+sleep 1
+
+leave_room "$TOKEN_B" "$A_ID"
+sleep 1
+
+send_msg "$TOKEN_A" "$B_ID" "msg after B left room"
+sleep 2
+
+U=$(unread "$A_ID" "$TOKEN_B")
+if [ "$U" -ge 1 ]; then
+  pass "leave_room OK: ไม่ auto-mark หลัง leave_room (unread=$U)"
+else
+  fail "leave_room failed: ข้อความถูก auto-mark ทั้งที่ B ออกจากห้องแล้ว (unread=$U)"
+fi
+
+############################################################
+step "BUG 3 — NO DEBUG LOG: ไม่ควรมี 🔍 auto_mark check ใน log"
+
+cleanup_room "$TOKEN_A" "$TOKEN_B" "$A_ID" "$B_ID"
+enter_room "B" "$TOKEN_B" "$A_ID"
+sleep 1
+send_msg "$TOKEN_A" "$B_ID" "debug log check"
+sleep 2
+
+# เช็กที่ source file โดยตรง — แม่นกว่าเช็ก log ที่มี entry เก่าค้างอยู่
+SVC_FILE=""
+for path in \
+  "../app/services/chat/send_message_service.rb" \
+  "../../app/services/chat/send_message_service.rb" \
+  "$HOME/mikkee_pro/WPA-Conference-API/app/services/chat/send_message_service.rb"; do
+  [ -f "$path" ] && SVC_FILE="$path" && break
+done
+
+if [ -n "$SVC_FILE" ]; then
+  if grep -q "auto_mark check" "$SVC_FILE"; then
+    fail "Debug log ยังอยู่ใน source — ลบออกจาก send_message_service.rb ด้วย"
+  else
+    pass "No debug log OK (ลบออกจาก source แล้ว)"
+  fi
+else
+  warn "ไม่พบ send_message_service.rb — ตรวจเองด้วย: grep '🔍' app/services/chat/send_message_service.rb"
+fi
+
 ############################################################
 
-echo -e "\n========================================="
+cleanup
+
+echo ""
+echo "========================================="
 if [ "$TOTAL_FAIL" -eq 0 ]; then
   echo -e "${GREEN}🔥 ALL TESTS COMPLETED (NO HARD FAIL) 🔥${NC}"
 else
   echo -e "${RED}⚠ $TOTAL_FAIL TEST(S) FAILED${NC}"
 fi
-echo -e "========================================="
+echo "========================================="

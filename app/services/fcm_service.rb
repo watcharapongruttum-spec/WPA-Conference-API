@@ -1,32 +1,59 @@
 # app/services/fcm_service.rb
-require 'firebase/admin'
+require 'googleauth'
+require 'net/http'
+require 'json'
 
 class FcmService
-  def self.send_push(token:, title:, body:,  {})
-    return if token.blank?
+  FCM_ENDPOINT = "https://fcm.googleapis.com/v1/projects/#{ENV['FIREBASE_PROJECT_ID']}/messages:send"
+  SCOPE = 'https://www.googleapis.com/auth/firebase.messaging'
 
-    # Initialize Firebase
-    Firebase.admin.configure do |config|
-      config.project_id = ENV['FIREBASE_PROJECT_ID']
-      config.credentials = ENV['FIREBASE_CREDENTIALS_PATH']
-    end
+  def self.send_push(token:, title:, body:, data: {})
+    return false if token.blank?
 
-    begin
-      message = {
+    access_token = fetch_access_token
+    return false unless access_token
+
+    payload = {
+      message: {
         token: token,
-        notification: {
-          title: title,
-          body: body
-        },
-         data.transform_values(&:to_s) # FCM รับ data เป็น string เท่านั้น
+        notification: { title: title, body: body },
+        data: data.transform_values(&:to_s)
       }
+    }.to_json
 
-      response = Firebase::Admin::Messaging.send_message(message)
-      Rails.logger.info "✅ FCM Sent: #{response.name}"
+    uri = URI(FCM_ENDPOINT)
+    http = Net::HTTP.new(uri.host, uri.port)
+    http.use_ssl = true
+
+    request = Net::HTTP::Post.new(uri.path)
+    request['Authorization'] = "Bearer #{access_token}"
+    request['Content-Type'] = 'application/json'
+    request.body = payload
+
+    response = http.request(request)
+
+    if response.code == '200'
+      Rails.logger.info "✅ FCM Sent successfully"
       true
-    rescue => e
-      Rails.logger.error "❌ FCM Error: #{e.message}"
+    else
+      Rails.logger.error "❌ FCM Error #{response.code}: #{response.body}"
       false
     end
+  rescue => e
+    Rails.logger.error "❌ FCM Exception: #{e.message}"
+    false
+  end
+
+  private
+
+  def self.fetch_access_token
+    credentials = Google::Auth::ServiceAccountCredentials.make_creds(
+      json_key_io: File.open(ENV['FIREBASE_CREDENTIALS_PATH']),
+      scope: SCOPE
+    )
+    credentials.fetch_access_token!['access_token']
+  rescue => e
+    Rails.logger.error "❌ FCM Auth Error: #{e.message}"
+    nil
   end
 end
