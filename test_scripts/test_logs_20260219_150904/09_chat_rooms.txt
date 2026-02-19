@@ -1,0 +1,39 @@
+[CHAT ROOM TESTS - Thu Feb 19 15:09:10 +07 2026]
+  [15:09:10] GET /chat_rooms → 200
+  HTTP: 200
+  Body: [{"id":3,"title":"TestRoom","room_kind":"group","members":[162]},{"id":4,"title":"TestRoom","room_kind":"group","members":[162]},{"id":5,"title":"TestRoom","room_kind":"group","members":[162]},{"id":1,"title":"TestRoom","room_kind":"group","members":[162,238,446]},{"id":2,"title":"TestRoom","room_kind":"group","members":[162,238,446]},{"id":25,"title":"Test Room","room_kind":"group","members":[162]},{"id":26,"title":"Test Room","room_kind":"group","members":[162]},{"id":27,"title":"Test Room","room_kind":"group","members":[162]},{"id":28,"title":"Test Room","room_kind":"group","members":[162]},{"id":29,"title":"Test Room","room_kind":"group","members":[162]},{"id":30,"title":"Test Room","room_kind":"group","members":[162]},{"id":31,"title":"Test Room","room_kind":"group","members":[162]},{"id":32,"title":"Test Room","room_kind":"group","members":[162]},{"id":33,"title":"Test Room","room_kind":"group","members":[162]},{"id":65,"title":"Test Room","room_kind":"group","members":[162]},{"id":66,"title":"Test Room","room_kind":"group","members":[162]},{"id":67,"title":"Test Room","room_kind":"group","members":[162]},{"id":68,"title":"Test Room","room_kind":"group","members":[162]},{"id":69,"title":"Test Room","room_kind":"group","members":[162]},{"id":70,"title":"Test Room","room_kind":"group","members":[162]},{"id":71,"title":"Test Room","room_kind":"group","members":[162]},{"id":72,"title":"Test Room","room_kind":"group","members":[162]},{"id":73,"title":"Test Room","room_kind":"group","members":[162]},{"id":74,"title":"Test Room","room_kind":"group","members":[162]},{"id":75,"title":"Test Room","room_kind":"group","members":[162]},{"id":76,"title":"Test Room","room_kind":"group","members":[162]},{"id":77,"title":"Test Room","room_kind":"group","members":[162]},{"id":78,"title":"Test Room","room_kind":"group","members":[162]},{"id":79,"title":"Test Room","room_kind":"group","members":[162]},{"id":80,"title":"Test Room","room_kind":"group","members":[162]},{"id":81,"title":"Test Room","room_kind":"group","members":[162]},{"id":82,"title":"Test Room","room_kind":"group","members":[162]},{"id":83,"title":"Test Room","room_kind":"group","members":[162]},{"id":85,"title":"L2_1771317987 Room","room_kind":"group","members":[162,238]},{"id":86,"title":"L2_1771318002 Room","room_kind":"group","members":[162,238]},{"id":87,"title":"L2_1771318026 Room","room_kind":"group","members":[162,238]}]
+
+  Rooms: 36
+  [15:09:10] POST /chat_rooms (group) → 201
+  HTTP: 201
+  Body: {"id":98,"title":"Test Group Room","room_kind":"group"}
+
+  Room ID: 98
+  [15:09:10] POST /chat_rooms missing params → 400
+  HTTP: 400
+  Body: {"error":"Missing parameter: chat_room"}
+
+  [15:09:10] POST /chat_rooms/:id/join (B) → 200
+  HTTP: 200
+  Body: {"success":true,"joined":true}
+
+  [15:09:10] POST /chat_rooms/:id/join (again) → 200
+  HTTP: 200
+  Body: {"success":true,"joined":false}
+
+  [15:09:10] DELETE /chat_rooms/:id/leave (B) → 200
+  HTTP: 200
+  Body: {"success":true}
+
+  [15:09:10] DELETE /chat_rooms/:id/leave (not member) → 404
+  HTTP: 404
+  Body: {"error":"Not member"}
+
+  [15:09:10] DELETE /chat_rooms/:id (admin) → 200
+  HTTP: 200
+  Body: {"success":true}
+
+  [15:09:10] DELETE /chat_rooms/99999999 → 404
+  HTTP: 404
+  Body: {"error":"Record not found"}
+

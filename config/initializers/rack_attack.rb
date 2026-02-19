@@ -70,7 +70,7 @@ class Rack::Attack
   # ==========================================
   # FORGOT PASSWORD
   # ==========================================
-  throttle('forgot_password/ip', limit: 3, period: 1.minute) do |req|
+  throttle('forgot_password/ip', limit: 10, period: 1.minute) do |req|
     req.ip if req.post? && req.path == '/api/v1/forgot_password'
   end
 

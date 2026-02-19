@@ -1,0 +1,13 @@
+[DEVICE TOKEN TESTS - Thu Feb 19 15:09:11 +07 2026]
+  [15:09:11] PATCH /device_token → 200
+  HTTP: 200
+  Body: {"success":true}
+
+  [15:09:11] PATCH /device_token (same) → 200
+  HTTP: 200
+  Body: {"success":true}
+
+  [15:09:11] PATCH /device_token (missing) → 422
+  HTTP: 422
+  Body: {"error":"Missing parameter: device"}
+

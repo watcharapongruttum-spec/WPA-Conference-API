@@ -27,19 +27,33 @@ module Api
 
       
       def unfriend
-        friend = Delegate.find(params[:delegate_id])
+        delegate_id = params[:delegate_id]
+        target = Delegate.find_by(id: delegate_id)
+        return render json: { error: 'Delegate not found' }, status: :not_found unless target
 
-        connection = Connection.find_by(requester: current_delegate, target: friend) ||
-                    Connection.find_by(requester: friend, target: current_delegate)
+        # หา Connection record
+        connection = Connection.where(
+          requester_id: [current_delegate.id, target.id]
+        ).where(
+          target_id: [current_delegate.id, target.id]
+        ).first
 
-        if connection
-          connection.destroy
-          render json: { success: true, message: "Unfriended successfully" }
-        else
-          render json: { error: "Connection not found" }, status: :not_found
+        # หา ConnectionRequest ด้วย (ล้างทั้งคู่)
+        conn_request = ConnectionRequest.where(
+          requester_id: [current_delegate.id, target.id]
+        ).where(
+          target_id: [current_delegate.id, target.id]
+        ).first
+
+        return render json: { error: 'Connection not found' }, status: :not_found \
+          unless connection || conn_request
+
+        ActiveRecord::Base.transaction do
+          connection&.destroy
+          conn_request&.destroy
         end
-      rescue ActiveRecord::RecordNotFound
-        render json: { error: "Delegate not found" }, status: :not_found
+
+        render json: { message: 'Unfriended successfully' }, status: :ok
       end
 
 

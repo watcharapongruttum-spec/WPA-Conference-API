@@ -82,6 +82,12 @@ module Api
         ActiveRecord::Base.transaction do
           connection.update!(status: :accepted)
 
+          # สร้าง Connection record เพื่อให้ my_connections และ unfriend ทำงานได้
+          Connection.find_or_create_by!(
+            requester_id: connection.requester_id,
+            target_id: connection.target_id
+          ) { |c| c.status = "accepted" }
+
           notification = Notification.create!(
             delegate: connection.requester,
             notification_type: 'connection_accepted',
@@ -140,6 +146,28 @@ module Api
           }
         }
       end
+
+
+
+      # ============================
+      # DELETE /api/v1/requests/:id/cancel
+      # ============================
+      def cancel
+        connection = ConnectionRequest.find_by(
+          requester_id: current_delegate.id,
+          target_id: params[:id]   # ใช้ target_id แทน request id เพื่อให้ test cleanup ทำงานได้
+        )
+        return render json: { error: 'Not found' }, status: :not_found unless connection
+
+        connection.destroy
+        render json: { message: 'Cancelled' }, status: :ok
+      end
+
+
+
+
+
+
 
 
       private

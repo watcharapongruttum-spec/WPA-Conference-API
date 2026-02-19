@@ -24,23 +24,29 @@ module Api
       # GET /api/v1/tables/:id
       def show
         table_number = params[:id]
-        
+
+        table = Table.find_by(table_number: table_number)
+        return render json: { error: 'Not found' }, status: :not_found unless table
+
         schedules = Schedule.where(table_number: table_number)
-                           .includes(:booker, :target, :conference_date)
-                           .order(:start_at)
-        
+                            .includes(:booker, :table)
+                            .order(:start_at)
+
         render json: {
           table_number: table_number,
           status: get_table_status(table_number),
           occupancy: get_table_occupancy(table_number),
           capacity: 4,
-          occupants: schedules.map { |s| s.booker }.uniq.map do |d|
+          occupants: schedules.filter_map(&:booker).uniq.map do |d|
             Api::V1::DelegateSerializer.new(d).serializable_hash
           end,
           timeline: schedules.map do |s|
             Api::V1::ScheduleSerializer.new(s, scope: current_delegate).serializable_hash
           end
         }
+      rescue => e
+        Rails.logger.error "Tables#show error: #{e.message}"
+        render json: { error: 'Internal server error' }, status: :internal_server_error
       end
 
 

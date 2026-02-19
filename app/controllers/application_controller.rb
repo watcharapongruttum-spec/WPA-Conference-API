@@ -38,7 +38,7 @@ class ApplicationController < ActionController::API
   def missing_params(exception)
     render json: {
       error: "Missing parameter: #{exception.param}"
-    }, status: :bad_request
+    }, status: :unprocessable_entity  # เปลี่ยนจาก :bad_request
   end
 
   def record_invalid(exception)

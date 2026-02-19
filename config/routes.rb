@@ -9,6 +9,7 @@
 
 #       # routes.rb
 #       post 'messages/read_all', to: 'messages#read_all'
+#       patch 'change_password', to: 'passwords#change'
 
 
       
@@ -134,16 +135,18 @@ Rails.application.routes.draw do
   namespace :api do
     namespace :v1 do
 
-      # Deeplink (path มี hyphen ต้องเขียน explicit)
+      # Deeplink
       get '/reset-password', to: 'deeplink#reset_password'
 
       # Authentication
       controller :sessions do
         post :login,           action: :create
-        post :change_password
         post :forgot_password
         post :reset_password
       end
+
+      # Change Password (แยกออกมา + เปลี่ยนเป็น PATCH ให้ตรงกับ test)
+      patch 'change_password', to: 'sessions#change_password'
 
       # Profile
       get   'profile(/:id)', to: 'profile#show'
@@ -153,11 +156,12 @@ Rails.application.routes.draw do
       patch 'device_token', to: 'devices#update'
 
       # Dashboard
-      resource :dashboard, only: [:show]
+      get 'dashboard', to: 'dashboard#show'
 
-      # Delegates
+      # Delegates (profile collection ต้องอยู่ก่อน member ไม่งั้น :id match "profile" ก่อน)
       resources :delegates, only: [:index, :show] do
         collection do
+          get :profile   # ← เพิ่ม /delegates/profile
           get :search
         end
         member do
@@ -205,14 +209,15 @@ Rails.application.routes.draw do
         end
       end
 
-      # Requests
+      # Requests (cancel เพิ่มเพื่อให้ cleanup_connection ใน test ทำงานได้)
       resources :requests, only: [:index, :create] do
         collection do
           get :my_received
         end
         member do
-          patch :accept
-          patch :reject
+          patch  :accept
+          patch  :reject
+          delete :cancel   # ← เพิ่ม
         end
       end
 
