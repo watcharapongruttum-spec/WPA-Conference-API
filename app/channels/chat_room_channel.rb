@@ -1,31 +1,37 @@
 class ChatRoomChannel < ApplicationCable::Channel
   def subscribed
     @room = ChatRoom.find(params[:room_id])
-    reject unless @room.delegates.include?(current_delegate)
+
+    # 🔴 FIX 1: ต้อง return หลัง reject ไม่งั้น stream_for ยังทำงานอยู่
+    unless @room.delegates.include?(current_delegate)
+      reject
+      return
+    end
 
     stream_for @room
   end
 
 
+  # 🔴 FIX 2: class method ใช้ key รูปแบบเดียวกับ presence_key instance method
+  # (เดิมใช้ Redis.current โดยตรง และ key format ต่างกัน)
   def self.auto_read_if_open(sender:, recipient:, message:)
     key = "chat_open:#{recipient.id}:#{sender.id}"
-    return unless Redis.current.get(key) == "1"
+    return unless REDIS.get(key) == "1"
 
     message.update!(read_at: Time.current)
-
-    broadcast_to(sender, {
-      type: "message_read",
-      message_id: message.id,
-      read_at: message.read_at
-    })
 
     broadcast_to(recipient, {
       type: "message_read",
       message_id: message.id,
       read_at: message.read_at
     })
-  end
 
+    broadcast_to(sender, {
+      type: "message_read",
+      message_id: message.id,
+      read_at: message.read_at
+    })
+  end
 
 
   # ================= SEND =================
@@ -37,14 +43,12 @@ class ChatRoomChannel < ApplicationCable::Channel
       content: data["content"]
     )
 
-    # broadcast message
     ChatRoomChannel.broadcast_to(@room, {
       type: "room_message",
       room_id: @room.id,
       message: serializer(msg)
     })
 
-    # ===== AUTO READ IF OTHER USER OPEN ROOM =====
     auto_read_if_open(msg)
   end
 
@@ -53,10 +57,11 @@ class ChatRoomChannel < ApplicationCable::Channel
     other = other_user
     return unless other
 
-    # set presence
     redis.set(presence_key(current_delegate.id, other.id), 1)
 
-    mark_conversation_as_read(other)
+    # 🔴 FIX 3: ส่ง other.id แทน other (object) — เดิมส่ง Delegate object เข้าไป
+    # ทำให้ sender_id: <Delegate object> แทนที่จะเป็น integer
+    mark_conversation_as_read(other.id)
   end
 
   # ================= LEAVE ROOM =================
@@ -111,7 +116,7 @@ class ChatRoomChannel < ApplicationCable::Channel
   end
 
   def redis
-    Redis.current
+    REDIS
   end
 
   # ===== USERS =====
@@ -146,30 +151,6 @@ class ChatRoomChannel < ApplicationCable::Channel
   end
 
   # ===== MARK ALL READ =====
-
-  # def mark_conversation_as_read(target_id)
-  #   now = Time.current
-
-  #   scope = ChatMessage.where(
-  #     sender_id: target_id,
-  #     recipient_id: current_delegate.id,
-  #     read_at: nil,
-  #     deleted_at: nil
-  #   )
-
-  #   ids = scope.pluck(:id)
-  #   return if ids.empty?
-
-  #   ChatMessage.where(id: ids).update_all(read_at: now)
-
-  #   ChatChannel.broadcast_to(
-  #     current_delegate,
-  #     type: 'bulk_read',
-  #     message_ids: ids,
-  #     read_at: now
-  #   )
-  # end
-
   def mark_conversation_as_read(target_id)
     now = Time.current
 
@@ -185,17 +166,13 @@ class ChatRoomChannel < ApplicationCable::Channel
 
     ChatMessage.where(id: ids).update_all(read_at: now)
 
-    ChatChannel.broadcast_to(
-      current_delegate,
-      type: 'bulk_read',
+    # 🔴 FIX 4: broadcast ผ่าน ChatRoomChannel แทน ChatChannel
+    # (อยู่ใน ChatRoomChannel การ broadcast กลับผ่าน ChatChannel ผิด channel)
+    ChatRoomChannel.broadcast_to(@room, {
+      type: "bulk_read",
       message_ids: ids,
       read_at: now
-    )
+    })
   end
-
-
-
-
-
 
 end

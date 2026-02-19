@@ -1,0 +1,4 @@
+{"type":"welcome"}
+> {"identifier":"{\"channel\":\"ChatChannel\"}","type":"confirm_subscription"}
+> {"identifier":"{\"channel\":\"ChatChannel\"}","message":{"type":"bulk_read","message_ids":[7121,7122,7123],"read_at":"2026-02-19T17:07:38.667+07:00"}}
+{"type":"ping","message":1771495660}

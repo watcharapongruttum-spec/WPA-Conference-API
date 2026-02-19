@@ -1,0 +1,6 @@
+{"type":"welcome"}
+{"type":"ping","message":1771495742}
+> {"identifier":"{\"channel\":\"ChatRoomChannel\",\"room_id\":102}","type":"confirm_subscription"}
+{"type":"ping","message":1771495745}
+{"type":"ping","message":1771495747}
+{"identifier":"{\"channel\":\"ChatRoomChannel\",\"room_id\":102}","message":{"type":"room_deleted","room_id":102}}

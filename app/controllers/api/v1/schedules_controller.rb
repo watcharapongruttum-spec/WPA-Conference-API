@@ -124,7 +124,8 @@ module Api
 
             data.merge(
               type: meeting_type,
-              team_delegates: (schedule.team&.delegates || []).map do |d|
+              # team_delegates: (schedule.team&.delegates || []).map do |d|
+              team_delegates: schedule.team_delegates.map do |d|
                 {
                   id: d.id,
                   name: d.name,

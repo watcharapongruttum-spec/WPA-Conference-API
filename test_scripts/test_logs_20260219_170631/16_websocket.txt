@@ -1,0 +1,24 @@
+[WEBSOCKET TESTS - Thu Feb 19 17:06:38 +07 2026]
+  wscat version: 5.2.0
+  Log excerpt:
+{"type":"welcome"}
+> {"identifier":"{\"channel\":\"ChatChannel\"}","type":"confirm_subscription"}
+  Invalid JWT log:
+{"type":"disconnect","reason":"unauthorized","reconnect":false}
+  online_status response: {"online":true}
+  unread_count = 1
+  unread before enter_room = 3
+  unread after enter_room = 0
+  unread while B in room = 0
+  unread (B offline) = 5
+  unread after leave_room = 1
+  online_status after closing tab2 = true
+  Room ID for test: 101
+  Reject log:
+{"type":"welcome"}
+> {"identifier":"{\"channel\":\"ChatRoomChannel\",\"room_id\":101}","type":"reject_subscription"}
+{"type":"ping","message":1771495730}
+  WS send log:
+{"type":"welcome"}
+> {"identifier":"{\"channel\":\"ChatRoomChannel\",\"room_id\":102}","type":"confirm_subscription"}
+> {"type":"ping","message":1771495745}

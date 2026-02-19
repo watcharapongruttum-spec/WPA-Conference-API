@@ -1,0 +1,39 @@
+[CHAT ROOM TESTS - Thu Feb 19 17:06:37 +07 2026]
+  [17:06:37] GET /chat_rooms → 200
+  HTTP: 200
+  Body: [{"id":85,"title":"L2_1771317987 Room","room_kind":"group","members":[162,238]},{"id":86,"title":"L2_1771318002 Room","room_kind":"group","members":[162,238]},{"id":87,"title":"L2_1771318026 Room","room_kind":"group","members":[162,238]}]
+
+  Rooms: 3
+  [17:06:37] POST /chat_rooms (group) → 201
+  HTTP: 201
+  Body: {"id":100,"title":"Test Group Room","room_kind":"group"}
+
+  Room ID: 100
+  [17:06:37] POST /chat_rooms missing params → 400
+  HTTP: 400
+  Body: {"error":"Missing parameter: chat_room"}
+
+  [17:06:37] POST /chat_rooms/:id/join (B) → 200
+  HTTP: 200
+  Body: {"success":true,"joined":true}
+
+  [17:06:37] POST /chat_rooms/:id/join (again) → 200
+  HTTP: 200
+  Body: {"success":true,"joined":false}
+
+  [17:06:37] DELETE /chat_rooms/:id/leave (B) → 200
+  HTTP: 200
+  Body: {"success":true}
+
+  [17:06:37] DELETE /chat_rooms/:id/leave (not member) → 404
+  HTTP: 404
+  Body: {"error":"Not member"}
+
+  [17:06:37] DELETE /chat_rooms/:id (admin) → 200
+  HTTP: 200
+  Body: {"success":true}
+
+  [17:06:37] DELETE /chat_rooms/99999999 → 404
+  HTTP: 404
+  Body: {"error":"Record not found"}
+

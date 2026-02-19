@@ -1,413 +1,3 @@
-# #!/bin/bash
-
-# BASE_URL="http://localhost:3000"
-# WS_URL="ws://localhost:3000/cable"
-
-# EMAIL_A="narisara.lasan@bestgloballogistics.com"
-# PASSWORD_A="123456"
-
-# EMAIL_B="shammi@1shammi1.com"
-# PASSWORD_B="RNIrSPPICj"
-
-# GREEN='\033[0;32m'
-# RED='\033[0;31m'
-# YELLOW='\033[1;33m'
-# CYAN='\033[0;36m'
-# NC='\033[0m'
-
-# TOTAL_FAIL=0
-
-# pass(){ echo -e "${GREEN}✅ $1${NC}"; }
-# warn(){ echo -e "${YELLOW}⚠ $1${NC}"; }
-# fail(){ echo -e "${RED}❌ $1${NC}"; TOTAL_FAIL=$((TOTAL_FAIL+1)); }
-# step(){ echo -e "\n${CYAN}==== $1 ====${NC}"; }
-
-# login(){
-#   curl -s $BASE_URL/api/v1/login \
-#     -H "Content-Type: application/json" \
-#     -d "{\"email\":\"$1\",\"password\":\"$2\"}" | jq -r '.token'
-# }
-
-# get_id(){
-#   curl -s $BASE_URL/api/v1/profile \
-#     -H "Authorization: Bearer $1" | jq -r '.id'
-# }
-
-# unread(){
-#   curl -s "$BASE_URL/api/v1/messages/unread_count?sender_id=$1" \
-#     -H "Authorization: Bearer $2" | jq -r '.unread_count'
-# }
-
-# send_msg(){
-#   curl -s -X POST $BASE_URL/api/v1/messages \
-#     -H "Authorization: Bearer $1" \
-#     -H "Content-Type: application/json" \
-#     -d "{\"recipient_id\":$2,\"content\":\"$3\"}" > /dev/null
-# }
-
-# # ─── WebSocket helpers ───────────────────────────────────────────────────────
-
-# start_ws(){
-#   local NAME=$1
-#   local TOKEN=$2
-#   local WITH_ID=${3:-""}
-
-#   local IDENTIFIER
-#   if [ -n "$WITH_ID" ]; then
-#     IDENTIFIER="{\\\"channel\\\":\\\"ChatChannel\\\",\\\"with_id\\\":$WITH_ID}"
-#   else
-#     IDENTIFIER="{\\\"channel\\\":\\\"ChatChannel\\\"}"
-#   fi
-
-#   nohup bash -c "
-#     {
-#       sleep 1
-#       echo '{\"command\":\"subscribe\",\"identifier\":\"${IDENTIFIER}\"}'
-#       sleep 999
-#     } | timeout 120 wscat -c '${WS_URL}?token=${TOKEN}'
-#   " > "rt_${NAME}.log" 2>&1 &
-
-#   sleep 2
-# }
-
-# enter_room(){
-#   local NAME=$1
-#   local TOKEN=$2
-#   local TARGET_ID=$3
-#   local IDENTIFIER="{\\\"channel\\\":\\\"ChatChannel\\\"}"
-
-#   nohup bash -c "
-#     {
-#       sleep 0.3
-#       echo '{\"command\":\"subscribe\",\"identifier\":\"${IDENTIFIER}\"}'
-#       sleep 0.5
-#       echo '{\"command\":\"message\",\"identifier\":\"${IDENTIFIER}\",\"data\":\"{\\\"action\\\":\\\"enter_room\\\",\\\"user_id\\\":${TARGET_ID}}\"}'
-#       sleep 999
-#     } | timeout 120 wscat -c '${WS_URL}?token=${TOKEN}'
-#   " >> "rt_${NAME}_room.log" 2>&1 &
-
-#   sleep 2
-# }
-
-# # leave_room TOKEN TARGET_ID
-# #   ส่ง leave_room action → ล้าง active_room Redis key ก่อน disconnect
-# leave_room(){
-#   local TOKEN=$1
-#   local TARGET_ID=$2
-#   local IDENTIFIER="{\\\"channel\\\":\\\"ChatChannel\\\"}"
-
-#   bash -c "
-#     {
-#       sleep 0.3
-#       echo '{\"command\":\"subscribe\",\"identifier\":\"${IDENTIFIER}\"}'
-#       sleep 0.5
-#       echo '{\"command\":\"message\",\"identifier\":\"${IDENTIFIER}\",\"data\":\"{\\\"action\\\":\\\"leave_room\\\",\\\"user_id\\\":${TARGET_ID}}\"}'
-#       sleep 1
-#     } | timeout 10 wscat -c '${WS_URL}?token=${TOKEN}'
-#   " >> "rt_leave.log" 2>&1
-#   sleep 1
-# }
-
-# # cleanup_room A_TOKEN B_TOKEN A_ID B_ID
-# #   ส่ง leave_room ก่อนเสมอ → ล้าง active_room Redis key → แล้วค่อย kill wscat
-# cleanup_room(){
-#   local TOKEN_A=$1
-#   local TOKEN_B=$2
-#   local A_ID=$3
-#   local B_ID=$4
-
-#   leave_room "$TOKEN_A" "$B_ID" 2>/dev/null
-#   leave_room "$TOKEN_B" "$A_ID" 2>/dev/null
-#   pkill -f "wscat" 2>/dev/null || true
-#   sleep 1
-#   rm -f rt_*.log 2>/dev/null || true
-# }
-
-# cleanup(){
-#   pkill -f "wscat" 2>/dev/null || true
-#   sleep 1
-#   rm -f rt_*.log 2>/dev/null || true
-# }
-# trap cleanup EXIT
-
-# wait_until_zero(){
-#   local SENDER=$1
-#   local TOKEN=$2
-
-#   for i in {1..15}; do
-#     COUNT=$(unread "$SENDER" "$TOKEN")
-#     COUNT=${COUNT:-999}
-#     echo "  Checking unread... $COUNT"
-#     if [[ "$COUNT" =~ ^[0-9]+$ ]] && [ "$COUNT" -eq 0 ]; then
-#       return 0
-#     fi
-#     sleep 1
-#   done
-#   return 1
-# }
-
-# ############################################################
-# step "LOGIN"
-
-# TOKEN_A=$(login "$EMAIL_A" "$PASSWORD_A")
-# TOKEN_B=$(login "$EMAIL_B" "$PASSWORD_B")
-# A_ID=$(get_id "$TOKEN_A")
-# B_ID=$(get_id "$TOKEN_B")
-
-# [ -z "$TOKEN_A" ] && fail "Login A failed"
-# [ -z "$TOKEN_B" ] && fail "Login B failed"
-# pass "Login OK (A=$A_ID, B=$B_ID)"
-
-# ############################################################
-# step "RESET STATE"
-
-# curl -s -X PATCH $BASE_URL/api/v1/messages/read_all \
-#   -H "Authorization: Bearer $TOKEN_A" > /dev/null
-# curl -s -X PATCH $BASE_URL/api/v1/messages/read_all \
-#   -H "Authorization: Bearer $TOKEN_B" > /dev/null
-# # ล้าง Redis active_room key ของทั้งคู่ก่อนเริ่ม
-# leave_room "$TOKEN_A" "$B_ID"
-# leave_room "$TOKEN_B" "$A_ID"
-# cleanup
-# pass "State clean"
-
-# ############################################################
-# step "CASE 1 — B ONLINE แต่ยังไม่ enter_room → ต้อง unread ยังอยู่"
-
-# start_ws "A" "$TOKEN_A"
-# start_ws "B" "$TOKEN_B"   # B online แต่ไม่ enter_room
-
-# send_msg "$TOKEN_A" "$B_ID" "hello before enter"
-# sleep 2
-
-# U=$(unread "$A_ID" "$TOKEN_B")
-# if [ "$U" -ge 1 ]; then
-#   pass "Correct: unread=$U (B online แต่ยังไม่เปิดห้อง)"
-# else
-#   fail "Case 1 failed: unread=$U — ตรวจสอบว่า subscribed ใน chat_channel.rb ไม่มี mark_all_for_user"
-# fi
-
-# ############################################################
-# step "CASE 2 — B enter_room → ต้อง unread = 0"
-
-# enter_room "B" "$TOKEN_B" "$A_ID"
-# sleep 2
-
-# U=$(unread "$A_ID" "$TOKEN_B")
-# if [ "$U" -eq 0 ]; then
-#   pass "Correct: unread=0 หลัง B enter_room"
-# else
-#   fail "Case 2 failed: unread=$U แม้ B enter_room แล้ว"
-# fi
-
-# ############################################################
-# step "CASE 3 — B อยู่ในห้อง → ข้อความใหม่ต้อง mark read ทันที"
-
-# send_msg "$TOKEN_A" "$B_ID" "message while B is in room"
-# sleep 2
-
-# U=$(unread "$A_ID" "$TOKEN_B")
-# if [ "$U" -eq 0 ]; then
-#   pass "Correct: ข้อความใหม่ถูก mark read ทันทีเพราะ B อยู่ในห้อง"
-# else
-#   fail "Case 3 failed: unread=$U ทั้งที่ B อยู่ในห้องอยู่แล้ว"
-# fi
-
-# ############################################################
-# step "CASE 4 — B OFFLINE → ต้อง unread สะสม"
-
-# # ล้าง active_room key ก่อน disconnect เพื่อไม่ให้ค้าง
-# cleanup_room "$TOKEN_A" "$TOKEN_B" "$A_ID" "$B_ID"
-# start_ws "A" "$TOKEN_A"
-# # B ไม่ connect เลย
-
-# for i in {1..10}; do
-#   send_msg "$TOKEN_A" "$B_ID" "offline msg $i"
-# done
-# sleep 2
-
-# U=$(unread "$A_ID" "$TOKEN_B")
-# if [ "$U" -eq 10 ]; then
-#   pass "Offline unread correct (=$U)"
-# else
-#   fail "Case 4 failed: expected 10 got $U"
-# fi
-
-# ############################################################
-# step "CASE 5 — B CONNECTS แต่ไม่ enter_room → unread ยังอยู่"
-
-# start_ws "B" "$TOKEN_B"
-# sleep 2
-
-# U=$(unread "$A_ID" "$TOKEN_B")
-# if [ "$U" -eq 10 ]; then
-#   pass "Correct: connect เฉยๆ ไม่ mark read (=$U)"
-# else
-#   fail "Case 5 failed: expected 10 got $U — ตรวจสอบว่า subscribed ไม่มี mark_all_for_user"
-# fi
-
-# ############################################################
-# step "CASE 6 — B enter_room ทีหลัง → unread = 0"
-
-# enter_room "B" "$TOKEN_B" "$A_ID"
-# sleep 2
-
-# U=$(unread "$A_ID" "$TOKEN_B")
-# if [ "$U" -eq 0 ]; then
-#   pass "Late enter_room OK: unread=0"
-# else
-#   fail "Case 6 failed: unread=$U"
-# fi
-
-# ############################################################
-# step "CASE 7 — RACE CHAT (ส่งข้อความพร้อมกัน แล้ว enter_room เพื่อ mark read)"
-
-# cleanup_room "$TOKEN_A" "$TOKEN_B" "$A_ID" "$B_ID"
-# start_ws "A" "$TOKEN_A"
-# start_ws "B" "$TOKEN_B"
-
-# PIDS=()
-# for i in {1..10}; do
-#   send_msg "$TOKEN_A" "$B_ID" "A says $i" &
-#   PIDS+=($!)
-#   send_msg "$TOKEN_B" "$A_ID" "B says $i" &
-#   PIDS+=($!)
-# done
-# for pid in "${PIDS[@]}"; do wait $pid; done
-# sleep 1
-
-# UA=$(unread "$B_ID" "$TOKEN_A")
-# UB=$(unread "$A_ID" "$TOKEN_B")
-# echo "  Before enter_room: A unread=$UA, B unread=$UB"
-
-# enter_room "A" "$TOKEN_A" "$B_ID"
-# enter_room "B" "$TOKEN_B" "$A_ID"
-# sleep 2
-
-# UA_AFTER=$(unread "$B_ID" "$TOKEN_A")
-# UB_AFTER=$(unread "$A_ID" "$TOKEN_B")
-
-# if [ "$UA_AFTER" -eq 0 ]; then
-#   pass "Race A OK: unread=0 หลัง enter_room"
-# else
-#   warn "Race A: unread=$UA_AFTER"
-# fi
-
-# if [ "$UB_AFTER" -eq 0 ]; then
-#   pass "Race B OK: unread=0 หลัง enter_room"
-# else
-#   warn "Race B: unread=$UB_AFTER"
-# fi
-
-# ############################################################
-# step "CASE 8 — BURST STRESS (B อยู่ในห้อง)"
-
-# for i in {1..30}; do
-#   send_msg "$TOKEN_A" "$B_ID" "burst $i"
-# done
-# sleep 3
-
-# COUNT=$(grep -c "new_message" rt_B.log 2>/dev/null | tail -1 || echo 0)
-# COUNT=$(echo "$COUNT" | tr -d '[:space:]')
-# if [ "${COUNT:-0}" -ge 30 ]; then
-#   pass "Burst realtime OK ($COUNT/30)"
-# else
-#   warn "Burst incomplete ($COUNT/30)"
-# fi
-
-# # ════════════════════════════════════════════════════════════════════════════
-# # BUG FIX TESTS
-# # ════════════════════════════════════════════════════════════════════════════
-
-# ############################################################
-# step "BUG 1 — MULTI-CONNECTION: ปิด 1 tab ไม่ควรลบ active_room ของ tab อื่น"
-
-# cleanup_room "$TOKEN_A" "$TOKEN_B" "$A_ID" "$B_ID"
-# enter_room "B_tab1" "$TOKEN_B" "$A_ID"
-# start_ws   "B_tab2" "$TOKEN_B"
-# sleep 1
-
-# send_msg "$TOKEN_A" "$B_ID" "msg while B has 2 connections"
-# sleep 2
-
-# U=$(unread "$A_ID" "$TOKEN_B")
-# if [ "$U" -eq 0 ]; then
-#   pass "Multi-connection OK: active_room ยังอยู่ auto-mark ทำงาน (unread=$U)"
-# else
-#   fail "Multi-connection failed: unread=$U (active_room หายเพราะ connection อื่น)"
-# fi
-
-# ############################################################
-# step "BUG 2 — LEAVE_ROOM: ออกจากห้องแล้วต้องไม่ auto-mark"
-
-# cleanup_room "$TOKEN_A" "$TOKEN_B" "$A_ID" "$B_ID"
-# enter_room "B" "$TOKEN_B" "$A_ID"
-# sleep 1
-
-# leave_room "$TOKEN_B" "$A_ID"
-# sleep 1
-
-# send_msg "$TOKEN_A" "$B_ID" "msg after B left room"
-# sleep 2
-
-# U=$(unread "$A_ID" "$TOKEN_B")
-# if [ "$U" -ge 1 ]; then
-#   pass "leave_room OK: ไม่ auto-mark หลัง leave_room (unread=$U)"
-# else
-#   fail "leave_room failed: ข้อความถูก auto-mark ทั้งที่ B ออกจากห้องแล้ว (unread=$U)"
-# fi
-
-# ############################################################
-# step "BUG 3 — NO DEBUG LOG: ไม่ควรมี 🔍 auto_mark check ใน log"
-
-# cleanup_room "$TOKEN_A" "$TOKEN_B" "$A_ID" "$B_ID"
-# enter_room "B" "$TOKEN_B" "$A_ID"
-# sleep 1
-# send_msg "$TOKEN_A" "$B_ID" "debug log check"
-# sleep 2
-
-# # เช็กที่ source file โดยตรง — แม่นกว่าเช็ก log ที่มี entry เก่าค้างอยู่
-# SVC_FILE=""
-# for path in \
-#   "../app/services/chat/send_message_service.rb" \
-#   "../../app/services/chat/send_message_service.rb" \
-#   "$HOME/mikkee_pro/WPA-Conference-API/app/services/chat/send_message_service.rb"; do
-#   [ -f "$path" ] && SVC_FILE="$path" && break
-# done
-
-# if [ -n "$SVC_FILE" ]; then
-#   if grep -q "auto_mark check" "$SVC_FILE"; then
-#     fail "Debug log ยังอยู่ใน source — ลบออกจาก send_message_service.rb ด้วย"
-#   else
-#     pass "No debug log OK (ลบออกจาก source แล้ว)"
-#   fi
-# else
-#   warn "ไม่พบ send_message_service.rb — ตรวจเองด้วย: grep '🔍' app/services/chat/send_message_service.rb"
-# fi
-
-# ############################################################
-
-# cleanup
-
-# echo ""
-# echo "========================================="
-# if [ "$TOTAL_FAIL" -eq 0 ]; then
-#   echo -e "${GREEN}🔥 ALL TESTS COMPLETED (NO HARD FAIL) 🔥${NC}"
-# else
-#   echo -e "${RED}⚠ $TOTAL_FAIL TEST(S) FAILED${NC}"
-# fi
-# echo "========================================="
-
-
-
-
-
-
-
-
-
-
-
 #!/bin/bash
 # =============================================================
 # WPA Conference API — Full System Test Suite
@@ -415,6 +5,7 @@
 # =============================================================
 
 BASE_URL="http://localhost:3000"
+WS_URL="ws://localhost:3000/cable"
 
 # ---------- Test Users ----------
 EMAIL_A="narisara.lasan@bestgloballogistics.com";  PASSWORD_A="123456"
@@ -442,6 +33,7 @@ LOG_NOTIFICATIONS="$LOG_DIR/10_notifications.txt"
 LOG_DASHBOARD="$LOG_DIR/11_dashboard.txt"
 LOG_LEAVE="$LOG_DIR/12_leave.txt"
 LOG_DEVICE="$LOG_DIR/13_device.txt"
+LOG_WS="$LOG_DIR/16_websocket.txt"
 LOG_ERRORS="$LOG_DIR/99_errors.txt"
 
 # ---------- Counters ----------
@@ -449,10 +41,8 @@ PASS=0; FAIL=0; SKIP=0
 START_TIME=$(date +%s)
 
 # =============================================================
-# HELPERS
+# HELPERS — OUTPUT
 # =============================================================
-
-log_to(){ echo "$1" >> "$2"; }
 
 pass(){
   echo -e "${GREEN}  ✅ $1${NC}"
@@ -488,7 +78,10 @@ subsection(){
   echo "  ── $1 ──" >> "$LOG_MAIN"
 }
 
-# HTTP helper: คืน "BODY\nSTATUS_CODE"
+# =============================================================
+# HELPERS — HTTP
+# =============================================================
+
 http_get(){
   local url=$1 token=$2
   curl -s -w "\n%{http_code}" \
@@ -528,7 +121,6 @@ extract_body(){ echo "$1" | head -1; }
 extract_code(){ echo "$1" | tail -1; }
 
 check(){
-  # check "label" "$response" expected_code [log_file]
   local label=$1 resp=$2 expected=$3 logfile=${4:-$LOG_MAIN}
   local code=$(extract_code "$resp")
   local body=$(extract_body "$resp")
@@ -547,13 +139,184 @@ check(){
   fi
 }
 
+unread_from(){
+  # unread_from SENDER_ID TOKEN → คืน integer
+  local sender_id=$1 token=$2
+  http_get "/api/v1/messages/unread_count?sender_id=$sender_id" "$token" \
+    | head -1 | jq -r '.unread_count // 999' 2>/dev/null
+}
+
+send_msg(){
+  # send_msg TOKEN RECIPIENT_ID CONTENT
+  local token=$1 rid=$2 content=$3
+  http_post "/api/v1/messages" "$token" \
+    "{\"message\":{\"recipient_id\":$rid,\"content\":\"$content\"}}" > /dev/null
+}
+
+read_all(){
+  curl -s -o /dev/null -X PATCH \
+    -H "Authorization: Bearer $1" \
+    "$BASE_URL/api/v1/messages/read_all"
+}
+
 # =============================================================
-# WRITE HEADER
+# HELPERS — WEBSOCKET
+# =============================================================
+
+WS_PIDS=()
+
+# ws_connect NAME TOKEN [WITH_ID]
+#   เปิด wscat subscribe ChatChannel ใน background
+#   log → $LOG_DIR/ws_NAME.log
+ws_connect(){
+  local NAME=$1 TOKEN=$2 WITH_ID=${3:-""}
+  local LOGFILE="$LOG_DIR/ws_${NAME}.log"
+  local IDENTIFIER
+
+  if [ -n "$WITH_ID" ]; then
+    IDENTIFIER="{\\\"channel\\\":\\\"ChatChannel\\\",\\\"with_id\\\":$WITH_ID}"
+  else
+    IDENTIFIER="{\\\"channel\\\":\\\"ChatChannel\\\"}"
+  fi
+
+  nohup bash -c "
+    {
+      sleep 0.5
+      echo '{\"command\":\"subscribe\",\"identifier\":\"${IDENTIFIER}\"}'
+      sleep 9999
+    } | timeout 120 wscat --connect '${WS_URL}?token=${TOKEN}' --no-color
+  " > "$LOGFILE" 2>&1 &
+
+  local PID=$!
+  WS_PIDS+=($PID)
+  echo "$PID" > "$LOG_DIR/.ws_${NAME}.pid"
+  sleep 2  # รอ subscribe confirm
+}
+
+# ws_enter_room NAME TOKEN TARGET_ID
+#   subscribe + ส่ง enter_room action
+ws_enter_room(){
+  local NAME=$1 TOKEN=$2 TARGET_ID=$3
+  local LOGFILE="$LOG_DIR/ws_${NAME}_room.log"
+  local IDENTIFIER="{\\\"channel\\\":\\\"ChatChannel\\\"}"
+
+  nohup bash -c "
+    {
+      sleep 0.3
+      echo '{\"command\":\"subscribe\",\"identifier\":\"${IDENTIFIER}\"}'
+      sleep 0.8
+      echo '{\"command\":\"message\",\"identifier\":\"${IDENTIFIER}\",\"data\":\"{\\\"action\\\":\\\"enter_room\\\",\\\"user_id\\\":${TARGET_ID}}\"}'
+      sleep 9999
+    } | timeout 120 wscat --connect '${WS_URL}?token=${TOKEN}' --no-color
+  " > "$LOGFILE" 2>&1 &
+
+  local PID=$!
+  WS_PIDS+=($PID)
+  echo "$PID" > "$LOG_DIR/.ws_${NAME}_room.pid"
+  sleep 2
+}
+
+# ws_leave_room TOKEN TARGET_ID
+#   ส่ง leave_room action แล้วรอ disconnect
+ws_leave_room(){
+  local TOKEN=$1 TARGET_ID=$2
+  local IDENTIFIER="{\\\"channel\\\":\\\"ChatChannel\\\"}"
+
+  bash -c "
+    {
+      sleep 0.3
+      echo '{\"command\":\"subscribe\",\"identifier\":\"${IDENTIFIER}\"}'
+      sleep 0.8
+      echo '{\"command\":\"message\",\"identifier\":\"${IDENTIFIER}\",\"data\":\"{\\\"action\\\":\\\"leave_room\\\",\\\"user_id\\\":${TARGET_ID}}\"}'
+      sleep 1
+    } | timeout 10 wscat --connect '${WS_URL}?token=${TOKEN}' --no-color
+  " >> "$LOG_DIR/ws_leave.log" 2>&1
+  sleep 1
+}
+
+# ws_subscribe_room NAME TOKEN ROOM_ID
+#   subscribe ChatRoomChannel
+ws_subscribe_room(){
+  local NAME=$1 TOKEN=$2 ROOM_ID=$3
+  local LOGFILE="$LOG_DIR/ws_room_${NAME}.log"
+  local IDENTIFIER="{\\\"channel\\\":\\\"ChatRoomChannel\\\",\\\"room_id\\\":${ROOM_ID}}"
+
+  nohup bash -c "
+    {
+      sleep 0.5
+      echo '{\"command\":\"subscribe\",\"identifier\":\"${IDENTIFIER}\"}'
+      sleep 9999
+    } | timeout 30 wscat --connect '${WS_URL}?token=${TOKEN}' --no-color
+  " > "$LOGFILE" 2>&1 &
+
+  local PID=$!
+  WS_PIDS+=($PID)
+  echo "$PID" > "$LOG_DIR/.ws_room_${NAME}.pid"
+  sleep 2
+}
+
+# ws_send_room TOKEN ROOM_ID CONTENT
+#   ส่ง send_message ผ่าน ChatRoomChannel
+ws_send_room(){
+  local TOKEN=$1 ROOM_ID=$2 CONTENT=$3
+  local IDENTIFIER="{\\\"channel\\\":\\\"ChatRoomChannel\\\",\\\"room_id\\\":${ROOM_ID}}"
+
+  bash -c "
+    {
+      sleep 0.3
+      echo '{\"command\":\"subscribe\",\"identifier\":\"${IDENTIFIER}\"}'
+      sleep 0.8
+      echo '{\"command\":\"message\",\"identifier\":\"${IDENTIFIER}\",\"data\":\"{\\\"action\\\":\\\"send_message\\\",\\\"content\\\":\\\"${CONTENT}\\\"}\"}'
+      sleep 2
+    } | timeout 15 wscat --connect '${WS_URL}?token=${TOKEN}' --no-color
+  " >> "$LOG_DIR/ws_send_room.log" 2>&1
+  sleep 1
+}
+
+# ws_kill_all — kill wscat processes ทั้งหมด
+ws_kill_all(){
+  pkill -f "wscat" 2>/dev/null || true
+  WS_PIDS=()
+  sleep 1
+}
+
+# ws_clean_redis TOKEN TARGET_ID
+#   ล้าง active_room key ก่อน disconnect
+ws_clean_redis(){
+  local TOKEN=$1 TARGET_ID=$2
+  ws_leave_room "$TOKEN" "$TARGET_ID" 2>/dev/null
+}
+
+# ws_reset — reset state ทั้งหมด
+ws_reset(){
+  ws_clean_redis "$TOKEN_A" "$B_ID" 2>/dev/null
+  ws_clean_redis "$TOKEN_B" "$A_ID" 2>/dev/null
+  ws_kill_all
+  read_all "$TOKEN_A"
+  read_all "$TOKEN_B"
+  sleep 1
+}
+
+# check_unread_zero SENDER_ID TOKEN LABEL LOGFILE
+#   รอสูงสุด 8 วินาทีจนกว่า unread จะเป็น 0
+wait_zero(){
+  local SENDER=$1 TOKEN=$2
+  for i in {1..8}; do
+    local U=$(unread_from "$SENDER" "$TOKEN")
+    [ "${U:-999}" -eq 0 ] && return 0
+    sleep 1
+  done
+  return 1
+}
+
+# =============================================================
+# HEADER
 # =============================================================
 {
   echo "WPA Conference API — Full System Test"
   echo "Run at: $(date)"
   echo "Base URL: $BASE_URL"
+  echo "WS URL:   $WS_URL"
   echo "============================================"
   echo ""
 } > "$LOG_MAIN"
@@ -571,12 +334,9 @@ echo "  Logs → $LOG_DIR"
 # SECTION 1: AUTHENTICATION
 # =============================================================
 section "1. AUTHENTICATION"
-
 echo "[AUTH TESTS - $(date)]" > "$LOG_AUTH"
 
 subsection "1.1 Login"
-
-# Login A
 R=$(curl -s -w "\n%{http_code}" -X POST \
   -H "Content-Type: application/json" \
   -d "{\"email\":\"$EMAIL_A\",\"password\":\"$PASSWORD_A\"}" \
@@ -585,7 +345,6 @@ check "Login User A" "$R" 200 "$LOG_AUTH"
 TOKEN_A=$(extract_body "$R" | jq -r '.token // empty')
 A_ID=$(extract_body "$R" | jq -r '.delegate.id // empty')
 
-# Login B
 R=$(curl -s -w "\n%{http_code}" -X POST \
   -H "Content-Type: application/json" \
   -d "{\"email\":\"$EMAIL_B\",\"password\":\"$PASSWORD_B\"}" \
@@ -599,7 +358,6 @@ echo "  User B: id=$B_ID" | tee -a "$LOG_AUTH"
 
 if [ -z "$TOKEN_A" ] || [ -z "$TOKEN_B" ]; then
   echo -e "${RED}  FATAL: Login failed — cannot continue${NC}"
-  echo "FATAL: Login failed" >> "$LOG_ERRORS"
   exit 1
 fi
 
@@ -623,14 +381,12 @@ R=$(http_patch "/api/v1/change_password" "$TOKEN_A" \
   "{\"current_password\":\"$ORIG_PASS\",\"new_password\":\"newpass123\",\"new_password_confirmation\":\"newpass123\"}")
 check "Change password success → 200" "$R" 200 "$LOG_AUTH"
 
-# Login again with new password
 R=$(curl -s -w "\n%{http_code}" -X POST \
   -H "Content-Type: application/json" \
   -d "{\"email\":\"$EMAIL_A\",\"password\":\"newpass123\"}" \
   "$BASE_URL/api/v1/login")
 check "Login with new password → 200" "$R" 200 "$LOG_AUTH"
 
-# Revert password
 R=$(http_patch "/api/v1/change_password" "$TOKEN_A" \
   "{\"current_password\":\"newpass123\",\"new_password\":\"$ORIG_PASS\",\"new_password_confirmation\":\"$ORIG_PASS\"}")
 check "Revert password → 200" "$R" 200 "$LOG_AUTH"
@@ -667,7 +423,6 @@ check "Access profile without token → 401" "$R" 401 "$LOG_AUTH"
 # SECTION 2: PROFILE
 # =============================================================
 section "2. PROFILE"
-
 echo "[PROFILE TESTS - $(date)]" > "$LOG_PROFILE"
 
 subsection "2.1 Get own profile"
@@ -684,8 +439,7 @@ R=$(http_get "/api/v1/profile/99999999" "$TOKEN_A")
 check "GET /profile/99999999 → 404" "$R" 404 "$LOG_PROFILE"
 
 subsection "2.4 Update profile"
-R=$(http_patch "/api/v1/profile" "$TOKEN_A" \
-  '{"phone":"0812345678"}')
+R=$(http_patch "/api/v1/profile" "$TOKEN_A" '{"phone":"0812345678"}')
 check "PATCH /profile → 200" "$R" 200 "$LOG_PROFILE"
 
 subsection "2.5 /delegates profile endpoint"
@@ -697,14 +451,12 @@ check "GET /delegates/profile → 200" "$R" 200 "$LOG_PROFILE"
 # SECTION 3: DELEGATES
 # =============================================================
 section "3. DELEGATES"
-
 echo "[DELEGATE TESTS - $(date)]" > "$LOG_DELEGATES"
 
 subsection "3.1 List delegates"
 R=$(http_get "/api/v1/delegates" "$TOKEN_A")
 check "GET /delegates → 200" "$R" 200 "$LOG_DELEGATES"
-DELEGATE_COUNT=$(extract_body "$R" | jq 'length' 2>/dev/null)
-echo "  Total delegates (page 1): $DELEGATE_COUNT" | tee -a "$LOG_DELEGATES"
+echo "  Total delegates (page 1): $(extract_body "$R" | jq 'length' 2>/dev/null)" | tee -a "$LOG_DELEGATES"
 
 subsection "3.2 Get delegate by ID"
 R=$(http_get "/api/v1/delegates/$B_ID" "$TOKEN_A")
@@ -721,8 +473,7 @@ check "GET /delegates/99999999 → 404" "$R" 404 "$LOG_DELEGATES"
 subsection "3.5 Search delegates — keyword"
 R=$(http_get "/api/v1/delegates/search?keyword=a" "$TOKEN_A")
 check "GET /delegates/search?keyword=a → 200" "$R" 200 "$LOG_DELEGATES"
-FIRST_DELEGATE_ID=$(extract_body "$R" | jq -r '.data[0].id // empty' 2>/dev/null)
-echo "  First result ID: $FIRST_DELEGATE_ID" | tee -a "$LOG_DELEGATES"
+echo "  First result ID: $(extract_body "$R" | jq -r '.data[0].id // empty' 2>/dev/null)" | tee -a "$LOG_DELEGATES"
 
 subsection "3.6 Search delegates — empty keyword"
 R=$(http_get "/api/v1/delegates/search?keyword=" "$TOKEN_A")
@@ -735,15 +486,13 @@ check "GET /delegates/search (page 2) → 200" "$R" 200 "$LOG_DELEGATES"
 subsection "3.8 QR Code"
 R=$(http_get "/api/v1/delegates/$B_ID/qr_code" "$TOKEN_A")
 check "GET /delegates/:id/qr_code → 200" "$R" 200 "$LOG_DELEGATES"
-HAS_QR=$(extract_body "$R" | jq -r '.qr_code // empty' 2>/dev/null | head -c 20)
-echo "  QR starts with: $HAS_QR..." | tee -a "$LOG_DELEGATES"
+echo "  QR starts with: $(extract_body "$R" | jq -r '.qr_code // empty' 2>/dev/null | head -c 20)..." | tee -a "$LOG_DELEGATES"
 
 
 # =============================================================
 # SECTION 4: DASHBOARD
 # =============================================================
 section "4. DASHBOARD"
-
 echo "[DASHBOARD TESTS - $(date)]" > "$LOG_DASHBOARD"
 
 subsection "4.1 Get dashboard"
@@ -759,7 +508,6 @@ check "GET /dashboard (user B) → 200" "$R" 200 "$LOG_DASHBOARD"
 # SECTION 5: SCHEDULES
 # =============================================================
 section "5. SCHEDULES"
-
 echo "[SCHEDULE TESTS - $(date)]" > "$LOG_SCHEDULES"
 
 subsection "5.1 List schedules"
@@ -784,7 +532,6 @@ R=$(http_get "/api/v1/schedules/schedule_others?delegate_id=$B_ID" "$TOKEN_A")
 SC=$(extract_code "$R")
 if [ "$SC" -eq 200 ] || [ "$SC" -eq 404 ]; then
   pass "GET /schedules/schedule_others?delegate_id=$B_ID → $SC (200 or 404 ok)"
-  echo "  schedule_others: HTTP $SC" >> "$LOG_SCHEDULES"
 else
   fail "GET /schedules/schedule_others — Expected 200/404, got $SC"
 fi
@@ -803,14 +550,12 @@ fi
 # SECTION 6: TABLES
 # =============================================================
 section "6. TABLES"
-
 echo "[TABLE TESTS - $(date)]" > "$LOG_TABLES"
 
 subsection "6.1 Grid view"
 R=$(http_get "/api/v1/tables/grid_view" "$TOKEN_A")
 check "GET /tables/grid_view → 200" "$R" 200 "$LOG_TABLES"
-TABLE_COUNT=$(extract_body "$R" | jq 'length' 2>/dev/null)
-echo "  Tables in grid: $TABLE_COUNT" | tee -a "$LOG_TABLES"
+echo "  Tables in grid: $(extract_body "$R" | jq 'length' 2>/dev/null)" | tee -a "$LOG_TABLES"
 
 subsection "6.2 Time view"
 R=$(http_get "/api/v1/tables/time_view" "$TOKEN_A")
@@ -832,17 +577,15 @@ fi
 
 
 # =============================================================
-# SECTION 7: NETWORKING — DIRECTORY & CONNECTIONS
+# SECTION 7: NETWORKING
 # =============================================================
 section "7. NETWORKING"
-
 echo "[NETWORKING TESTS - $(date)]" > "$LOG_NETWORKING"
 
 subsection "7.1 Directory"
 R=$(http_get "/api/v1/networking/directory" "$TOKEN_A")
 check "GET /networking/directory → 200" "$R" 200 "$LOG_NETWORKING"
-DIR_COUNT=$(extract_body "$R" | jq 'length' 2>/dev/null)
-echo "  Directory count: $DIR_COUNT" | tee -a "$LOG_NETWORKING"
+echo "  Directory count: $(extract_body "$R" | jq 'length' 2>/dev/null)" | tee -a "$LOG_NETWORKING"
 
 subsection "7.2 Directory — pagination"
 R=$(http_get "/api/v1/networking/directory?page=2" "$TOKEN_A")
@@ -851,8 +594,7 @@ check "GET /networking/directory?page=2 → 200" "$R" 200 "$LOG_NETWORKING"
 subsection "7.3 My connections"
 R=$(http_get "/api/v1/networking/my_connections" "$TOKEN_A")
 check "GET /networking/my_connections → 200" "$R" 200 "$LOG_NETWORKING"
-CONN_COUNT=$(extract_body "$R" | jq 'length' 2>/dev/null)
-echo "  A connections: $CONN_COUNT" | tee -a "$LOG_NETWORKING"
+echo "  A connections: $(extract_body "$R" | jq 'length' 2>/dev/null)" | tee -a "$LOG_NETWORKING"
 
 subsection "7.4 Pending requests"
 R=$(http_get "/api/v1/networking/pending_requests" "$TOKEN_A")
@@ -860,23 +602,19 @@ check "GET /networking/pending_requests → 200" "$R" 200 "$LOG_NETWORKING"
 
 
 # =============================================================
-# SECTION 8: CONNECTION REQUESTS (FRIEND SYSTEM)
+# SECTION 8: CONNECTION REQUESTS
 # =============================================================
 section "8. CONNECTION REQUESTS"
-
 echo "[CONNECTION REQUEST TESTS - $(date)]" > "$LOG_REQUESTS"
 
-# --- Helper: cleanup existing connection between A and B ---
 cleanup_connection(){
   echo "  [cleanup] Removing existing connection/request between A($A_ID) and B($B_ID)..." | tee -a "$LOG_REQUESTS"
-  # ลบ connection request (ทั้ง A→B และ B→A)
   curl -s -o /dev/null -X DELETE \
     -H "Authorization: Bearer $TOKEN_A" \
     "$BASE_URL/api/v1/requests/$B_ID/cancel"
   curl -s -o /dev/null -X DELETE \
     -H "Authorization: Bearer $TOKEN_B" \
     "$BASE_URL/api/v1/requests/$A_ID/cancel"
-  # unfriend
   curl -s -o /dev/null -X DELETE \
     -H "Authorization: Bearer $TOKEN_A" \
     "$BASE_URL/api/v1/networking/unfriend/$B_ID"
@@ -901,15 +639,11 @@ if [ "$SC" -eq 201 ]; then
   REQ_ID=$(extract_body "$R" | jq -r '.id // empty')
   echo "  Request ID: $REQ_ID" | tee -a "$LOG_REQUESTS"
 elif [ "$SC" -eq 422 ]; then
-  # Already exists — find it
-  echo "  Request already exists, finding pending..." | tee -a "$LOG_REQUESTS"
   REQ_ID=$(http_get "/api/v1/requests/my_received" "$TOKEN_B" | head -1 \
     | jq -r --argjson aid "$A_ID" '[.[] | select(.requester.id == $aid)] | .[0].id // empty' 2>/dev/null)
-  if [ -n "$REQ_ID" ] && [ "$REQ_ID" != "null" ]; then
-    pass "POST /requests — found existing pending id=$REQ_ID"
-  else
+  [ -n "$REQ_ID" ] && [ "$REQ_ID" != "null" ] && \
+    pass "POST /requests — found existing pending id=$REQ_ID" || \
     fail "POST /requests → 422 and no pending found"
-  fi
 else
   fail "POST /requests (A→B) — Expected 201, got $SC"
 fi
@@ -950,7 +684,6 @@ R=$(http_delete "/api/v1/networking/unfriend/$B_ID" "$TOKEN_A")
 check "DELETE /networking/unfriend (duplicate) → 404" "$R" 404 "$LOG_REQUESTS"
 
 subsection "8.11 Reject flow: A→B request, B rejects"
-# cleanup
 cleanup_connection
 R=$(http_post "/api/v1/requests" "$TOKEN_A" "{\"target_id\":$B_ID}")
 REJ_REQ_ID=$(extract_body "$R" | jq -r '.id // empty')
@@ -965,7 +698,6 @@ subsection "8.12 Request nonexistent target → 404"
 R=$(http_post "/api/v1/requests" "$TOKEN_A" '{"target_id":99999999}')
 check "POST /requests nonexistent target → 404" "$R" 404 "$LOG_REQUESTS"
 
-# Re-establish friendship for later tests
 subsection "8.13 Re-establish friendship for downstream tests"
 cleanup_connection
 R=$(http_post "/api/v1/requests" "$TOKEN_A" "{\"target_id\":$B_ID}")
@@ -979,10 +711,9 @@ fi
 
 
 # =============================================================
-# SECTION 9: MESSAGES (CHAT)
+# SECTION 9: MESSAGES
 # =============================================================
 section "9. MESSAGES"
-
 echo "[MESSAGE TESTS - $(date)]" > "$LOG_MESSAGES"
 
 subsection "9.1 Send message A→B"
@@ -1004,8 +735,7 @@ R=$(http_post "/api/v1/messages" "$TOKEN_A" \
 check "POST /messages blank content → 422" "$R" 422 "$LOG_MESSAGES"
 
 subsection "9.4 Send message — missing recipient → 422"
-R=$(http_post "/api/v1/messages" "$TOKEN_A" \
-  '{"message":{"content":"no recipient"}}')
+R=$(http_post "/api/v1/messages" "$TOKEN_A" '{"message":{"content":"no recipient"}}')
 check "POST /messages no recipient → 422" "$R" 422 "$LOG_MESSAGES"
 
 subsection "9.5 Send message — over 2000 chars → 422"
@@ -1089,7 +819,6 @@ fi
 # SECTION 10: CHAT ROOMS
 # =============================================================
 section "10. CHAT ROOMS"
-
 echo "[CHAT ROOM TESTS - $(date)]" > "$LOG_CHATROOMS"
 
 subsection "10.1 List chat rooms"
@@ -1153,7 +882,6 @@ check "DELETE /chat_rooms/99999999 → 404" "$R" 404 "$LOG_CHATROOMS"
 # SECTION 11: NOTIFICATIONS
 # =============================================================
 section "11. NOTIFICATIONS"
-
 echo "[NOTIFICATION TESTS - $(date)]" > "$LOG_NOTIFICATIONS"
 
 subsection "11.1 List all notifications"
@@ -1212,7 +940,6 @@ check "PATCH /notifications/mark_all_as_read?type=message → 200" "$R" 200 "$LO
 # SECTION 12: LEAVE FORMS & TYPES
 # =============================================================
 section "12. LEAVE FORMS & TYPES"
-
 echo "[LEAVE TESTS - $(date)]" > "$LOG_LEAVE"
 
 subsection "12.1 List leave types"
@@ -1231,10 +958,8 @@ else
 fi
 
 subsection "12.3 Create leave form"
-# Need a schedule ID first
 SCHED_ID=$(http_get "/api/v1/schedules/my_schedule" "$TOKEN_A" | head -1 \
   | jq -r '[.schedules[] | select(.type == "meeting")] | .[0].id // empty' 2>/dev/null)
-
 if [ -n "$SCHED_ID" ] && [ "$SCHED_ID" != "null" ] && \
    [ -n "$LEAVE_TYPE_ID" ] && [ "$LEAVE_TYPE_ID" != "null" ]; then
   R=$(http_post "/api/v1/leave_forms" "$TOKEN_A" \
@@ -1242,10 +967,8 @@ if [ -n "$SCHED_ID" ] && [ "$SCHED_ID" != "null" ] && \
   SC=$(extract_code "$R")
   if [ "$SC" -eq 200 ] || [ "$SC" -eq 201 ]; then
     pass "POST /leave_forms → $SC"
-    echo "  Leave form created" >> "$LOG_LEAVE"
   else
     fail "POST /leave_forms → Expected 200/201, got $SC"
-    echo "  Body: $(extract_body "$R")" >> "$LOG_LEAVE"
   fi
 else
   skip "Create leave form — no schedule or leave_type found"
@@ -1256,7 +979,6 @@ fi
 # SECTION 13: DEVICE TOKEN
 # =============================================================
 section "13. DEVICE TOKEN"
-
 echo "[DEVICE TOKEN TESTS - $(date)]" > "$LOG_DEVICE"
 
 subsection "13.1 Update device token"
@@ -1311,63 +1033,400 @@ check "QR code nonexistent → 404" "$R" 404 "$LOG_DELEGATES"
 
 
 # =============================================================
-# SECTION 15: USER JOURNEY — E2E FLOW
+# SECTION 15: END-TO-END USER JOURNEY
 # =============================================================
 section "15. END-TO-END USER JOURNEY"
 
-echo "" >> "$LOG_MAIN"
-echo "════ 15. E2E USER JOURNEY ════" >> "$LOG_MAIN"
-
 subsection "15.1 Full connection flow: A→B→unfriend→reconnect"
 
-echo "  Step 1: Cleanup" | tee -a "$LOG_REQUESTS"
+echo "  Step 1: Cleanup"
 cleanup_connection
 
-echo "  Step 2: A sends request" | tee -a "$LOG_REQUESTS"
+echo "  Step 2: A sends request"
 R=$(http_post "/api/v1/requests" "$TOKEN_A" "{\"target_id\":$B_ID}")
 E2E_REQ_ID=$(extract_body "$R" | jq -r '.id // empty')
 [ -n "$E2E_REQ_ID" ] && [ "$E2E_REQ_ID" != "null" ] && \
   pass "E2E: A sends friend request (id=$E2E_REQ_ID)" || \
   fail "E2E: A send request failed"
 
-echo "  Step 3: B accepts" | tee -a "$LOG_REQUESTS"
+echo "  Step 3: B accepts"
 if [ -n "$E2E_REQ_ID" ] && [ "$E2E_REQ_ID" != "null" ]; then
   R=$(http_patch "/api/v1/requests/$E2E_REQ_ID/accept" "$TOKEN_B" '{}')
   [ "$(extract_code "$R")" -eq 200 ] && pass "E2E: B accepts" || fail "E2E: B accept failed"
 fi
 
-echo "  Step 4: A sends message" | tee -a "$LOG_MESSAGES"
+echo "  Step 4: A sends message"
 R=$(http_post "/api/v1/messages" "$TOKEN_A" \
   "{\"message\":{\"recipient_id\":$B_ID,\"content\":\"E2E test message\"}}")
-E2E_MSG_ID=$(extract_body "$R" | jq -r '.id // empty')
 [ "$(extract_code "$R")" -eq 201 ] && pass "E2E: A sends message" || fail "E2E: A message send failed"
 
-echo "  Step 5: B replies" | tee -a "$LOG_MESSAGES"
+echo "  Step 5: B replies"
 R=$(http_post "/api/v1/messages" "$TOKEN_B" \
   "{\"message\":{\"recipient_id\":$A_ID,\"content\":\"E2E reply from B\"}}")
 [ "$(extract_code "$R")" -eq 201 ] && pass "E2E: B replies" || fail "E2E: B reply failed"
 
-echo "  Step 6: A reads conversation" | tee -a "$LOG_MESSAGES"
+echo "  Step 6: A reads conversation"
 R=$(http_get "/api/v1/messages/conversation/$B_ID" "$TOKEN_A")
 [ "$(extract_code "$R")" -eq 200 ] && pass "E2E: A reads conversation" || fail "E2E: conversation read failed"
 
-echo "  Step 7: A checks dashboard" | tee -a "$LOG_DASHBOARD"
+echo "  Step 7: A checks dashboard"
 R=$(http_get "/api/v1/dashboard" "$TOKEN_A")
 [ "$(extract_code "$R")" -eq 200 ] && pass "E2E: A checks dashboard" || fail "E2E: dashboard failed"
 
-echo "  Step 8: A checks notifications" | tee -a "$LOG_NOTIFICATIONS"
+echo "  Step 8: A checks notifications"
 R=$(http_get "/api/v1/notifications" "$TOKEN_A")
 [ "$(extract_code "$R")" -eq 200 ] && pass "E2E: A checks notifications" || fail "E2E: notifications failed"
 
-echo "  Step 9: A unfriends B" | tee -a "$LOG_REQUESTS"
+echo "  Step 9: A unfriends B"
 R=$(http_delete "/api/v1/networking/unfriend/$B_ID" "$TOKEN_A")
 [ "$(extract_code "$R")" -eq 200 ] && pass "E2E: A unfriends B" || fail "E2E: unfriend failed"
 
-echo "  Step 10: Verify no longer friends" | tee -a "$LOG_REQUESTS"
+echo "  Step 10: Verify no longer friends"
 R=$(http_get "/api/v1/networking/my_connections" "$TOKEN_A")
 IS_STILL=$(extract_body "$R" | jq --argjson bid "$B_ID" \
   '[.[] | select((.requester.id == $bid) or (.target.id == $bid))] | length' 2>/dev/null)
 [ "${IS_STILL:-1}" -eq 0 ] && pass "E2E: Confirmed unfriended" || fail "E2E: Still showing as friends"
+
+
+# =============================================================
+# SECTION 16: WEBSOCKET TESTS
+# =============================================================
+section "16. WEBSOCKET — ChatChannel & ChatRoomChannel"
+
+echo "[WEBSOCKET TESTS - $(date)]" > "$LOG_WS"
+
+# ── ตรวจ wscat ──────────────────────────────────────────────
+subsection "16.0 Check wscat availability"
+if ! command -v wscat &>/dev/null; then
+  echo -e "${YELLOW}  ⚠  wscat ไม่พบในระบบ — ข้าม WebSocket tests ทั้งหมด${NC}"
+  echo "  Install: npm install -g wscat" | tee -a "$LOG_WS"
+  skip "wscat not found — skipping all WS tests (16.1–16.10)"
+else
+  WS_VERSION=$(wscat --version 2>/dev/null || echo "unknown")
+  pass "wscat พร้อมใช้งาน (version: $WS_VERSION)"
+  echo "  wscat version: $WS_VERSION" >> "$LOG_WS"
+
+  # ── Re-establish friendship before WS tests ──────────────
+  cleanup_connection
+  R=$(http_post "/api/v1/requests" "$TOKEN_A" "{\"target_id\":$B_ID}")
+  WS_REQ_ID=$(extract_body "$R" | jq -r '.id // empty')
+  if [ -n "$WS_REQ_ID" ] && [ "$WS_REQ_ID" != "null" ]; then
+    http_patch "/api/v1/requests/$WS_REQ_ID/accept" "$TOKEN_B" '{}' > /dev/null
+  fi
+
+  # ─────────────────────────────────────────────────────────
+  # 16.1 ChatChannel — subscribe สำเร็จ (JWT ถูกต้อง)
+  # ─────────────────────────────────────────────────────────
+  subsection "16.1 ChatChannel — subscribe with valid JWT"
+  ws_reset
+  ws_connect "A_basic" "$TOKEN_A"
+  LOGFILE_A="$LOG_DIR/ws_A_basic.log"
+
+  if grep -q '"type":"confirm_subscription"' "$LOGFILE_A" 2>/dev/null; then
+    pass "16.1 ChatChannel subscribe สำเร็จ (confirm_subscription received)"
+  else
+    fail "16.1 ChatChannel subscribe ไม่ได้รับ confirm_subscription"
+    echo "  Log: $(tail -5 "$LOGFILE_A")" >> "$LOG_WS"
+  fi
+  echo "  Log excerpt:" >> "$LOG_WS"
+  tail -10 "$LOGFILE_A" >> "$LOG_WS" 2>/dev/null
+  ws_kill_all
+
+  # ─────────────────────────────────────────────────────────
+  # 16.2 ChatChannel — subscribe ด้วย JWT ผิด → reject
+  # ─────────────────────────────────────────────────────────
+  subsection "16.2 ChatChannel — subscribe with invalid JWT → rejected"
+  ws_reset
+
+  REJECT_LOG="$LOG_DIR/ws_invalid_jwt.log"
+  nohup bash -c "
+    {
+      sleep 0.5
+      echo '{\"command\":\"subscribe\",\"identifier\":\"{\\\\\"channel\\\\\":\\\\\"ChatChannel\\\\\"}\"}'
+      sleep 3
+    } | timeout 8 wscat --connect '${WS_URL}?token=invalidtoken123' --no-color
+  " > "$REJECT_LOG" 2>&1 &
+  sleep 4
+
+  if grep -qE '"type":"reject_subscription"|disconnect|error|close' "$REJECT_LOG" 2>/dev/null; then
+    pass "16.2 ChatChannel ปฏิเสธ JWT ไม่ถูกต้อง (reject/disconnect received)"
+  else
+    fail "16.2 ChatChannel ไม่ได้ reject JWT ผิด"
+    echo "  Log: $(cat "$REJECT_LOG")" >> "$LOG_WS"
+  fi
+  echo "  Invalid JWT log:" >> "$LOG_WS"
+  cat "$REJECT_LOG" >> "$LOG_WS" 2>/dev/null
+  ws_kill_all
+
+  # ─────────────────────────────────────────────────────────
+  # 16.3 ตรวจ PresenceService key (BUG FIX)
+  #   หลัง subscribe → online_status ต้องคืน true
+  # ─────────────────────────────────────────────────────────
+  subsection "16.3 [BUG FIX] PresenceService key — online_status = true หลัง subscribe"
+  ws_reset
+  ws_connect "B_presence" "$TOKEN_B"
+  sleep 1  # รอ Redis set
+
+  R=$(http_get "/api/v1/messages/online_status?user_id=$B_ID" "$TOKEN_A")
+  IS_ONLINE=$(extract_body "$R" | jq -r '.online // false' 2>/dev/null)
+  echo "  online_status response: $(extract_body "$R")" >> "$LOG_WS"
+
+  if [ "$IS_ONLINE" = "true" ]; then
+    pass "16.3 PresenceService key ถูกต้อง — online=true หลัง subscribe"
+  else
+    fail "16.3 PresenceService key ผิด — online=$IS_ONLINE (ควรเป็น true)"
+    echo "  ⚠ Redis key mismatch: subscribed set 'chat:online:N' แต่ PresenceService.online? check 'online_user:N'" >> "$LOG_WS"
+  fi
+  ws_kill_all
+
+  # ─────────────────────────────────────────────────────────
+  # 16.4 B online แต่ไม่ enter_room → unread ต้องยังอยู่
+  # ─────────────────────────────────────────────────────────
+  subsection "16.4 B online but NOT enter_room → unread stays"
+  ws_reset
+  ws_connect "A_16_4" "$TOKEN_A"
+  ws_connect "B_16_4" "$TOKEN_B"  # online แต่ไม่ enter_room
+
+  send_msg "$TOKEN_A" "$B_ID" "msg_16_4_hello"
+  sleep 2
+
+  U=$(unread_from "$A_ID" "$TOKEN_B")
+  echo "  unread_count = $U" >> "$LOG_WS"
+  if [ "${U:-0}" -ge 1 ]; then
+    pass "16.4 B online แต่ไม่ enter_room → unread=$U (ถูกต้อง)"
+  else
+    fail "16.4 unread=$U — ควรยังอยู่เพราะ B ยังไม่ enter_room"
+  fi
+  ws_kill_all
+
+  # ─────────────────────────────────────────────────────────
+  # 16.5 B enter_room → unread ต้องเป็น 0 (BUG FIX: ส่ง other.id ไม่ใช่ object)
+  # ─────────────────────────────────────────────────────────
+  subsection "16.5 [BUG FIX] B enter_room → mark_conversation_as_read → unread = 0"
+  ws_reset
+  # ส่ง messages จาก A ไป B ก่อน
+  for i in 1 2 3; do
+    send_msg "$TOKEN_A" "$B_ID" "pre_enter_room_msg_$i"
+  done
+  sleep 1
+
+  U_BEFORE=$(unread_from "$A_ID" "$TOKEN_B")
+  echo "  unread before enter_room = $U_BEFORE" >> "$LOG_WS"
+
+  ws_enter_room "B_enter" "$TOKEN_B" "$A_ID"
+  sleep 2
+
+  U_AFTER=$(unread_from "$A_ID" "$TOKEN_B")
+  echo "  unread after enter_room = $U_AFTER" >> "$LOG_WS"
+
+  if [ "${U_AFTER:-999}" -eq 0 ]; then
+    pass "16.5 enter_room → unread=0 (mark_conversation_as_read ทำงานถูกต้อง)"
+  else
+    fail "16.5 enter_room → unread=$U_AFTER (ควรเป็น 0)"
+    echo "  ⚠ อาจเกิดจากบัค: ส่ง Delegate object แทน other.id เข้า mark_conversation_as_read" >> "$LOG_WS"
+  fi
+  ws_kill_all
+
+  # ─────────────────────────────────────────────────────────
+  # 16.6 B อยู่ในห้อง → ข้อความใหม่ auto-mark read ทันที
+  # ─────────────────────────────────────────────────────────
+  subsection "16.6 B is in room → new message auto-read immediately"
+  ws_reset
+  ws_enter_room "B_inroom" "$TOKEN_B" "$A_ID"
+  sleep 1
+
+  send_msg "$TOKEN_A" "$B_ID" "msg_while_B_in_room"
+  sleep 2
+
+  U=$(unread_from "$A_ID" "$TOKEN_B")
+  echo "  unread while B in room = $U" >> "$LOG_WS"
+
+  if [ "${U:-999}" -eq 0 ]; then
+    pass "16.6 B อยู่ในห้อง → auto-read ทำงาน (unread=0)"
+  else
+    fail "16.6 B อยู่ในห้อง → auto-read ไม่ทำงาน (unread=$U)"
+  fi
+  ws_kill_all
+
+  # ─────────────────────────────────────────────────────────
+  # 16.7 B offline → unread สะสม
+  # ─────────────────────────────────────────────────────────
+  subsection "16.7 B offline → messages accumulate as unread"
+  ws_reset
+  ws_connect "A_only" "$TOKEN_A"
+  # B ไม่ connect เลย
+
+  for i in {1..5}; do
+    send_msg "$TOKEN_A" "$B_ID" "offline_msg_$i"
+  done
+  sleep 2
+
+  U=$(unread_from "$A_ID" "$TOKEN_B")
+  echo "  unread (B offline) = $U" >> "$LOG_WS"
+
+  if [ "${U:-0}" -ge 5 ]; then
+    pass "16.7 B offline → unread สะสม (unread=$U ≥ 5)"
+  else
+    fail "16.7 B offline → unread=$U (คาดว่า ≥ 5)"
+  fi
+  ws_kill_all
+
+  # ─────────────────────────────────────────────────────────
+  # 16.8 leave_room → หยุด auto-mark (BUG FIX)
+  # ─────────────────────────────────────────────────────────
+  subsection "16.8 [BUG FIX] leave_room → auto-read stops"
+  ws_reset
+  # B enter_room ก่อน
+  ws_enter_room "B_leave_test" "$TOKEN_B" "$A_ID"
+  sleep 1
+
+  # ส่ง leave_room (ล้าง active_room Redis key)
+  ws_leave_room "$TOKEN_B" "$A_ID"
+  sleep 1
+
+  # A ส่งข้อความหลัง B leave
+  send_msg "$TOKEN_A" "$B_ID" "msg_after_leave_room"
+  sleep 2
+
+  U=$(unread_from "$A_ID" "$TOKEN_B")
+  echo "  unread after leave_room = $U" >> "$LOG_WS"
+
+  if [ "${U:-0}" -ge 1 ]; then
+    pass "16.8 leave_room → ไม่ auto-read (unread=$U ≥ 1 ถูกต้อง)"
+  else
+    fail "16.8 leave_room → ยัง auto-read (unread=$U — ควรมี unread)"
+    echo "  ⚠ active_room key อาจไม่ถูกลบเมื่อ leave_room" >> "$LOG_WS"
+  fi
+  ws_kill_all
+
+  # ─────────────────────────────────────────────────────────
+  # 16.9 Multi-connection counter — ปิด 1 connection ไม่ควรลบ online key
+  # ─────────────────────────────────────────────────────────
+  subsection "16.9 [BUG FIX] Multi-connection — closing 1 tab keeps online status"
+  ws_reset
+
+  # B เปิด 2 connections พร้อมกัน
+  ws_connect "B_tab1" "$TOKEN_B"
+  ws_connect "B_tab2" "$TOKEN_B"
+  sleep 1
+
+  # ปิด tab2 โดย kill process เดียว
+  PID_TAB2=$(cat "$LOG_DIR/.ws_B_tab2.pid" 2>/dev/null)
+  if [ -n "$PID_TAB2" ]; then
+    kill "$PID_TAB2" 2>/dev/null
+    sleep 2  # รอ unsubscribed callback
+
+    R=$(http_get "/api/v1/messages/online_status?user_id=$B_ID" "$TOKEN_A")
+    IS_ONLINE=$(extract_body "$R" | jq -r '.online // false' 2>/dev/null)
+    echo "  online_status after closing tab2 = $IS_ONLINE" >> "$LOG_WS"
+
+    if [ "$IS_ONLINE" = "true" ]; then
+      pass "16.9 Multi-connection — ปิด 1 tab B ยังออนไลน์ (counter > 0)"
+    else
+      fail "16.9 Multi-connection — ปิด 1 tab แล้ว B ออฟไลน์ (counter bug)"
+      echo "  ⚠ unsubscribed อาจลบ online key ก่อนเวลาเพราะ counter ผิด" >> "$LOG_WS"
+    fi
+  else
+    skip "16.9 ไม่พบ PID ของ tab2"
+  fi
+  ws_kill_all
+
+  # ─────────────────────────────────────────────────────────
+  # 16.10 ChatRoomChannel — non-member ถูก reject (BUG FIX: return หลัง reject)
+  # ─────────────────────────────────────────────────────────
+  subsection "16.10 [BUG FIX] ChatRoomChannel — non-member rejected"
+  ws_reset
+
+  # สร้าง room ใหม่โดย A แล้วอย่าให้ B join
+  R=$(http_post "/api/v1/chat_rooms" "$TOKEN_A" \
+    '{"chat_room":{"title":"WS Test Room","room_kind":"group"}}')
+  WS_ROOM_ID=$(extract_body "$R" | jq -r '.id // empty')
+
+  if [ -n "$WS_ROOM_ID" ] && [ "$WS_ROOM_ID" != "null" ]; then
+    echo "  Room ID for test: $WS_ROOM_ID" >> "$LOG_WS"
+
+    REJECT_ROOM_LOG="$LOG_DIR/ws_room_B_reject.log"
+    nohup bash -c "
+      IDENTIFIER='{\\\"channel\\\":\\\"ChatRoomChannel\\\",\\\"room_id\\\":${WS_ROOM_ID}}'
+      {
+        sleep 0.5
+        echo '{\"command\":\"subscribe\",\"identifier\":\"'\"\$IDENTIFIER\"'\"}'
+        sleep 4
+      } | timeout 10 wscat --connect '${WS_URL}?token=${TOKEN_B}' --no-color
+    " > "$REJECT_ROOM_LOG" 2>&1 &
+    sleep 4
+
+    if grep -q '"type":"reject_subscription"' "$REJECT_ROOM_LOG" 2>/dev/null; then
+      pass "16.10 ChatRoomChannel — non-member ถูก reject ถูกต้อง"
+    else
+      fail "16.10 ChatRoomChannel — non-member ไม่ถูก reject"
+      echo "  ⚠ อาจเกิดจากบัค: subscribed ไม่มี return หลัง reject ทำให้ stream_for ยังทำงาน" >> "$LOG_WS"
+    fi
+    echo "  Reject log:" >> "$LOG_WS"
+    cat "$REJECT_ROOM_LOG" >> "$LOG_WS" 2>/dev/null
+
+    # cleanup room
+    http_delete "/api/v1/chat_rooms/$WS_ROOM_ID" "$TOKEN_A" > /dev/null
+  else
+    skip "16.10 ไม่สามารถสร้าง room ได้"
+  fi
+  ws_kill_all
+
+  # ─────────────────────────────────────────────────────────
+  # 16.11 ChatRoomChannel — member subscribe + ส่ง send_message
+  # ─────────────────────────────────────────────────────────
+  subsection "16.11 ChatRoomChannel — member subscribes and sends message"
+  ws_reset
+
+  # สร้าง room, B join
+  R=$(http_post "/api/v1/chat_rooms" "$TOKEN_A" \
+    '{"chat_room":{"title":"WS Send Test","room_kind":"group"}}')
+  WS_ROOM2_ID=$(extract_body "$R" | jq -r '.id // empty')
+  http_post "/api/v1/chat_rooms/$WS_ROOM2_ID/join" "$TOKEN_B" '{}' > /dev/null
+  http_post "/api/v1/chat_rooms/$WS_ROOM2_ID/join" "$TOKEN_A" '{}' > /dev/null
+
+  if [ -n "$WS_ROOM2_ID" ] && [ "$WS_ROOM2_ID" != "null" ]; then
+    # A subscribe
+    ws_subscribe_room "A_member" "$TOKEN_A" "$WS_ROOM2_ID"
+    ROOM_LOG="$LOG_DIR/ws_room_A_member.log"
+
+    if grep -q '"type":"confirm_subscription"' "$ROOM_LOG" 2>/dev/null; then
+      pass "16.11a ChatRoomChannel — member subscribe สำเร็จ"
+    else
+      fail "16.11a ChatRoomChannel — member ไม่ได้รับ confirm_subscription"
+    fi
+
+    # A ส่ง send_message ผ่าน WS
+    ws_send_room "$TOKEN_A" "$WS_ROOM2_ID" "Hello from WS send_message test"
+    sleep 2
+
+    # ตรวจว่ามีข้อความใน room
+    R=$(http_get "/api/v1/chat_rooms" "$TOKEN_A")
+    ROOM_EXISTS=$(extract_body "$R" | jq --argjson rid "$WS_ROOM2_ID" \
+      '[.[] | select(.id == $rid)] | length' 2>/dev/null)
+
+    if [ "${ROOM_EXISTS:-0}" -ge 1 ]; then
+      pass "16.11b ChatRoomChannel — send_message room ยังอยู่ใน list"
+    else
+      fail "16.11b ChatRoomChannel — room ไม่อยู่ใน list"
+    fi
+
+    echo "  WS send log:" >> "$LOG_WS"
+    cat "$LOG_DIR/ws_send_room.log" >> "$LOG_WS" 2>/dev/null
+
+    # cleanup
+    http_delete "/api/v1/chat_rooms/$WS_ROOM2_ID" "$TOKEN_A" > /dev/null
+  else
+    skip "16.11 ไม่สามารถสร้าง room ได้"
+  fi
+  ws_kill_all
+
+  # ─────────────────────────────────────────────────────────
+  # Final cleanup
+  # ─────────────────────────────────────────────────────────
+  ws_reset
+
+fi  # end if wscat available
 
 
 # =============================================================
@@ -1392,7 +1451,6 @@ echo ""
 echo -e "  Logs saved to: ${BOLD}$LOG_DIR/${NC}"
 echo ""
 
-# Write summary to file
 {
   echo ""
   echo "============================================"

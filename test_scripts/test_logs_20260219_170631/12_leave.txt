@@ -1,0 +1,10 @@
+[LEAVE TESTS - Thu Feb 19 17:06:37 +07 2026]
+  [17:06:37] GET /leave_types → 200
+  HTTP: 200
+  Body: [{"id":1,"code":"SICK","name":"Sick","description":null,"active":true,"created_at":"2026-02-05T09:07:07.659+07:00","updated_at":"2026-02-05T09:07:07.659+07:00","name_th":"ลาป่วย","name_en":"Sick Leave"},{"id":2,"code":"VAC","name":"Vacation","description":null,"active":true,"created_at":"2026-02-05T09:07:07.665+07:00","updated_at":"2026-02-05T09:07:07.665+07:00","name_th":"ลาพักร้อน","name_en":"Vacation Leave"},{"id":3,"code":"BUS","name":"Business","description":null,"active":true,"created_at":"2026-02-05T09:07:07.668+07:00","updated_at":"2026-02-05T09:07:07.668+07:00","name_th":"ลากิจ","name_en":"Business Leave"}]
+
+  Leave types: 3
+  [17:06:37] GET /leave_types/:id → 200
+  HTTP: 200
+  Body: {"id":1,"code":"SICK","name":"Sick","description":null,"active":true,"created_at":"2026-02-05T09:07:07.659+07:00","updated_at":"2026-02-05T09:07:07.659+07:00","name_th":"ลาป่วย","name_en":"Sick Leave"}
+

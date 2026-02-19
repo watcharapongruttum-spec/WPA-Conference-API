@@ -1,0 +1,11 @@
+[DASHBOARD TESTS - Thu Feb 19 16:58:42 +07 2026]
+  [16:58:42] GET /dashboard → 200
+  HTTP: 200
+  Body: {"unread_notifications_count":1,"unread_message_notifications_count":1,"new_messages_count":1,"pending_requests_count":0,"upcoming_schedule_count":0,"connections_count":0}
+
+  Dashboard: {"unread_notifications_count":1,"unread_message_notifications_count":1,"new_messages_count":1,"pending_requests_count":0,"upcoming_schedule_count":0,"connections_count":0}
+  [16:58:42] GET /dashboard (user B) → 200
+  HTTP: 200
+  Body: {"unread_notifications_count":19,"unread_message_notifications_count":0,"new_messages_count":0,"pending_requests_count":0,"upcoming_schedule_count":0,"connections_count":1}
+
+  Step 7: A checks dashboard

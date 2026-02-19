@@ -8,8 +8,7 @@ class Schedule < ApplicationRecord
 
   belongs_to :table, optional: true
   belongs_to :delegate, optional: true
-  # belongs_to :team, foreign_key: :target_id, optional: true
-  belongs_to :team, optional: true
+  belongs_to :team, foreign_key: :target_id, optional: true
 
 
   has_many :leave_forms
