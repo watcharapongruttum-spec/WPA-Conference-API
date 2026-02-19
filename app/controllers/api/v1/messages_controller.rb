@@ -7,8 +7,8 @@ module Api
         me = current_delegate.id
 
         conversations = ChatMessage
-          .not_deleted
-          .where("sender_id = :me OR recipient_id = :me", me: me)
+                          .not_deleted
+                          .where("sender_id = :me OR recipient_id = :me", me: me)
 
         partner_ids = conversations
                         .pluck(:sender_id, :recipient_id)
@@ -16,39 +16,49 @@ module Api
                         .uniq
                         .reject { |id| id == me }
 
+        delegates = Delegate
+                      .where(id: partner_ids)
+                      .includes(:company)
+                      .index_by(&:id)
+
+        last_messages = ChatMessage
+                          .not_deleted
+                          .where(
+                            "(sender_id = :me OR recipient_id = :me)",
+                            me: me
+                          )
+                          .where(
+                            "sender_id IN (:ids) OR recipient_id IN (:ids)",
+                            ids: partner_ids
+                          )
+                          .includes(sender: :company, recipient: :company)
+                          .order(created_at: :desc)
+                          .group_by { |m|
+                            m.sender_id == me ? m.recipient_id : m.sender_id
+                          }
+
+        unread_counts = ChatMessage
+                          .not_deleted
+                          .where(recipient_id: me, read_at: nil)
+                          .group(:sender_id)
+                          .count
+
         rooms = partner_ids.map do |partner_id|
-          convo = ChatMessage
-                    .not_deleted
-                    .where(
-                      "(sender_id = :me AND recipient_id = :other)
-                      OR
-                      (sender_id = :other AND recipient_id = :me)",
-                      me: me,
-                      other: partner_id
-                    )
-
-          last_msg = convo.order(created_at: :desc).first
-
-          unread = convo.where(
-            recipient_id: me,
-            read_at: nil
-          ).count
-
-          partner = Delegate.find(partner_id)
+          partner = delegates[partner_id]
+          last_msg = last_messages[partner_id]&.first
 
           {
-            id: partner_id, # ใช้ partner_id เป็น room id สำหรับ direct
+            id: partner_id,
             room_kind: "direct",
             delegate: {
               id: partner.id,
               name: partner.name,
               title: partner.title,
               avatar_url: partner.avatar&.url
-
             },
             last_message: last_msg&.content,
             last_message_at: last_msg&.created_at,
-            unread_count: unread
+            unread_count: unread_counts[partner_id] || 0
           }
         end
 
@@ -61,18 +71,28 @@ module Api
 
 
 
+
+
+
+
+
+
       # ================= INDEX =================
       def index
         @messages = ChatMessage
-          .not_deleted
-          .where("sender_id = :me OR recipient_id = :me", me: current_delegate.id)
-          .includes(:sender, :recipient)
-          .order(created_at: :desc)
-          .page(params[:page] || 1)
-          .per([params[:per].to_i, 100].min)
+                      .not_deleted
+                      .where("sender_id = :me OR recipient_id = :me", me: current_delegate.id)
+                      .includes(
+                        sender: :company,
+                        recipient: :company
+                      )
+                      .order(created_at: :desc)
+                      .page(params[:page] || 1)
+                      .per([params[:per].to_i, 100].min)
 
         render json: @messages, each_serializer: Api::V1::ChatMessageSerializer
       end
+
 
       # ================= CONVERSATION =================
       def conversation
@@ -81,18 +101,21 @@ module Api
         per  = [(params[:per] || 50).to_i, 100].min
 
         @messages = ChatMessage
-          .not_deleted
-          .where(
-            "(sender_id = :me AND recipient_id = :other)
-             OR
-             (sender_id = :other AND recipient_id = :me)",
-            me: current_delegate.id,
-            other: other_id
-          )
-          .includes(:sender, :recipient)
-          .order(created_at: :desc)
-          .page(page)
-          .per(per)
+                      .not_deleted
+                      .where(
+                        "(sender_id = :me AND recipient_id = :other)
+                        OR
+                        (sender_id = :other AND recipient_id = :me)",
+                        me: current_delegate.id,
+                        other: other_id
+                      )
+                      .includes(
+                        sender: :company,
+                        recipient: :company
+                      )
+                      .order(created_at: :desc)
+                      .page(page)
+                      .per(per)
 
         render json: {
           data: ActiveModelSerializers::SerializableResource.new(
@@ -108,43 +131,70 @@ module Api
         }
       end
 
-      # ================= CREATE =================
-      def create
-        return render json: { error: "recipient_id required" }, status: :unprocessable_entity unless message_params[:recipient_id]
 
-        if message_params[:content].blank?
-          return render json: {
-            error: "Validation failed",
-            details: { content: ["cannot be blank"] }
-          }, status: :unprocessable_entity
-        end
 
-        if message_params[:content].length > 2000
-          return render json: {
-            error: "Validation failed",
-            details: { content: ["must be between 1 and 2000 characters"] }
-          }, status: :unprocessable_entity
-        end
 
-        @message = Chat::SendMessageService.call(
-          sender: current_delegate,
-          recipient_id: message_params[:recipient_id],
-          content: message_params[:content]
-        )
 
-        AuditLogger.message_created(@message, request) if defined?(AuditLogger)
 
-        render json: @message,
-               serializer: Api::V1::ChatMessageSerializer,
-               status: :created
 
-      rescue ActiveRecord::RecordInvalid => e
-        render json: {
+
+    # ================= CREATE =================
+    def create
+      return render json: { error: "recipient_id required" }, status: :unprocessable_entity unless message_params[:recipient_id]
+
+      content = message_params[:content].to_s.strip
+
+      if content.blank?
+        return render json: {
           error: "Validation failed",
-          details: e.record.errors.full_messages
+          details: { content: ["cannot be blank"] }
         }, status: :unprocessable_entity
       end
 
+      if content.length > 2000
+        return render json: {
+          error: "Validation failed",
+          details: { content: ["must be between 1 and 2000 characters"] }
+        }, status: :unprocessable_entity
+      end
+
+      message = nil
+
+      ActiveRecord::Base.transaction do
+        message = Chat::SendMessageService.call(
+          sender: current_delegate,
+          recipient_id: message_params[:recipient_id],
+          content: content
+        )
+      end
+
+      AuditLogger.message_created(message, request) if defined?(AuditLogger)
+
+      message = ChatMessage
+                  .includes(sender: :company, recipient: :company)
+                  .find(message.id)
+
+      render json: message,
+            serializer: Api::V1::ChatMessageSerializer,
+            status: :created
+
+    rescue ActiveRecord::RecordInvalid => e
+      render json: {
+        error: "Validation failed",
+        details: e.record.errors.full_messages
+      }, status: :unprocessable_entity
+    end
+
+
+
+
+
+
+
+
+
+
+      
       # ================= UPDATE =================
       def update
         return render json: { error: "Forbidden" }, status: :forbidden unless @message.sender == current_delegate
@@ -187,17 +237,29 @@ module Api
         render json: { message: "All messages marked as read" }
       end
 
+
       # ================= UNREAD COUNT =================
       def unread_count
-        count = ChatMessage.where(
-          recipient_id: current_delegate.id,
-          sender_id: params[:sender_id],
-          read_at: nil,
-          deleted_at: nil
-        ).count
+        sender_id = params[:sender_id].to_s.strip
 
-        render json: { unread_count: count }
+        # 🔥 ป้องกัน null / empty / non-integer
+        unless sender_id.present? && sender_id =~ /\A\d+\z/
+          return render json: { unread_count: 0 }
+        end
+
+        count = ChatMessage
+                  .where(
+                    sender_id: sender_id.to_i,
+                    recipient_id: current_delegate.id,
+                    read_at: nil
+                  )
+                  .count
+
+        render json: { unread_count: count.to_i }
       end
+
+
+
 
       def online_status
         online = Chat::PresenceService.online?(params[:user_id])

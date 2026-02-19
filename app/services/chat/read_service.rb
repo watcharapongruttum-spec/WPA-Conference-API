@@ -1,7 +1,16 @@
+# app/services/chat/read_service.rb
+
 module Chat
   class ReadService
 
-    # ================= ONE =================
+    # ================= READ ALL (API) =================
+    def self.read_all(delegate)
+      ChatMessage
+        .where(recipient_id: delegate.id, read_at: nil)
+        .update_all(read_at: Time.current)
+    end
+
+    # ================= MARK ONE =================
     def self.mark_one(message)
       return if message.read_at.present?
 
@@ -18,12 +27,14 @@ module Chat
       ChatChannel.broadcast_to(message.recipient, payload)
     end
 
-    # ================= ROOM =================
+    # ================= MARK ROOM =================
     def self.mark_room(user_id, target_id)
       now = Time.current
 
       scope = ChatMessage
-        .unread_between(target_id, user_id)
+                .where(sender_id: target_id,
+                       recipient_id: user_id,
+                       read_at: nil)
 
       ids = scope.pluck(:id)
       scope.update_all(read_at: now)
@@ -43,26 +54,27 @@ module Chat
       ChatChannel.broadcast_to(target, payload)
     end
 
-    # ================= ALL =================
-    def self.read_all(user)
+    # ================= AUTO ON SUBSCRIBE =================
+    def self.mark_all_for_user(user_id)
       now = Time.current
 
-      messages = user.received_messages
-        .not_deleted
-        .where(read_at: nil)
+      messages = ChatMessage
+                   .where(recipient_id: user_id, read_at: nil)
 
-      ids = messages.pluck(:id, :sender_id)
+      ids_with_sender = messages.pluck(:id, :sender_id)
+
       messages.update_all(read_at: now)
 
-      ids.each do |msg_id, sender_id|
+      ids_with_sender.each do |msg_id, sender_id|
         ChatChannel.broadcast_to(
           Delegate.find(sender_id),
-          type: 'message_read',
-          message_id: msg_id,
-          read_at: now
+          {
+            type: 'message_read',
+            message_id: msg_id,
+            read_at: now
+          }
         )
       end
     end
-
   end
 end

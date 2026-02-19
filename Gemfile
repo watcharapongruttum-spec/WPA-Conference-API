@@ -59,13 +59,17 @@ gem "devise", "~> 5.0"
 
 gem "rack-cors", "~> 2.0"
 gem "kaminari", "~> 1.2"
-gem "jwt"
+# gem "jwt"
 gem "bcrypt", "~> 3.1"
 gem 'actioncable'
 gem 'redis', '~> 4.0'
-gem 'knock'
+# gem 'knock'
 gem 'rqrcode'
-gem 'fcm'
+gem 'firebase-admin'
+gem 'googleauth'
+
+# jwt เวอร์ชันใหม่
+gem 'jwt', '~> 2.8'
 # เพิ่มในส่วน gem
 
 # Rate Limiting

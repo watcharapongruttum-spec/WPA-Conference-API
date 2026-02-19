@@ -1,3 +1,4 @@
+# app/services/jwt_decoder.rb
 class JwtDecoder
   class << self
     def decode!(token)
@@ -7,9 +8,11 @@ class JwtDecoder
         token,
         JWT_CONFIG[:secret],
         true,
-        algorithm: JWT_CONFIG[:algorithm],
-        iss: JWT_CONFIG[:issuer],
-        verify_iss: true
+        {
+          algorithm: JWT_CONFIG[:algorithm],
+          iss: JWT_CONFIG[:issuer],
+          verify_iss: true
+        }
       )
 
       payload

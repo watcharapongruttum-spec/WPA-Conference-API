@@ -6,6 +6,9 @@ default: &default
 
 development:
   <<: *default
+  pool: 15
+  timeout: 5000
+
 
 test:
   <<: *default

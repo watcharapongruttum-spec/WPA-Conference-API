@@ -35,3 +35,7 @@
 *.bak
 
 .env
+
+# Firebase
+config/firebase-adminsdk.json
+config/*firebase-adminsdk*.json

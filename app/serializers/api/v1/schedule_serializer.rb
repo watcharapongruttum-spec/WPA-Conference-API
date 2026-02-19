@@ -60,10 +60,7 @@ class Api::V1::ScheduleSerializer < ActiveModel::Serializer
   # LEAVE
   # ===============================
   def leave
-    lf = object.leave_forms
-               .order(created_at: :desc)
-               .first
-
+    lf = object.latest_leave_form
     return nil unless lf
 
     {
@@ -79,6 +76,7 @@ class Api::V1::ScheduleSerializer < ActiveModel::Serializer
       reported_at: lf.reported_at
     }
   end
+
 
   # ===============================
   # PRIVATE

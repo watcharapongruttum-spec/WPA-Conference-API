@@ -8,21 +8,30 @@ class Schedule < ApplicationRecord
 
   belongs_to :table, optional: true
   belongs_to :delegate, optional: true
-  belongs_to :team, foreign_key: :target_id, optional: true
+  # belongs_to :team, foreign_key: :target_id, optional: true
+  belongs_to :team, optional: true
+
 
   has_many :leave_forms
+
+  has_one :latest_leave_form,
+        -> { order(created_at: :desc) },
+        class_name: "LeaveForm"
+
 
   # ===============================
   # DEFAULT INCLUDE
   # ===============================
-  scope :with_full_data, -> {
-    includes(
-      :conference_date,
-      leave_forms: :leave_type,
-      booker: :company,
-      target: :company
-    )
-  }
+scope :with_full_data, -> {
+  includes(
+    :conference_date,
+    latest_leave_form: :leave_type,
+    team: :delegates,
+    booker: :company,
+    target: :company
+  )
+}
+
 
   # ===============================
   # BASIC SCOPES
@@ -50,7 +59,7 @@ class Schedule < ApplicationRecord
   # SEARCH NAME
   # ===============================
   scope :search_name, ->(keyword) {
-    joins(:booker, :target).where(
+    left_joins(:booker, :target).where(
       "bookers_delegates.name ILIKE :k OR targets_delegates.name ILIKE :k",
       k: "%#{keyword}%"
     )

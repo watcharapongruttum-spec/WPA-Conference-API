@@ -2,68 +2,58 @@ require Rails.root.join('app/constants/chat_keys')
 
 class ChatChannel < ApplicationCable::Channel
 
-  # ================= SUBSCRIBE =================
   def subscribed
     stream_for current_delegate
-    Chat::DeliveryService.mark_user_online(current_delegate.id)
-    Chat::PresenceService.online(current_delegate.id)
 
-    Rails.logger.info "✅ ChatChannel subscribed delegate=#{current_delegate.id}"
+    # ใช้ counter แทน simple flag — รองรับหลาย connection พร้อมกัน
+    REDIS.incr("chat:connections:#{current_delegate.id}")
+    REDIS.setex("chat:online:#{current_delegate.id}", 3600, "1")
+
+    if params[:with_id].present?
+      REDIS.setex(
+        "chat:active_room:#{current_delegate.id}",
+        3600,
+        params[:with_id]
+      )
+    end
+
+    Chat::PresenceService.online(current_delegate.id)
+    # ❌ ไม่ mark_all_for_user ตอน connect — ต้อง enter_room ก่อน
   end
 
   def unsubscribed
+    # ลด counter — ลบ key เฉพาะเมื่อไม่มี connection เหลือแล้วเท่านั้น
+    count = REDIS.decr("chat:connections:#{current_delegate.id}").to_i
+
+    if count <= 0
+      REDIS.del("chat:online:#{current_delegate.id}")
+      REDIS.del("chat:active_room:#{current_delegate.id}")
+      REDIS.del("chat:connections:#{current_delegate.id}")
+    end
+
     Chat::PresenceService.offline(current_delegate.id)
-    Rails.logger.info "⚠️ ChatChannel unsubscribed delegate=#{current_delegate.id}"
   end
 
-  # ================= TYPING =================
-  def typing(data)
-    payload = safe_json(data)
-    target_delegate_id = payload["target_id"]
-
-    ChatChannel.broadcast_to(
-      Delegate.find(target_delegate_id),
-      {
-        type: "typing_start",
-        from: current_delegate.id
-      }
-    )
-  end
-
-  def stop_typing(data)
-    payload = safe_json(data)
-    target_delegate_id = payload["target_id"]
-
-    ChatChannel.broadcast_to(
-      Delegate.find(target_delegate_id),
-      {
-        type: "typing_stop",
-        from: current_delegate.id
-      }
-    )
-  end
-
-
-  # ================= ENTER ROOM =================
   def enter_room(data)
     payload = safe_json(data)
+    target_id = payload["user_id"]
 
-    target_delegate_id  = payload["user_id"]
-    current_delegate_id = current_delegate.id
+    REDIS.set("chat:room:#{current_delegate.id}:#{target_id}", "open")
+    REDIS.set("chat:active_room:#{current_delegate.id}", target_id.to_s)
 
-    Chat::RoomStateService.open_room(current_delegate_id, target_delegate_id)
-    Chat::RoomStateService.read_if_unlocked(current_delegate_id, target_delegate_id)
+    Chat::ReadService.mark_room(current_delegate.id, target_id)
   end
 
-  # ================= LEAVE ROOM =================
   def leave_room(data)
     payload = safe_json(data)
-    target_delegate_id = payload["user_id"]
+    target_id = payload["user_id"]
 
-    Chat::RoomStateService.close_room(current_delegate.id, target_delegate_id)
+    REDIS.del("chat:room:#{current_delegate.id}:#{target_id}")
+    # ✅ ล้าง active_room เมื่อ user ออกจากหน้า chat จริงๆ
+    # ป้องกัน auto-mark ข้อความที่ user ไม่ได้เห็น
+    REDIS.del("chat:active_room:#{current_delegate.id}")
   end
 
-  # ================= SEND MESSAGE (WS) =================
   def send_message(data)
     payload = safe_json(data)
 
@@ -79,41 +69,12 @@ class ChatChannel < ApplicationCable::Channel
     handle_error(e)
   end
 
-  # ================= READ MESSAGE =================
-  def read_message(data)
-    payload = safe_json(data)
-    message = ChatMessage.find_by(id: payload['message_id'])
-    return unless message && message.recipient == current_delegate
-
-    Chat::ReadService.mark_one(message)
-  end
-
-  # =========================================================
-  # PRIVATE
-  # =========================================================
   private
 
-  # ---------- JSON ----------
   def safe_json(data)
     data.is_a?(String) ? JSON.parse(data) : data
   end
 
-  # ---------- SERIALIZER ----------
-  def serializer(message)
-    Api::V1::ChatMessageSerializer
-      .new(message)
-      .serializable_hash[:data]
-  end
-
-  # ---------- ROOM STATE ----------
-  def recipient_open_room?(message)
-    Chat::RoomStateService.recipient_open?(
-      message.recipient_id,
-      message.sender_id
-    )
-  end
-
-  # ---------- ERROR ----------
   def handle_error(error)
     Rails.logger.error "❌ ChatChannel error: #{error.class} - #{error.message}"
     transmit(type: 'error', message: error.message)

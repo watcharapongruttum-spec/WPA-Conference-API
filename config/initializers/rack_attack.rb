@@ -36,23 +36,25 @@ class Rack::Attack
   end
 
   # ==========================================
-  # MESSAGE RATE LIMIT (ปรับตามที่ขอ)
+  # MESSAGE RATE LIMIT (Flexible)
   # ==========================================
 
-  # สำหรับ rate test
-  throttle('messages/rate_test', limit: 60, period: 1.minute) do |req|
-    if req.post? && req.path == '/api/v1/messages'
-      req.ip if req.params.to_s.include?('Rate limit test')
+  unless Rails.env.development? || Rails.env.test?
+
+    # 🚀 Burst protection (กัน spam รัวใน 1 วินาที)
+    throttle('messages/burst', limit: 20, period: 1.second) do |req|
+      next unless req.post? && req.path.start_with?('/api/v1/messages')
+      req.jwt_delegate_id || req.ip
     end
+
+    # 🛡 Normal usage
+    throttle('messages/normal', limit: 300, period: 1.minute) do |req|
+      next unless req.post? && req.path.start_with?('/api/v1/messages')
+      req.jwt_delegate_id || req.ip
+    end
+
   end
 
-  # สำหรับใช้งานปกติ (ลดจาก 1000 → 300)
-throttle('messages/normal', limit: 60, period: 1.minute) do |req|
-  next unless req.post? && req.path.start_with?('/api/v1/messages')
-
-  Rails.logger.warn "MESSAGE THROTTLE HIT #{req.path}"
-  req.ip
-end
 
 
 
