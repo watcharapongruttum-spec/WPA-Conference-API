@@ -142,7 +142,9 @@ module Api
 
           # ย้าย deliver_later ออกนอก transaction
           # เพื่อให้ token ถูก save ลง DB ก่อนที่ job จะถูก enqueue
-          PasswordMailer.reset_password(@delegate).deliver_later
+          # PasswordMailer.reset_password(@delegate).deliver_later
+          PasswordMailer.reset_password(@delegate)
+
         end
 
         render json: {

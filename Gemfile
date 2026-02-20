@@ -86,4 +86,5 @@ gem 'sentry-rails'
 
 
 gem 'httparty'
+gem 'httparty'
 
