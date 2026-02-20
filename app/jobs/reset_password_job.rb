@@ -6,7 +6,7 @@ class ResetPasswordJob < ApplicationJob
     return unless delegate
 
     # reset_url = "#{ENV['FRONTEND_URL']}/reset-password?token=#{delegate.reset_password_token}"
-    reset_url = "#{ENV['FRONTEND_URL']}/api/v1/reset-password?token=#{delegate.reset_password_token}"
+    reset_url = "#{ENV['FRONTEND_URL']}DeepLink-reset-password?token=#{delegate.reset_password_token}"
 
 
     html = <<~HTML
