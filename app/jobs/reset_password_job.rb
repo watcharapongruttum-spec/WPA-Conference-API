@@ -1,26 +1,35 @@
-class ResetPasswordJob < ApplicationJob
-  queue_as :default
+class BrevoMailService
+  require 'net/http'
+  require 'uri'
+  require 'json'
 
-  def perform(delegate_id)
-    delegate = Delegate.find_by(id: delegate_id)
-    return unless delegate
+  def self.send_email(to:, subject:, html:)
+    url = URI.parse("https://api.brevo.com/v3/smtp/email")
 
-    reset_url = "#{ENV['FRONTEND_URL']}/reset-password?token=#{delegate.reset_password_token}"
+    payload = {
+      sender: {
+        name: "WPA Conference",
+        email: ENV["BREVO_SENDER_EMAIL"]
+      },
+      to: [
+        { email: to }
+      ],
+      subject: subject,
+      htmlContent: html   # 🔥 สำคัญมาก
+    }
 
-    html = ApplicationController.render(
-      template: "password_mailer/reset_password",
-      assigns: {
-        reset_url: reset_url,
-        token: delegate.reset_password_token
-      }
-    )
+    http = Net::HTTP.new(url.host, url.port)
+    http.use_ssl = true
 
-    BrevoMailService.send_email(
-      to: delegate.email,
-      subject: "Reset Your Password",
-      html: html
-    )
-  rescue => e
-    Rails.logger.error "[ResetPasswordJob] Failed: #{e.message}"
+    request = Net::HTTP::Post.new(url.request_uri)
+    request["api-key"] = ENV["BREVO_API_KEY"]
+    request["Content-Type"] = "application/json"
+    request.body = payload.to_json
+
+    response = http.request(request)
+
+    Rails.logger.info "[Brevo] Response: #{response.body}"
+
+    response
   end
 end
