@@ -1,5 +1,5 @@
 #!/bin/bash
 set -e
 bundle exec rails db:migrate
-bundle exec sidekiq -d -L log/sidekiq.log
+bundle exec sidekiq &
 bundle exec rails server -b 0.0.0.0 -p ${PORT:-3000}
