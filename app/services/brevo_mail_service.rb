@@ -13,7 +13,7 @@ class BrevoMailService
       },
       body: {
         sender: {
-          email: "no-reply@yourapp.com",
+          email: "noxterror999@gmail.com",
           name: "WPA Conference"
         },
         to: [{ email: to }],
