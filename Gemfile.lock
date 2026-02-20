@@ -287,8 +287,6 @@ GEM
       connection_pool
     reline (0.6.3)
       io-console (~> 0.5)
-    resend (1.0.0)
-      httparty (>= 0.21.0)
     responders (3.2.0)
       actionpack (>= 7.0)
       railties (>= 7.0)
@@ -350,6 +348,7 @@ DEPENDENCIES
   devise (~> 5.0)
   dotenv-rails
   googleauth
+  httparty
   jwt (~> 2.8)
   kaminari (~> 1.2)
   pg (~> 1.1)
@@ -358,7 +357,6 @@ DEPENDENCIES
   rack-cors (~> 2.0)
   rails (~> 7.0.10)
   redis (~> 4.0)
-  resend
   rqrcode
   sentry-rails
   sentry-ruby
@@ -478,7 +476,6 @@ CHECKSUMS
   redis (4.8.1) sha256=387ee086694fffc9632aaeb1efe4a7b1627ca783bf373320346a8a20cd93333a
   redis-client (0.26.4) sha256=3ad70beff5da2653e02dfeae996e7d8d7147a558da12b16b2282ad345e4c7120
   reline (0.6.3) sha256=1198b04973565b36ec0f11542ab3f5cfeeec34823f4e54cebde90968092b1835
-  resend (1.0.0) sha256=b64defd50a1967e8a6ef346b94dab4f1dd76628b36be556866e45db648d60a07
   responders (3.2.0) sha256=89c2d6ac0ae16f6458a11524cae4a8efdceba1a3baea164d28ee9046bd3df55a
   rqrcode (3.2.0) sha256=64c1494ca6bb67d731330f38b50e3fd09eeab4f5dcd04b608e21218d1d0b9542
   rqrcode_core (2.1.0) sha256=f303b85df89c1b8fc5ee8dc19808c9dc4330e6329b660d99d4a8cbb36ca13051

@@ -27,15 +27,26 @@ Rails.application.configure do
   config.action_mailer.perform_deliveries = true
   config.action_mailer.raise_delivery_errors = true
 
+  # config.action_mailer.smtp_settings = {
+  #   address: "smtp.gmail.com",
+  #   port: 587,
+  #   domain: "gmail.com",
+  #   user_name: ENV["MAIL_USER"],
+  #   password: ENV["MAIL_PASS"],
+  #   authentication: "plain",
+  #   enable_starttls_auto: true
+  # }
+
   config.action_mailer.smtp_settings = {
-    address: "smtp.gmail.com",
+    address: "smtp-relay.brevo.com",
     port: 587,
-    domain: "gmail.com",
-    user_name: ENV["MAIL_USER"],
-    password: ENV["MAIL_PASS"],
+    user_name: ENV["BREVO_LOGIN"],
+    password: ENV["BREVO_PASS"],
     authentication: "plain",
     enable_starttls_auto: true
   }
+
+
 
   # Deprecation
   config.active_support.deprecation = :log

@@ -23,6 +23,7 @@ module Api
       # ============================
       # POST /api/v1/requests
       # ============================
+
       def create
         return render json: { error: 'Target ID is required' }, status: :unprocessable_entity unless params[:target_id].present?
 
@@ -32,12 +33,12 @@ module Api
         return render json: { error: 'Cannot send connection request to yourself' },
                       status: :unprocessable_entity if target.id == current_delegate.id
 
-        existing = ConnectionRequest.where(
+        existing = ConnectionRequest.find_by(
           requester_id: current_delegate.id,
           target_id: target.id
-        ).where(status: [:pending, :accepted]).first
+        )
 
-        if existing
+        if existing&.pending? || existing&.accepted?
           return render json: {
             error: 'Connection request already exists',
             status: existing.status
@@ -45,11 +46,12 @@ module Api
         end
 
         ActiveRecord::Base.transaction do
-          @connection = ConnectionRequest.create!(
+          # rejected record มีอยู่แล้ว → reset เป็น pending แทน create ใหม่
+          @connection = existing || ConnectionRequest.new(
             requester_id: current_delegate.id,
-            target_id: target.id,
-            status: :pending
+            target_id: target.id
           )
+          @connection.update!(status: :pending)
 
           notification = Notification.create!(
             delegate: target,
@@ -62,8 +64,8 @@ module Api
         end
 
         render json: @connection,
-               serializer: Api::V1::ConnectionRequestSerializer,
-               status: :created
+              serializer: Api::V1::ConnectionRequestSerializer,
+              status: :created
       end
 
 

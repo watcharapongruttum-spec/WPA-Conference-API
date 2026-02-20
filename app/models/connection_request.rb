@@ -4,7 +4,10 @@ class ConnectionRequest < ApplicationRecord
   
   enum status: { pending: 'pending', accepted: 'accepted', rejected: 'rejected' }
   
-  validates :requester_id, uniqueness: { scope: :target_id }
+  validates :requester_id, uniqueness: {
+    scope: :target_id,
+    conditions: -> { where.not(status: 'rejected') }
+  }
   validate :cannot_connect_to_self
   
   scope :accepted, -> { where(status: 'accepted') }
