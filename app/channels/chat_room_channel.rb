@@ -37,19 +37,53 @@ class ChatRoomChannel < ApplicationCable::Channel
   # ================= SEND =================
   def send_message(data)
     data = parse(data)
+    content = data["content"].to_s.strip
+    return if content.blank?
 
-    msg = @room.chat_messages.create!(
-      sender: current_delegate,
-      content: data["content"]
-    )
+    # ใช้ begin/rescue เพื่อให้ broadcast ยังทำงานแม้ save ไม่ได้
+    msg = begin
+      @room.chat_messages.create!(
+        sender: current_delegate,
+        content: content
+        # ไม่ต้องส่ง recipient_id สำหรับ room message
+      )
+    rescue ActiveRecord::RecordInvalid => e
+      Rails.logger.warn "[ChatRoomChannel] create! failed: #{e.message}"
+      nil
+    end
+
+    payload = if msg
+      {
+        id: msg.id,
+        content: msg.content,
+        created_at: msg.created_at,
+        sender: {
+          id: current_delegate.id,
+          name: current_delegate.name,
+          avatar_url: current_delegate.avatar_url
+        }
+      }
+    else
+      # fallback ถ้า save ไม่ได้ — broadcast ด้วย in-memory payload
+      {
+        id: SecureRandom.uuid,
+        content: content,
+        created_at: Time.current,
+        sender: {
+          id: current_delegate.id,
+          name: current_delegate.name,
+          avatar_url: current_delegate.avatar_url
+        }
+      }
+    end
 
     ChatRoomChannel.broadcast_to(@room, {
       type: "room_message",
       room_id: @room.id,
-      message: serializer(msg)
+      message: payload
     })
 
-    auto_read_if_open(msg)
+    auto_read_if_open(msg) if msg
   end
 
   # ================= ENTER ROOM =================

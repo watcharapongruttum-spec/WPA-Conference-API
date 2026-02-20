@@ -1,7 +1,7 @@
 module Api
   module V1
     class MessagesController < ApplicationController
-      before_action :set_message, only: [:update, :destroy]
+      before_action :set_message, only: [:update, :destroy, :mark_as_read]
 
       def rooms
         me = current_delegate.id
@@ -71,7 +71,21 @@ module Api
 
 
 
+      # ================= MARK AS READ (single) =================
+      def mark_as_read
+        message = ChatMessage.find(params[:id])
 
+        # เฉพาะ recipient เท่านั้นที่ mark ได้
+        return render json: { error: "Forbidden" }, status: :forbidden \
+          unless message.recipient_id == current_delegate.id
+
+        return render json: { error: "Already read" }, status: :ok \
+          if message.read_at.present?
+
+        message.update!(read_at: Time.current)
+
+        render json: { success: true, read_at: message.read_at }
+      end
 
 
 

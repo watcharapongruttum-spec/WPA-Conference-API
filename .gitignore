@@ -39,3 +39,10 @@
 # Firebase
 config/firebase-adminsdk.json
 config/*firebase-adminsdk*.json
+
+
+
+
+# Test scripts and backup
+test_scripts/
+backup_db/
