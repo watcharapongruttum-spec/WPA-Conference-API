@@ -15,6 +15,8 @@ class ResetPasswordJob < ApplicationJob
       }
     )
 
+
+    
     BrevoMailService.send_email(
       to: delegate.email,
       subject: "Reset Your Password",
