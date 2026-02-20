@@ -1,28 +1,35 @@
-require 'httparty'
-
 class BrevoMailService
-  include HTTParty
-  base_uri "https://api.brevo.com/v3"
+  require 'net/http'
+  require 'uri'
+  require 'json'
 
   def self.send_email(to:, subject:, html:)
-    response = post(
-      "/smtp/email",
-      headers: {
-        "api-key" => ENV["BREVO_API_KEY"],
-        "Content-Type" => "application/json"
-      },
-      body: {
-        sender: {
-          email: "noxterror999@gmail.com",
-          name: "WPA Conference"
-        },
-        to: [{ email: to }],
-        subject: subject,
-        htmlContent: html
-      }.to_json
-    )
+    url = URI.parse("https://api.brevo.com/v3/smtp/email")
 
-    Rails.logger.info "Brevo response: #{response.body}"
+    payload = {
+      sender: {
+        name: "WPA Conference",
+        email: ENV["BREVO_SENDER_EMAIL"]
+      },
+      to: [
+        { email: to }
+      ],
+      subject: subject,
+      htmlContent: html   # 🔥 สำคัญมาก
+    }
+
+    http = Net::HTTP.new(url.host, url.port)
+    http.use_ssl = true
+
+    request = Net::HTTP::Post.new(url.request_uri)
+    request["api-key"] = ENV["BREVO_API_KEY"]
+    request["Content-Type"] = "application/json"
+    request.body = payload.to_json
+
+    response = http.request(request)
+
+    Rails.logger.info "[Brevo] Response: #{response.body}"
+
     response
   end
 end
