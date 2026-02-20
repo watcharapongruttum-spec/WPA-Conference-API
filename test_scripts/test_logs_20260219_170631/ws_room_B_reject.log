@@ -1,3 +1,0 @@
-{"type":"welcome"}
-> {"identifier":"{\"channel\":\"ChatRoomChannel\",\"room_id\":101}","type":"reject_subscription"}
-{"type":"ping","message":1771495730}

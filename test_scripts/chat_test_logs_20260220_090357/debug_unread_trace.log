@@ -1,0 +1,64 @@
+================================================================
+  WPA Chat System — DEBUG LOG
+  Started: Fri Feb 20 09:03:57 +07 2026
+  Base URL: http://localhost:3000
+  WS URL:   ws://localhost:3000/cable
+  Log dir:  ./chat_test_logs_20260220_090357
+================================================================
+
+[09:04:35.792] unread_from sender=162 → HTTP 200
+  Raw response: {"unread_count":1}
+  Parsed unread_count: 1
+
+[09:05:13.003] unread_from sender=162 → HTTP 200
+  Raw response: {"unread_count":5}
+  Parsed unread_count: 5
+
+[09:05:17.063] unread_from sender=162 → HTTP 200
+  Raw response: {"unread_count":0}
+  Parsed unread_count: 0
+
+[09:05:30.890] unread_from sender=162 → HTTP 200
+  Raw response: {"unread_count":10}
+  Parsed unread_count: 10
+
+[09:05:34.933] unread_from sender=162 → HTTP 200
+  Raw response: {"unread_count":10}
+  Parsed unread_count: 10
+
+[09:05:38.986] unread_from sender=162 → HTTP 200
+  Raw response: {"unread_count":0}
+  Parsed unread_count: 0
+
+[09:05:51.330] unread_from sender=162 → HTTP 200
+  Raw response: {"unread_count":0}
+  Parsed unread_count: 0
+
+[09:05:57.631] unread_from sender=162 → HTTP 200
+  Raw response: {"unread_count":1}
+  Parsed unread_count: 1
+
+[09:06:08.529] unread_from sender=162 → HTTP 200
+  Raw response: {"unread_count":3}
+  Parsed unread_count: 3
+
+[09:06:08.644] unread_from sender=162 → HTTP 200
+  Raw response: {"unread_count":3}
+  Parsed unread_count: 3
+
+[09:06:08.766] unread_from sender=162 → HTTP 200
+  Raw response: {"unread_count":0}
+  Parsed unread_count: 0
+
+[09:07:04.358] unread_from sender=238 → HTTP 200
+  Raw response: {"unread_count":0}
+  Parsed unread_count: 0
+
+[09:07:04.383] unread_from sender=162 → HTTP 200
+  Raw response: {"unread_count":0}
+  Parsed unread_count: 0
+
+[09:08:26.846] unread_from sender=162 → HTTP 200
+  Raw response: {"unread_count":0}
+  Parsed unread_count: 0
+

@@ -1,0 +1,5 @@
+[10:30:47.249] FAIL | B unread=1 (คาดว่า 0 หลัง enter_room)
+[10:32:19.565] FAIL | mark_as_read single → 404
+[10:32:19.595] FAIL | unread ไม่ลดลง (ยังเป็น 3)
+[10:33:44.880] FAIL | B ไม่รับ room_message broadcast
+[10:33:58.104] FAIL | A ไม่รับ room_message broadcast จาก B

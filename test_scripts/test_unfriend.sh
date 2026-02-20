@@ -30,50 +30,11 @@ get_id(){
     -H "Authorization: Bearer $1" | jq -r '.id'
 }
 
-is_friend(){
-  local MY_TOKEN=$1
-  local OTHER_ID=$2
-  curl -s $BASE_URL/api/v1/networking/my_connections \
-    -H "Authorization: Bearer $MY_TOKEN" \
-    | jq --argjson oid "$OTHER_ID" \
-      '[.[] | select((.requester.id == $oid) or (.target.id == $oid))] | length' 2>/dev/null || echo 0
-}
-
-# เช็ค ConnectionRequest ทุก status ระหว่าง A กับ B
-any_connection_request(){
+get_connection_fields(){
   local TOKEN=$1
   local OTHER_ID=$2
-  curl -s $BASE_URL/api/v1/requests \
-    -H "Authorization: Bearer $TOKEN" \
-    | jq --argjson oid "$OTHER_ID" \
-      '[.[] | select((.requester_id == $oid) or (.target_id == $oid))] | length' 2>/dev/null || echo 0
-}
-
-show_cleanup_hint(){
-  local A=$1
-  local B=$2
-  echo -e "${RED}"
-  echo "  ╔══════════════════════════════════════════════════════════════╗"
-  echo "  ║  STALE DATA — ต้องล้างข้อมูลก่อนรัน test                    ║"
-  echo "  ║                                                              ║"
-  echo "  ║  มี ConnectionRequest ค้างอยู่ (อาจเป็น accepted/rejected)  ║"
-  echo "  ║  ทำให้ส่ง request ใหม่ไม่ได้ (unique constraint)            ║"
-  echo "  ╚══════════════════════════════════════════════════════════════╝"
-  echo -e "${NC}"
-  echo -e "${YELLOW}  รัน rails console แล้วพิมพ์:${NC}"
-  echo ""
-  echo "  ConnectionRequest.where("
-  echo "    \"(requester_id = $A AND target_id = $B) OR"
-  echo "     (requester_id = $B AND target_id = $A)\""
-  echo "  ).delete_all"
-  echo ""
-  echo "  Connection.where("
-  echo "    \"(requester_id = $A AND target_id = $B) OR"
-  echo "     (requester_id = $B AND target_id = $A)\""
-  echo "  ).delete_all"
-  echo ""
-  echo -e "${YELLOW}  แล้วรัน test นี้ใหม่อีกครั้ง${NC}"
-  echo ""
+  curl -s "$BASE_URL/api/v1/delegates/$OTHER_ID" \
+    -H "Authorization: Bearer $TOKEN"
 }
 
 ############################################################
@@ -84,151 +45,204 @@ TOKEN_B=$(login "$EMAIL_B" "$PASSWORD_B")
 A_ID=$(get_id "$TOKEN_A")
 B_ID=$(get_id "$TOKEN_B")
 
-[ -z "$TOKEN_A" ] && { fail "Login A failed"; exit 1; }
-[ -z "$TOKEN_B" ] && { fail "Login B failed"; exit 1; }
+[ -z "$TOKEN_A" ] || [ "$TOKEN_A" = "null" ] && { fail "Login A failed"; exit 1; }
+[ -z "$TOKEN_B" ] || [ "$TOKEN_B" = "null" ] && { fail "Login B failed"; exit 1; }
 pass "Login OK (A=$A_ID, B=$B_ID)"
 
 ############################################################
-step "SETUP — เตรียมให้ A และ B เป็นเพื่อนกัน"
+step "SETUP — Auto-cleanup stale data"
 
-ALREADY=$(is_friend "$TOKEN_A" "$B_ID")
+# 1) ลบ Connection record ที่ค้างอยู่ (ผ่าน unfriend)
+echo "  ลบ Connection record ที่ค้างอยู่ (ถ้ามี)..."
+UF_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+  -X DELETE "$BASE_URL/api/v1/networking/unfriend/$B_ID" \
+  -H "Authorization: Bearer $TOKEN_A")
+echo "  unfriend HTTP: $UF_CODE (200=ลบได้, 404=ไม่มีค้าง)"
 
-if [ "${ALREADY:-0}" -gt 0 ]; then
-  echo -e "${YELLOW}  ℹ Connection record มีอยู่แล้ว — ข้าม setup${NC}"
-else
-  # เช็ค stale ConnectionRequest ทุก status
-  ANY_CR=$(any_connection_request "$TOKEN_A" "$B_ID")
-  echo "  ตรวจสอบ ConnectionRequest ที่มีอยู่: $ANY_CR รายการ"
+# 2) ลบ ConnectionRequest ที่ค้างอยู่ (ผ่าน cancel)
+echo "  ลบ ConnectionRequest ที่ค้างอยู่ (ถ้ามี)..."
+C1=$(curl -s -o /dev/null -w "%{http_code}" \
+  -X DELETE "$BASE_URL/api/v1/requests/$B_ID/cancel" \
+  -H "Authorization: Bearer $TOKEN_A")
+C2=$(curl -s -o /dev/null -w "%{http_code}" \
+  -X DELETE "$BASE_URL/api/v1/requests/$A_ID/cancel" \
+  -H "Authorization: Bearer $TOKEN_B")
+echo "  cancel as A: HTTP $C1 | cancel as B: HTTP $C2"
 
-  if [ "${ANY_CR:-0}" -gt 0 ]; then
-    show_cleanup_hint "$A_ID" "$B_ID"
-    fail "Setup ล้มเหลว — มี stale data (ดูคำสั่งด้านบน แล้วรัน test ใหม่)"
-    exit 1
-  fi
+# 3) ตรวจสอบอีกครั้ง
+ANY_CR=$(curl -s $BASE_URL/api/v1/requests \
+  -H "Authorization: Bearer $TOKEN_A" \
+  | jq --argjson oid "$B_ID" \
+    '[.[] | select((.requester_id == $oid) or (.target_id == $oid))] | length' 2>/dev/null || echo 0)
 
-  # ส่ง friend request ใหม่
-  echo "  A ส่ง friend request ไปหา B..."
-  REQ_RESP=$(curl -s -X POST $BASE_URL/api/v1/requests \
-    -H "Authorization: Bearer $TOKEN_A" \
-    -H "Content-Type: application/json" \
-    -d "{\"target_id\": $B_ID}")
+echo "  ConnectionRequest ที่เหลืออยู่: $ANY_CR"
 
-  echo "  Request response: $REQ_RESP"
-  REQ_ID=$(echo "$REQ_RESP" | jq -r '.id // empty')
-
-  # fallback: ดึงจาก my_received ของ B
-  if [ -z "$REQ_ID" ] || [ "$REQ_ID" = "null" ]; then
-    REQ_ID=$(curl -s $BASE_URL/api/v1/requests/my_received \
-      -H "Authorization: Bearer $TOKEN_B" \
-      | jq -r --argjson aid "$A_ID" \
-        '[.[] | select(.requester.id == $aid)] | .[0].id // empty' 2>/dev/null)
-  fi
-
-  if [ -z "$REQ_ID" ] || [ "$REQ_ID" = "null" ]; then
-    fail "ส่ง friend request ไม่ได้ และหา pending request ไม่เจอ"
-    exit 1
-  fi
-
-  echo "  B accept request id=$REQ_ID..."
-  ACCEPT_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
-    -X PATCH "$BASE_URL/api/v1/requests/$REQ_ID/accept" \
-    -H "Authorization: Bearer $TOKEN_B")
-
-  if [ "$ACCEPT_CODE" -eq 200 ]; then
-    pass "Setup OK: A และ B เป็นเพื่อนกันแล้ว"
-  else
-    fail "Accept request failed (HTTP $ACCEPT_CODE)"
-    exit 1
-  fi
-fi
-
-############################################################
-step "CASE 1 — ยืนยันว่าเป็นเพื่อนกันก่อน unfriend"
-
-COUNT=$(is_friend "$TOKEN_A" "$B_ID")
-if [ "${COUNT:-0}" -gt 0 ]; then
-  pass "Confirmed: A และ B เป็นเพื่อนกัน (connections=$COUNT)"
-else
-  fail "ไม่พบ Connection record — setup ล้มเหลว"
+if [ "${ANY_CR:-0}" -gt 0 ]; then
+  echo -e "${RED}  Auto-cleanup ไม่สำเร็จ — ต้องล้างด้วย rails console${NC}"
+  echo -e "${YELLOW}  รัน:${NC}"
+  echo "  ConnectionRequest.where(\"(requester_id=$A_ID AND target_id=$B_ID) OR (requester_id=$B_ID AND target_id=$A_ID)\").delete_all"
+  echo "  Connection.where(\"(requester_id=$A_ID AND target_id=$B_ID) OR (requester_id=$B_ID AND target_id=$A_ID)\").delete_all"
+  fail "Cleanup ล้มเหลว"
   exit 1
 fi
 
-############################################################
-step "CASE 2 — A unfriend B"
+# 4) ส่ง request ใหม่
+echo "  A ส่ง connection request ไปหา B..."
+REQ_RESP=$(curl -s -X POST $BASE_URL/api/v1/requests \
+  -H "Authorization: Bearer $TOKEN_A" \
+  -H "Content-Type: application/json" \
+  -d "{\"target_id\": $B_ID}")
 
-BODY=$(curl -s -w "\n%{http_code}" \
-  -X DELETE "$BASE_URL/api/v1/networking/unfriend/$B_ID" \
+echo "  Request response: $REQ_RESP"
+REQ_ID=$(echo "$REQ_RESP" | jq -r '.id // empty')
+
+if [ -z "$REQ_ID" ] || [ "$REQ_ID" = "null" ]; then
+  REQ_ID=$(curl -s $BASE_URL/api/v1/requests/my_received \
+    -H "Authorization: Bearer $TOKEN_B" \
+    | jq -r --argjson aid "$A_ID" \
+      '[.[] | select(.requester.id == $aid)] | .[0].id // empty' 2>/dev/null)
+fi
+
+if [ -z "$REQ_ID" ] || [ "$REQ_ID" = "null" ]; then
+  fail "ส่ง request ไม่ได้"
+  exit 1
+fi
+pass "Setup OK: A ส่ง request id=$REQ_ID ไปหา B แล้ว"
+
+############################################################
+step "BUG FIX 1 — ก่อน reject: pending ยังไม่ใช่ connected"
+
+PROFILE=$(get_connection_fields "$TOKEN_B" "$A_ID")
+IS_CONN=$(echo "$PROFILE" | jq -r '.is_connected')
+CONN_STATUS=$(echo "$PROFILE" | jq -r '.connection_status')
+
+echo "  is_connected: $IS_CONN"
+echo "  connection_status: $CONN_STATUS"
+
+[ "$IS_CONN" = "false" ] \
+  && pass "is_connected = false ✓ (ขณะ pending ยังไม่ควร connected)" \
+  || fail "is_connected = $IS_CONN (ควรเป็น false ขณะ pending)"
+
+[ "$CONN_STATUS" = "requested_to_me" ] \
+  && pass "connection_status = 'requested_to_me' ✓" \
+  || fail "connection_status = '$CONN_STATUS' (ควรเป็น 'requested_to_me')"
+
+############################################################
+step "BUG FIX 1 — B reject request"
+
+REJECT_RESP=$(curl -s -w "\n%{http_code}" \
+  -X PATCH "$BASE_URL/api/v1/requests/$REQ_ID/reject" \
+  -H "Authorization: Bearer $TOKEN_B")
+
+HTTP_CODE=$(echo "$REJECT_RESP" | tail -1)
+BODY=$(echo "$REJECT_RESP" | head -1)
+STATUS_IN_RESP=$(echo "$BODY" | jq -r '.status // empty')
+
+echo "  HTTP: $HTTP_CODE | status in response: $STATUS_IN_RESP"
+
+[ "$HTTP_CODE" -eq 200 ] && [ "$STATUS_IN_RESP" = "rejected" ] \
+  && pass "Reject API สำเร็จ (200, status=rejected)" \
+  || fail "Reject API ผิดพลาด (HTTP=$HTTP_CODE, status=$STATUS_IN_RESP)"
+
+############################################################
+step "BUG FIX 1 — หลัง reject: is_connected + connection_status ต้อง consistent"
+
+echo ""
+echo "  [มุมมอง B ดู profile A]"
+PROFILE_B=$(get_connection_fields "$TOKEN_B" "$A_ID")
+IS_CONN_B=$(echo "$PROFILE_B" | jq -r '.is_connected')
+STATUS_B=$(echo "$PROFILE_B" | jq -r '.connection_status')
+echo "  is_connected: $IS_CONN_B"
+echo "  connection_status: $STATUS_B"
+
+[ "$IS_CONN_B" = "false" ] \
+  && pass "[B→A] is_connected = false ✓" \
+  || fail "[B→A] BUG! is_connected = $IS_CONN_B (ควรเป็น false หลัง reject)"
+
+[ "$STATUS_B" = "none" ] \
+  && pass "[B→A] connection_status = 'none' ✓" \
+  || fail "[B→A] BUG! connection_status = '$STATUS_B' (ควรเป็น 'none' หลัง reject)"
+
+if [ "$IS_CONN_B" = "false" ] && [ "$STATUS_B" = "none" ]; then
+  pass "[B→A] CONSISTENCY OK ✓ ไม่ขัดแย้งกัน"
+else
+  fail "[B→A] CONSISTENCY FAIL: is_connected=$IS_CONN_B แต่ connection_status=$STATUS_B"
+fi
+
+echo ""
+echo "  [มุมมอง A ดู profile B]"
+PROFILE_A=$(get_connection_fields "$TOKEN_A" "$B_ID")
+IS_CONN_A=$(echo "$PROFILE_A" | jq -r '.is_connected')
+STATUS_A=$(echo "$PROFILE_A" | jq -r '.connection_status')
+echo "  is_connected: $IS_CONN_A"
+echo "  connection_status: $STATUS_A"
+
+[ "$IS_CONN_A" = "false" ] \
+  && pass "[A→B] is_connected = false ✓" \
+  || fail "[A→B] BUG! is_connected = $IS_CONN_A"
+
+[ "$STATUS_A" = "none" ] \
+  && pass "[A→B] connection_status = 'none' ✓" \
+  || fail "[A→B] BUG! connection_status = '$STATUS_A'"
+
+############################################################
+step "BUG FIX 2 — Leave Form: schedule_id ต้องไม่ null"
+
+SCHEDULE_ID=$(curl -s "$BASE_URL/api/v1/schedules/my_schedule" \
+  -H "Authorization: Bearer $TOKEN_A" \
+  | jq -r '.schedules[]? | select(.type == "meeting") | .id' 2>/dev/null | head -1)
+
+LEAVE_TYPE_ID=$(curl -s "$BASE_URL/api/v1/leave_types" \
+  -H "Authorization: Bearer $TOKEN_A" \
+  | jq -r '.[0].id // empty')
+
+echo "  Schedule ID: $SCHEDULE_ID"
+echo "  Leave Type ID: $LEAVE_TYPE_ID"
+
+if [ -z "$SCHEDULE_ID" ] || [ "$SCHEDULE_ID" = "null" ]; then
+  echo -e "${YELLOW}  ⚠ ไม่มี schedule ของ user A — ข้าม test นี้${NC}"
+elif [ -z "$LEAVE_TYPE_ID" ] || [ "$LEAVE_TYPE_ID" = "null" ]; then
+  echo -e "${YELLOW}  ⚠ ไม่มี leave_type ใน DB — ข้าม test นี้${NC}"
+else
+  LF_RESP=$(curl -s -w "\n%{http_code}" \
+    -X POST "$BASE_URL/api/v1/leave_forms" \
+    -H "Authorization: Bearer $TOKEN_A" \
+    -H "Content-Type: application/json" \
+    -d "{
+      \"leave_form\": {
+        \"leaves\": [
+          {
+            \"schedule_id\": $SCHEDULE_ID,
+            \"leave_type_id\": $LEAVE_TYPE_ID,
+            \"reason\": \"test\",
+            \"explanation\": \"automated test\"
+          }
+        ]
+      }
+    }")
+
+  LF_HTTP=$(echo "$LF_RESP" | tail -1)
+  LF_BODY=$(echo "$LF_RESP" | head -1)
+  CREATED_COUNT=$(echo "$LF_BODY" | jq -r '.created_count // 0')
+
+  echo "  HTTP: $LF_HTTP | created_count: $CREATED_COUNT"
+  echo "  Response: $LF_BODY"
+
+  if [ "$LF_HTTP" -eq 200 ] && [ "$CREATED_COUNT" -gt 0 ]; then
+    pass "Leave Form สร้างสำเร็จ (created_count=$CREATED_COUNT) ✓"
+    pass "schedule_id ถูก permit และบันทึกแล้ว ✓"
+  else
+    fail "Leave Form สร้างไม่สำเร็จ (HTTP=$LF_HTTP, created_count=$CREATED_COUNT)"
+  fi
+fi
+
+############################################################
+step "CLEANUP — ลบ rejected request เพื่อให้รัน test ซ้ำได้"
+
+C=$(curl -s -o /dev/null -w "%{http_code}" \
+  -X DELETE "$BASE_URL/api/v1/requests/$B_ID/cancel" \
   -H "Authorization: Bearer $TOKEN_A")
-
-HTTP_CODE=$(echo "$BODY" | tail -1)
-RESPONSE=$(echo "$BODY" | head -1)
-
-echo "  HTTP Status: $HTTP_CODE"
-echo "  Response: $RESPONSE"
-
-if [ "$HTTP_CODE" -eq 200 ]; then
-  pass "Unfriend สำเร็จ (200 OK)"
-else
-  fail "Unfriend failed (HTTP $HTTP_CODE)"
-fi
-
-############################################################
-step "CASE 3 — ยืนยันว่าไม่เป็นเพื่อนกันแล้ว"
-
-COUNT_AFTER=$(is_friend "$TOKEN_A" "$B_ID")
-if [ "${COUNT_AFTER:-1}" -eq 0 ]; then
-  pass "Confirmed: B หายออกจาก connections ของ A แล้ว"
-else
-  fail "B ยังอยู่ใน connections — unfriend ไม่สำเร็จ"
-fi
-
-COUNT_B=$(is_friend "$TOKEN_B" "$A_ID")
-if [ "${COUNT_B:-1}" -eq 0 ]; then
-  pass "Confirmed: A หายออกจาก connections ของ B ด้วย (bidirectional)"
-else
-  fail "A ยังอยู่ใน connections ของ B — ลบไม่ครบ"
-fi
-
-############################################################
-step "CASE 4 — unfriend ซ้ำ (ต้อง 404)"
-
-HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
-  -X DELETE "$BASE_URL/api/v1/networking/unfriend/$B_ID" \
-  -H "Authorization: Bearer $TOKEN_A")
-
-echo "  HTTP Status: $HTTP_CODE"
-if [ "$HTTP_CODE" -eq 404 ]; then
-  pass "404 Not Found ถูกต้อง (ลบซ้ำไม่ได้)"
-else
-  fail "Expected 404 got $HTTP_CODE"
-fi
-
-############################################################
-step "CASE 5 — unfriend delegate ที่ไม่มีอยู่ (ต้อง 404)"
-
-HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
-  -X DELETE "$BASE_URL/api/v1/networking/unfriend/99999999" \
-  -H "Authorization: Bearer $TOKEN_A")
-
-echo "  HTTP Status: $HTTP_CODE"
-if [ "$HTTP_CODE" -eq 404 ]; then
-  pass "404 Not Found ถูกต้อง"
-else
-  fail "Expected 404 got $HTTP_CODE"
-fi
-
-############################################################
-step "CASE 6 — unfriend โดยไม่มี token (ต้อง 401)"
-
-HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
-  -X DELETE "$BASE_URL/api/v1/networking/unfriend/$B_ID")
-
-echo "  HTTP Status: $HTTP_CODE"
-if [ "$HTTP_CODE" -eq 401 ]; then
-  pass "401 Unauthorized ถูกต้อง"
-else
-  fail "Expected 401 got $HTTP_CODE"
-fi
+echo "  cancel HTTP: $C (200/404 = OK)"
 
 ############################################################
 

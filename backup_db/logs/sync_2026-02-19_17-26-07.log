@@ -1,0 +1,1449 @@
+2026-02-19 17:26:07 | === SYNC START ===
+2026-02-19 17:26:07 | Progress: 0%
+2026-02-19 17:26:07 | \n========== STEP 1 BACKUP LOCAL DB ==========
+2026-02-19 17:26:07 | Progress: 10%
+2026-02-19 17:26:07 | Running pg_dump from Docker...
+2026-02-19 17:26:12 | Backup completed: ./backups/wpa_development_2026-02-19_17-26-07.sql
+2026-02-19 17:26:12 | Progress: 30%
+2026-02-19 17:26:12 | \n========== STEP 2 CLEAR RENDER DB ==========
+2026-02-19 17:26:12 | Progress: 50%
+2026-02-19 17:26:12 | Dropping public schema...
+NOTICE:  drop cascades to 89 other objects
+DETAIL:  drop cascades to table active_storage_attachments
+drop cascades to table active_storage_blobs
+drop cascades to table ar_internal_metadata
+drop cascades to table audit_logs
+drop cascades to table audits
+drop cascades to table booths
+drop cascades to table branch_services
+drop cascades to table branches
+drop cascades to table chat_messages
+drop cascades to table chat_room_members
+drop cascades to table chat_rooms
+drop cascades to table cities
+drop cascades to table ckeditor_assets
+drop cascades to table comments
+drop cascades to table companies
+drop cascades to table conference_dates
+drop cascades to table conference_invoice_items
+drop cascades to table conference_invoices
+drop cascades to table conference_schedules
+drop cascades to table conferences
+drop cascades to table connection_requests
+drop cascades to table connections
+drop cascades to table contacts
+drop cascades to table continents
+drop cascades to table countries
+drop cascades to table delegates
+drop cascades to table ex_members
+drop cascades to table headquarters
+drop cascades to table hotel_bookings
+drop cascades to table hotel_change_requests
+drop cascades to table hotels
+drop cascades to table image_newsletters
+drop cascades to table invoice_items
+drop cascades to table invoice_sequences
+drop cascades to table invoices
+drop cascades to table leave_forms
+drop cascades to table leave_types
+drop cascades to table login_sessions
+drop cascades to table member_attendances
+drop cascades to table member_services
+drop cascades to table member_submitted_news
+drop cascades to table members
+drop cascades to table messages
+drop cascades to table notifications
+drop cascades to table on_holds
+drop cascades to table payment_files
+drop cascades to table payment_items
+drop cascades to table precaution_gold_funds
+drop cascades to table "references"
+drop cascades to table referral_members
+drop cascades to table refinery_authentication_devise_roles
+drop cascades to table refinery_authentication_devise_roles_users
+drop cascades to table refinery_authentication_devise_user_plugins
+drop cascades to table refinery_authentication_devise_users
+drop cascades to table refinery_image_page_translations
+drop cascades to table refinery_image_pages
+drop cascades to table refinery_image_translations
+drop cascades to table refinery_images
+drop cascades to table refinery_news_item_translations
+drop cascades to table refinery_news_items
+drop cascades to table refinery_newsletters
+drop cascades to table refinery_newsletters_recipients
+drop cascades to table refinery_page_part_translations
+drop cascades to table refinery_page_parts
+drop cascades to table refinery_page_translations
+drop cascades to table refinery_pages
+drop cascades to table refinery_resource_translations
+drop cascades to table refinery_resources
+drop cascades to table refinery_settings
+drop cascades to table register_tokens
+drop cascades to table reservations
+drop cascades to table room_members
+drop cascades to table rooms
+drop cascades to table schedules
+drop cascades to table schema_migrations
+drop cascades to table security_logs
+drop cascades to table seo_meta
+drop cascades to table services
+drop cascades to table sessions
+drop cascades to table settings
+drop cascades to table settings_conference
+drop cascades to table sponsors
+drop cascades to table sponsorships
+drop cascades to table spouses
+drop cascades to table surveys
+drop cascades to table tables
+drop cascades to table taggings
+drop cascades to table tags
+drop cascades to table teams
+DROP SCHEMA
+CREATE SCHEMA
+GRANT
+GRANT
+2026-02-19 17:26:16 | Render DB cleared
+2026-02-19 17:26:16 | Progress: 70%
+2026-02-19 17:26:16 | \n========== STEP 3 RESTORE TO RENDER ==========
+2026-02-19 17:26:16 | Progress: 80%
+2026-02-19 17:26:16 | Restoring SQL file...
+SET
+SET
+SET
+SET
+SET
+SET
+ set_config 
+------------
+ 
+(1 row)
+
+SET
+SET
+SET
+SET
+SET
+SET
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+CREATE TABLE
+ERROR:  must be able to SET ROLE "postgres"
+CREATE SEQUENCE
+ERROR:  must be able to SET ROLE "postgres"
+ALTER SEQUENCE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+COPY 536
+COPY 815
+COPY 1
+COPY 5324
+COPY 1000
+COPY 5
+COPY 1859
+COPY 1248
+COPY 7062
+COPY 35
+COPY 30
+COPY 542
+COPY 1
+COPY 97557
+COPY 268
+COPY 12
+COPY 644
+COPY 512
+COPY 201
+COPY 3
+COPY 10
+COPY 1
+COPY 5366
+COPY 8
+COPY 250
+COPY 539
+COPY 517
+COPY 875
+COPY 0
+COPY 0
+COPY 0
+COPY 1497
+COPY 15814
+COPY 48
+COPY 6451
+COPY 8
+COPY 3
+COPY 1796
+COPY 69
+COPY 0
+COPY 1745
+COPY 875
+COPY 0
+COPY 190
+COPY 28
+COPY 0
+COPY 7750
+COPY 360
+COPY 2789
+COPY 32
+COPY 3
+COPY 14
+COPY 35
+COPY 6
+COPY 0
+COPY 0
+COPY 39
+COPY 39
+COPY 279
+COPY 279
+COPY 820
+COPY 7
+COPY 15
+COPY 15
+COPY 12
+COPY 12
+COPY 5
+COPY 5
+COPY 2
+COPY 0
+COPY 513
+COPY 0
+COPY 0
+COPY 11947
+COPY 246
+COPY 873
+COPY 12
+COPY 16
+COPY 797910
+COPY 18
+COPY 0
+COPY 66
+COPY 51
+COPY 19
+COPY 0
+COPY 69
+COPY 337
+COPY 342
+COPY 484
+ setval 
+--------
+   1015
+(1 row)
+
+ setval 
+--------
+   1303
+(1 row)
+
+ setval 
+--------
+   5354
+(1 row)
+
+ setval 
+--------
+   1000
+(1 row)
+
+ setval 
+--------
+      5
+(1 row)
+
+ setval 
+--------
+   2089
+(1 row)
+
+ setval 
+--------
+   1443
+(1 row)
+
+ setval 
+--------
+   7130
+(1 row)
+
+ setval 
+--------
+    145
+(1 row)
+
+ setval 
+--------
+    102
+(1 row)
+
+ setval 
+--------
+    739
+(1 row)
+
+ setval 
+--------
+      2
+(1 row)
+
+ setval 
+--------
+  97567
+(1 row)
+
+ setval 
+--------
+    270
+(1 row)
+
+ setval 
+--------
+     12
+(1 row)
+
+ setval 
+--------
+   9377
+(1 row)
+
+ setval 
+--------
+    633
+(1 row)
+
+ setval 
+--------
+    201
+(1 row)
+
+ setval 
+--------
+      3
+(1 row)
+
+ setval 
+--------
+     32
+(1 row)
+
+ setval 
+--------
+     11
+(1 row)
+
+ setval 
+--------
+   6304
+(1 row)
+
+ setval 
+--------
+      8
+(1 row)
+
+ setval 
+--------
+    250
+(1 row)
+
+ setval 
+--------
+    634
+(1 row)
+
+ setval 
+--------
+    517
+(1 row)
+
+ setval 
+--------
+    883
+(1 row)
+
+ setval 
+--------
+      1
+(1 row)
+
+ setval 
+--------
+      1
+(1 row)
+
+ setval 
+--------
+      1
+(1 row)
+
+ setval 
+--------
+   1497
+(1 row)
+
+ setval 
+--------
+  16694
+(1 row)
+
+ setval 
+--------
+     49
+(1 row)
+
+ setval 
+--------
+   6468
+(1 row)
+
+ setval 
+--------
+      8
+(1 row)
+
+ setval 
+--------
+      3
+(1 row)
+
+ setval 
+--------
+   2077
+(1 row)
+
+ setval 
+--------
+     69
+(1 row)
+
+ setval 
+--------
+      1
+(1 row)
+
+ setval 
+--------
+   1747
+(1 row)
+
+ setval 
+--------
+   1000
+(1 row)
+
+ setval 
+--------
+      1
+(1 row)
+
+ setval 
+--------
+    190
+(1 row)
+
+ setval 
+--------
+     28
+(1 row)
+
+ setval 
+--------
+      1
+(1 row)
+
+ setval 
+--------
+   7894
+(1 row)
+
+ setval 
+--------
+    360
+(1 row)
+
+ setval 
+--------
+   2886
+(1 row)
+
+ setval 
+--------
+     32
+(1 row)
+
+ setval 
+--------
+      3
+(1 row)
+
+ setval 
+--------
+     49
+(1 row)
+
+ setval 
+--------
+      9
+(1 row)
+
+ setval 
+--------
+      1
+(1 row)
+
+ setval 
+--------
+      1
+(1 row)
+
+ setval 
+--------
+     53
+(1 row)
+
+ setval 
+--------
+     53
+(1 row)
+
+ setval 
+--------
+    283
+(1 row)
+
+ setval 
+--------
+    283
+(1 row)
+
+ setval 
+--------
+    896
+(1 row)
+
+ setval 
+--------
+     10
+(1 row)
+
+ setval 
+--------
+     19
+(1 row)
+
+ setval 
+--------
+     19
+(1 row)
+
+ setval 
+--------
+     12
+(1 row)
+
+ setval 
+--------
+     12
+(1 row)
+
+ setval 
+--------
+      5
+(1 row)
+
+ setval 
+--------
+      5
+(1 row)
+
+ setval 
+--------
+      2
+(1 row)
+
+ setval 
+--------
+      1
+(1 row)
+
+ setval 
+--------
+    634
+(1 row)
+
+ setval 
+--------
+      1
+(1 row)
+
+ setval 
+--------
+      1
+(1 row)
+
+ setval 
+--------
+  20337
+(1 row)
+
+ setval 
+--------
+    963
+(1 row)
+
+ setval 
+--------
+     12
+(1 row)
+
+ setval 
+--------
+     16
+(1 row)
+
+ setval 
+--------
+ 887296
+(1 row)
+
+ setval 
+--------
+      1
+(1 row)
+
+ setval 
+--------
+     18
+(1 row)
+
+ setval 
+--------
+     77
+(1 row)
+
+ setval 
+--------
+     51
+(1 row)
+
+ setval 
+--------
+     20
+(1 row)
+
+ setval 
+--------
+      1
+(1 row)
+
+ setval 
+--------
+   2027
+(1 row)
+
+ setval 
+--------
+    358
+(1 row)
+
+ setval 
+--------
+    342
+(1 row)
+
+ setval 
+--------
+    665
+(1 row)
+
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+REVOKE
+GRANT
+2026-02-19 17:31:05 | Restore completed
+2026-02-19 17:31:05 | Progress: 95%
+2026-02-19 17:31:05 | \n========== STEP 4 CLEAN OLD BACKUPS ==========
+2026-02-19 17:31:05 | Old backups cleaned
+2026-02-19 17:31:05 | Progress: 100%
+2026-02-19 17:31:05 | \n=== DONE ===
+2026-02-19 17:31:05 | Total Time: 298s
+2026-02-19 17:31:05 | Log File: ./logs/sync_2026-02-19_17-26-07.log

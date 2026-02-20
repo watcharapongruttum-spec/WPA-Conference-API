@@ -27,7 +27,6 @@ module Api
   end
 
   # ---------------- AVATAR ----------------
-  # ใช้ fallback avatar เสมอ หลีกเลี่ยง ActiveStorage ทั้งหมด
   def avatar_url
     name = object.name.presence || 'Unknown'
     "https://ui-avatars.com/api/?name=#{CGI.escape(name)}&background=0D8ABC&color=fff"
@@ -50,19 +49,12 @@ module Api
       (requester_id = :other AND target_id = :me)",
       me: me.id,
       other: object.id
-    ).exists?
+    ).where(status: 'accepted').exists?  # ← เพิ่ม .where(status: 'accepted')
   end
-
-
-
 
   def connection_status
     object.connection_status_with(scope)
   end
-
-
-
-
 
     end
   end

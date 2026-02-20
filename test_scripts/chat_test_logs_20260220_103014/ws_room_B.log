@@ -1,0 +1,18 @@
+[10:33:27.049] RECV | {"type":"welcome"}
+[10:33:27.124] RECV | {"type":"ping","message":1771558407}
+[10:33:27.404] RECV | > {"identifier":"{\"channel\":\"ChatRoomChannel\",\"room_id\":108}","type":"confirm_subscription"}
+[10:33:30.139] RECV | {"type":"ping","message":1771558410}
+[10:33:33.140] RECV | {"type":"ping","message":1771558413}
+[10:33:33.835] RECV | {"type":"ping","message":1771558413}
+[10:33:36.837] RECV | {"type":"ping","message":1771558416}
+[10:33:39.838] RECV | {"type":"ping","message":1771558419}
+[10:33:42.847] RECV | {"type":"ping","message":1771558422}
+[10:33:45.037] ROOM_SEND_RESP | {"type":"welcome"}
+[10:33:45.221] ROOM_SEND_RESP | > {"identifier":"{\"channel\":\"ChatRoomChannel\",\"room_id\":108}","type":"confirm_subscription"}
+[10:33:45.740] ROOM_SEND_RESP | {"type":"ping","message":1771558425}
+[10:33:45.856] RECV | {"type":"ping","message":1771558425}
+[10:33:48.857] RECV | {"type":"ping","message":1771558428}
+[10:33:51.861] RECV | {"type":"ping","message":1771558431}
+[10:33:54.867] RECV | {"type":"ping","message":1771558434}
+[10:33:57.878] RECV | {"type":"ping","message":1771558437}
+[10:33:58.145] RECV | {"identifier":"{\"channel\":\"ChatRoomChannel\",\"room_id\":108}","message":{"type":"room_deleted","room_id":108}}

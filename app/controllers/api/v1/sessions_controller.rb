@@ -124,9 +124,9 @@ module Api
                           status: :ok
           end
 
+          # transaction เฉพาะ DB operations เท่านั้น
           ActiveRecord::Base.transaction do
             @delegate.generate_reset_token!
-            PasswordMailer.reset_password(@delegate).deliver_later
 
             SecurityLog.create!(
               delegate: @delegate,
@@ -139,6 +139,10 @@ module Api
               request: request
             ) if defined?(AuditLogger)
           end
+
+          # ย้าย deliver_later ออกนอก transaction
+          # เพื่อให้ token ถูก save ลง DB ก่อนที่ job จะถูก enqueue
+          PasswordMailer.reset_password(@delegate).deliver_later
         end
 
         render json: {

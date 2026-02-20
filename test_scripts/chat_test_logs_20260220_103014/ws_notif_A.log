@@ -1,0 +1,5 @@
+[10:34:05.440] RECV | {"type":"welcome"}
+[10:34:05.742] RECV | > {"identifier":"{\"channel\":\"NotificationChannel\"}","type":"confirm_subscription"}
+[10:34:07.589] RECV | {"type":"ping","message":1771558447}
+[10:34:08.463] RECV | {"identifier":"{\"channel\":\"NotificationChannel\"}","message":{"type":"new_notification","notification":{"id":211,"type":"connection_request","read_at":null,"created_at":"2026-02-20T10:34:08.448+07:00","unread?":true,"notifiable":{"type":"connection_request","id":45,"requester":{"id":238,"name":"Shammi Dhaliwal","avatar_url":"/rails/active_storage/blobs/redirect/eyJfcmFpbHMiOnsibWVzc2FnZSI6IkJBaHBBcEFCIiwiZXhwIjpudWxsLCJwdXIiOiJibG9iX2lkIn19--13e9deb21fe8899be96ca98bbfcd283a48dc4309/Shammi%20Photo%20Profile.jpeg"},"target":{"id":162,"name":"Narisara Lasan","avatar_url":"/rails/active_storage/blobs/redirect/eyJfcmFpbHMiOnsibWVzc2FnZSI6IkJBaHBBZzBDIiwiZXhwIjpudWxsLCJwdXIiOiJibG9iX2lkIn19--3079a7b16a1c83eb9424eb3a78eb5ff5ff04d9b6/BGL_THAILAND_Narisara_Lasan.jpg"},"status":"pending"}}}}
+[10:34:10.590] RECV | {"type":"ping","message":1771558450}

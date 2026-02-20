@@ -16,6 +16,7 @@ class Api::V1::LeaveFormsController < ApplicationController
   def leave_form_params
     params.require(:leave_form).permit(
       leaves: [
+        :schedule_id,    # ← เพิ่มบรรทัดนี้
         :start_date,
         :end_date,
         :reason,

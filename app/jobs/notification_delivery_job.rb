@@ -4,22 +4,24 @@ class NotificationDeliveryJob < ApplicationJob
   def perform(notification_id)
     notification = Notification.find_by(id: notification_id)
     return unless notification
-    
+
     delegate = notification.delegate
+
+    # ข้าม job ถ้าไม่มี device_token หรือ token ดูไม่ valid
     return unless delegate&.device_token.present?
-    
+    return if delegate.device_token.length < 20  # กัน test token สั้นๆ
+
     FcmService.send_push(
       token: delegate.device_token,
       title: notification_title(notification),
       body: notification_body(notification),
       data: {
         type: notification.notification_type,
-        notification_id: notification.id.to_s,       
-        notifiable_type: notification.notifiable_type.to_s,  
-        notifiable_id: notification.notifiable_id.to_s     
+        notification_id: notification.id.to_s,
+        notifiable_type: notification.notifiable_type.to_s,
+        notifiable_id: notification.notifiable_id.to_s
       }
     )
-
 
   rescue => e
     Rails.logger.error "[NotificationDeliveryJob] Failed: #{e.message}"
@@ -53,3 +55,4 @@ class NotificationDeliveryJob < ApplicationJob
     end
   end
 end
+

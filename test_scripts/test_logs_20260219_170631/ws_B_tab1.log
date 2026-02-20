@@ -1,4 +1,0 @@
-{"type":"welcome"}
-> {"identifier":"{\"channel\":\"ChatChannel\"}","type":"confirm_subscription"}
-{"type":"ping","message":1771495716}
-{"type":"ping","message":1771495719}
