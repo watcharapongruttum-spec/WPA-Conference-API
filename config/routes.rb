@@ -1,12 +1,12 @@
-
-
-
-
-
-
 Rails.application.routes.draw do
   root to: proc { [200, { 'Content-Type' => 'application/json' }, [{ status: 'ok' }.to_json]] }
   mount ActionCable.server => '/cable'
+  get "/reset-password", to: redirect { |params, request|
+    "wpaapp://reset-password?token=#{params[:token]}"
+  }
+
+
+
 
   namespace :api do
     namespace :v1 do
