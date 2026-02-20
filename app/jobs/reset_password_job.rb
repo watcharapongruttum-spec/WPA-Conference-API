@@ -7,22 +7,41 @@ class ResetPasswordJob < ApplicationJob
 
     reset_url = "#{ENV['FRONTEND_URL']}/reset-password?token=#{delegate.reset_password_token}"
 
-    html = ApplicationController.render(
-      template: "password_mailer/reset_password",
-      assigns: {
-        reset_url: reset_url,
-        token: delegate.reset_password_token
-      }
-    )
+    html = <<~HTML
+      <!DOCTYPE html>
+      <html>
+        <body style="font-family: Arial, sans-serif; padding:20px;">
+          <h2>Reset Your Password</h2>
 
+          <p>You requested to reset your password.</p>
 
-    
+          <p>
+            <a href="#{reset_url}"
+              style="display:inline-block;
+                     padding:12px 20px;
+                     background:#4CAF50;
+                     color:white;
+                     text-decoration:none;
+                     border-radius:6px;">
+              Reset Password
+            </a>
+          </p>
+
+          <p>If button doesn't work, use this token:</p>
+
+          <div style="background:#f0f0f0; padding:10px;">
+            #{delegate.reset_password_token}
+          </div>
+        </body>
+      </html>
+    HTML
+
+    Rails.logger.info "HTML SIZE: #{html.length}"
+
     BrevoMailService.send_email(
       to: delegate.email,
       subject: "Reset Your Password",
       html: html
     )
-  rescue => e
-    Rails.logger.error "[ResetPasswordJob] Failed: #{e.message}"
   end
 end
