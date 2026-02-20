@@ -5,7 +5,9 @@ class ResetPasswordJob < ApplicationJob
     delegate = Delegate.find_by(id: delegate_id)
     return unless delegate
 
-    reset_url = "#{ENV['FRONTEND_URL']}/reset-password?token=#{delegate.reset_password_token}"
+    # reset_url = "#{ENV['FRONTEND_URL']}/reset-password?token=#{delegate.reset_password_token}"
+    reset_url = "#{ENV['FRONTEND_URL']}/api/v1/reset-password?token=#{delegate.reset_password_token}"
+
 
     html = <<~HTML
       <!DOCTYPE html>
