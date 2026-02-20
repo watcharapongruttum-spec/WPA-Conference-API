@@ -81,4 +81,4 @@ gem 'sidekiq', '~> 7.0'
 # Monitoring (เตรียมไว้)
 gem 'sentry-ruby'
 gem 'sentry-rails'
-
+gem 'resend'
