@@ -1,2 +1,0 @@
-[09:08:37.231] RECV | {"type":"welcome"}
-[09:08:37.568] RECV | > {"identifier":"{\"channel\":\"AnnouncementChannel\"}","type":"confirm_subscription"}
