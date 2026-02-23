@@ -6,7 +6,13 @@ class ResetPasswordJob < ApplicationJob
     return unless delegate
 
     # reset_url = "#{ENV['FRONTEND_URL']}/reset-password?token=#{delegate.reset_password_token}"
+    frontend = ENV['FRONTEND_URL']
     reset_url = "#{ENV['FRONTEND_URL']}/deeplink-reset-password?token=#{delegate.reset_password_token}"
+
+    Rails.logger.info "=============================="
+    Rails.logger.info "FRONTEND_URL=#{frontend}"
+    Rails.logger.info "RESET_URL=#{reset_url}"
+    Rails.logger.info "=============================="
 
 
     html = <<~HTML
