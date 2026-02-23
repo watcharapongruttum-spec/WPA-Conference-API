@@ -2,27 +2,15 @@ Rails.application.routes.draw do
   root to: proc { [200, { 'Content-Type' => 'application/json' }, [{ status: 'ok' }.to_json]] }
   mount ActionCable.server => '/cable'
 
-
-
-
-  # get "/deeplink-reset-password", to: "api/v1/deeplink#reset_password"
-
-
-
-
-  get  "/deeplink-reset-password",        to: "api/v1/deeplink#reset_password"
+  get  "/deeplink-reset-password",               to: "api/v1/deeplink#reset_password"
   post "/api/v1/deeplink/reset_password_submit", to: "api/v1/deeplink#reset_password_submit"
 
   namespace :api do
     namespace :v1 do
 
-
-
       namespace :admin do
         get "clear_sidekiq", to: "maintenance#clear_sidekiq"
       end
-
-
 
       # Deeplink
       get '/reset-password', to: 'deeplink#reset_password'
@@ -34,7 +22,7 @@ Rails.application.routes.draw do
         post :reset_password
       end
 
-      # Change Password (แยกออกมา + เปลี่ยนเป็น PATCH ให้ตรงกับ test)
+      # Change Password
       patch 'change_password', to: 'sessions#change_password'
 
       # Profile
@@ -47,11 +35,11 @@ Rails.application.routes.draw do
       # Dashboard
       get 'dashboard', to: 'dashboard#show'
 
-      # Delegates (profile collection ต้องอยู่ก่อน member ไม่งั้น :id match "profile" ก่อน)
+      # Delegates
+      # 🔴 ลบ search ออก — รวมเข้า index แล้ว ใช้ ?keyword=xxx แทน
       resources :delegates, only: [:index, :show] do
         collection do
-          get :profile   # ← เพิ่ม /delegates/profile
-          get :search
+          get :profile
         end
         member do
           get :qr_code
@@ -98,7 +86,7 @@ Rails.application.routes.draw do
         end
       end
 
-      # Requests (cancel เพิ่มเพื่อให้ cleanup_connection ใน test ทำงานได้)
+      # Requests
       resources :requests, only: [:index, :create] do
         collection do
           get :my_received
@@ -106,7 +94,7 @@ Rails.application.routes.draw do
         member do
           patch  :accept
           patch  :reject
-          delete :cancel   # ← เพิ่ม
+          delete :cancel
         end
       end
 

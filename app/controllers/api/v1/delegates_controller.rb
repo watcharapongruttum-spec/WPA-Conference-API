@@ -3,60 +3,36 @@ module Api
     class DelegatesController < ApplicationController
 
       # ---------------- INDEX ----------------
+      # GET /api/v1/delegates
+      # GET /api/v1/delegates?keyword=john
+      # GET /api/v1/delegates?friends_only=true
+      # GET /api/v1/delegates?keyword=john&friends_only=true&page=1&per_page=20
       def index
-        @delegates = Delegate.includes(:company, :team)
-                             .where.not(name: [nil, ''])
-                             .order(name: :asc)
-                             .page(params[:page] || 1)
-                             .per(20)
-
-        render json: @delegates,
-               each_serializer: Api::V1::DelegateSerializer,
-               scope: current_delegate
-      end
-
-      # ---------------- SHOW ----------------
-      def show
-        @delegate = Delegate.find(params[:id])
-
-        # ไม่ให้ดูตัวเองผ่าน /delegates/:id
-        if @delegate.id == current_delegate.id
-          return render json: { error: "Use /profile for self" }, status: :unprocessable_entity
-        end
-
-        render json: @delegate,
-              serializer: Api::V1::DelegateSerializer,
-              scope: current_delegate
-      end
-
-
-      # ---------------- SEARCH ----------------
-      def search
-        keyword = params[:keyword].to_s.strip.downcase
-        me = current_delegate
-
-        # ----- pagination -----
-        page = (params[:page] || 1).to_i
-        per_page = (params[:per_page] || 50).to_i
-        per_page = 100 if per_page > 100   # กันยิงหนัก
+        page     = (params[:page] || 1).to_i
+        per_page = [(params[:per_page] || 40).to_i, 100].min
+        keyword  = params[:keyword].to_s.strip.downcase
+        me       = current_delegate
 
         scope = Delegate
                   .includes(:company, :team)
                   .left_joins(:company)
                   .where.not(name: [nil, ''])
+                  .where.not(id: me.id)
 
-        # ไม่ให้เจอตัวเอง
-        scope = scope.where.not(id: me.id) if me.present?
+        # filter เฉพาะเพื่อน
+        if params[:friends_only].to_s == 'true'
+          scope = scope.where(id: friend_ids_of(me))
+        end
 
+        # ค้นหาด้วย keyword
         if keyword.present?
           scope = scope.where(
-            "LOWER(delegates.name) LIKE :q
-            OR LOWER(companies.name) LIKE :q",
+            "LOWER(delegates.name) LIKE :q OR LOWER(companies.name) LIKE :q",
             q: "%#{keyword}%"
           )
         end
 
-        total_count = scope.count
+        total = scope.count
 
         delegates = scope
                       .order(name: :asc)
@@ -64,20 +40,32 @@ module Api
                       .per(per_page)
 
         render json: {
+          meta: {
+            total: total,
+            page: page,
+            per_page: per_page,
+            total_pages: (total.to_f / per_page).ceil
+          },
           data: ActiveModelSerializers::SerializableResource.new(
             delegates,
             each_serializer: Api::V1::DelegateSerializer,
-            scope: current_delegate
-          ),
-          meta: {
-            page: page,
-            per_page: per_page,
-            total: total_count,
-            total_pages: (total_count.to_f / per_page).ceil
-          }
+            scope: me
+          )
         }
       end
 
+      # ---------------- SHOW ----------------
+      def show
+        @delegate = Delegate.find(params[:id])
+
+        if @delegate.id == current_delegate.id
+          return render json: { error: "Use /profile for self" }, status: :unprocessable_entity
+        end
+
+        render json: @delegate,
+               serializer: Api::V1::DelegateSerializer,
+               scope: current_delegate
+      end
 
       # ---------------- PROFILE ----------------
       def profile
@@ -119,11 +107,7 @@ module Api
       def qr_code
         delegate = Delegate.find(params[:id])
 
-        qr_data = {
-          id: delegate.id,
-          name: delegate.name
-        }.to_json
-
+        qr_data = { id: delegate.id, name: delegate.name }.to_json
         qr = RQRCode::QRCode.new(qr_data)
 
         png = qr.as_png(
@@ -133,16 +117,23 @@ module Api
           size: 300
         )
 
-        base64_png = Base64.strict_encode64(png.to_s)
-
         render json: {
-          qr_code: "data:image/png;base64,#{base64_png}"
+          qr_code: "data:image/png;base64,#{Base64.strict_encode64(png.to_s)}"
         }
       end
 
       private
 
-      # ---------------- PARAMS ----------------
+      def friend_ids_of(delegate)
+        ConnectionRequest.accepted
+          .where(requester_id: delegate.id)
+          .or(ConnectionRequest.accepted.where(target_id: delegate.id))
+          .pluck(:requester_id, :target_id)
+          .flatten
+          .uniq
+          .reject { |id| id == delegate.id }
+      end
+
       def delegate_params
         params.permit(:name, :title, :phone, :avatar)
       end
