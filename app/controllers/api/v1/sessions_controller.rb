@@ -92,6 +92,17 @@ module Api
                         status: :unprocessable_entity
         end
 
+        # 🔴 เพิ่ม: ตรวจสอบความแข็งแกร่งของรหัสผ่านใหม่
+        error = validate_password_strength(p[:new_password])
+        if error
+          AuditLogger.password_change(
+            delegate: current_delegate,
+            request: request,
+            success: false
+          )
+          return render json: { error: error }, status: :unprocessable_entity
+        end
+
         if current_delegate.update(password: p[:new_password])
           AuditLogger.password_change(
             delegate: current_delegate,
@@ -124,7 +135,6 @@ module Api
                           status: :ok
           end
 
-          # transaction เฉพาะ DB operations เท่านั้น
           ActiveRecord::Base.transaction do
             @delegate.generate_reset_token!
 
@@ -140,13 +150,7 @@ module Api
             ) if defined?(AuditLogger)
           end
 
-          # ย้าย deliver_later ออกนอก transaction
-          # เพื่อให้ token ถูก save ลง DB ก่อนที่ job จะถูก enqueue
-          # PasswordMailer.reset_password(@delegate).deliver_later
-          # PasswordMailer.reset_password(@delegate)
           ResetPasswordJob.perform_later(@delegate.id)
-
-
         end
 
         render json: {
@@ -187,10 +191,11 @@ module Api
                         status: :unprocessable_entity
         end
 
-        if password.length < 8
+        # 🔴 เพิ่ม: ตรวจสอบความแข็งแกร่งของรหัสผ่านใหม่
+        error = validate_password_strength(password)
+        if error
           log_reset_failure(@delegate)
-          return render json: { error: 'Password must be at least 8 characters' },
-                        status: :unprocessable_entity
+          return render json: { error: error }, status: :unprocessable_entity
         end
 
         ActiveRecord::Base.transaction do
@@ -222,6 +227,16 @@ module Api
       end
 
       private
+
+      # ============================================
+      # 🔴 เพิ่ม: Password Strength Validator
+      # คืน error message ถ้า invalid, nil ถ้า valid
+      # ============================================
+      def validate_password_strength(password)
+        return 'Password must be at least 8 characters' if password.length < 8
+        return 'Password must contain at least one number' unless password.match?(/[0-9]/)
+        nil
+      end
 
       def request_metadata
         {

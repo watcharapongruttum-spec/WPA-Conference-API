@@ -109,4 +109,22 @@ class Rack::Attack
     Rails.logger.warn "[Rack::Attack] #{payload[:filter]} blocked #{payload[:request].ip}"
   end
 
+
+
+
+
+
+
+  throttle('reset_password/ip', limit: 5, period: 30.minute) do |req|
+    req.ip if req.post? && req.path == '/api/v1/reset_password'
+  end
+
+
+
+
+
+
+
+
+
 end

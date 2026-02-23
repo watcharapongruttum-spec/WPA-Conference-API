@@ -110,7 +110,8 @@ class Delegate < ApplicationRecord
   # ========================
 
   def reset_token_valid?
-    reset_password_sent_at && reset_password_sent_at > 15.minutes.ago
+    # reset_password_sent_at && reset_password_sent_at > 15.minutes.ago
+    reset_password_sent_at && reset_password_sent_at > 30.minutes.ago
   end
 
   def generate_reset_token!

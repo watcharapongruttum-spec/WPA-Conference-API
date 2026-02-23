@@ -4,10 +4,14 @@ Rails.application.routes.draw do
 
 
 
+
   # get "/deeplink-reset-password", to: "api/v1/deeplink#reset_password"
-  get "/deeplink-reset-password", to: "api/v1/deeplink#reset_password"
 
 
+
+
+  get  "/deeplink-reset-password",        to: "api/v1/deeplink#reset_password"
+  post "/api/v1/deeplink/reset_password_submit", to: "api/v1/deeplink#reset_password_submit"
 
   namespace :api do
     namespace :v1 do
