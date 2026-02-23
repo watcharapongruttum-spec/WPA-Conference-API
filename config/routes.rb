@@ -4,7 +4,8 @@ Rails.application.routes.draw do
 
 
 
-  get "/DeepLink-reset-password", to: "api/v1/deeplink#reset_password"
+  # get "/deeplink-reset-password", to: "api/v1/deeplink#reset_password"
+  get "/deeplink-reset-password", to: "api/v1/deeplink#reset_password"
 
 
 
