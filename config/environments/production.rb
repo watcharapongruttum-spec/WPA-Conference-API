@@ -1,6 +1,7 @@
 require "active_support/core_ext/integer/time"
 
 Rails.application.configure do
+  # Performance
   config.cache_classes = true
   config.eager_load = true
   config.consider_all_requests_local = false
@@ -8,6 +9,7 @@ Rails.application.configure do
   config.public_file_server.enabled = true
   config.active_storage.service = :local
 
+  # Logging
   config.log_level = :info
   config.log_tags = [:request_id]
   config.log_formatter = ::Logger::Formatter.new
@@ -19,64 +21,33 @@ Rails.application.configure do
   end
 
   config.active_record.dump_schema_after_migration = false
-  config.hosts.clear
 
-  # SSL
+  # Security
   config.force_ssl = true
 
+  # =========================
+  # IMPORTANT: APP HOST
+  # =========================
+  config.action_mailer.default_url_options = {
+    host: ENV.fetch("APP_HOST"),
+    protocol: "https"
+  }
+
+  config.action_mailer.perform_deliveries = true
+  config.action_mailer.raise_delivery_errors = true
+
+  # =========================
   # Action Cable
-  config.action_cable.url = "wss://wpa-docker.onrender.com/cable"
+  # =========================
+  config.action_cable.url = ENV.fetch(
+    "ACTION_CABLE_URL",
+    "wss://#{ENV.fetch("APP_HOST")}/cable"
+  )
 
   config.action_cable.allowed_request_origins = [
     /https?:\/\/.*/
   ]
 
-
-
-  # config.action_mailer.delivery_method = :smtp
-  # config.action_mailer.perform_deliveries = true
-  # config.action_mailer.raise_delivery_errors = true
-
-  # config.action_mailer.smtp_settings = {
-  #   address: "smtp.gmail.com",
-  #   port: 465,
-  #   domain: "gmail.com",
-  #   user_name: ENV["MAIL_USER"],
-  #   password: ENV["MAIL_PASS"],
-  #   authentication: "plain",
-  #   tls: true
-  # }
-
-  # config.action_mailer.default_url_options = {
-  #   host: "https://web-wpa.onrender.com"
-  # }
-
-
-
-  # config.action_mailer.delivery_method = :resend
-  # config.action_mailer.perform_deliveries = true
-
-
-
-  # config.action_mailer.delivery_method = :smtp
-
-  # config.action_mailer.smtp_settings = {
-  #   address: "smtp-relay.brevo.com",
-  #   port: 587,
-  #   user_name: ENV["BREVO_LOGIN"],
-  #   password: ENV["BREVO_PASS"],
-  #   authentication: "plain",
-  #   enable_starttls_auto: true
-  # }
-
-  config.action_mailer.perform_deliveries = false
-
-
-
+  # Allow all hosts (Render internal)
+  config.hosts.clear
 end
-
-
-
-
-
-
