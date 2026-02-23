@@ -15,7 +15,13 @@ class BrevoMailService
         { email: to }
       ],
       subject: subject,
-      htmlContent: html   # 🔥 สำคัญมาก
+      htmlContent: html,
+
+      # ✅ ปิด tracking ตรงนี้
+      tracking: {
+        clicks: false,
+        opens: false
+      }
     }
 
     http = Net::HTTP.new(url.host, url.port)
