@@ -17,11 +17,9 @@ class BrevoMailService
       subject: subject,
       htmlContent: html,
 
-      # ✅ ปิด tracking ตรงนี้
-      tracking: {
-        clicks: false,
-        opens: false
-      }
+      # ✅ ของจริงต้องใช้แบบนี้
+      trackClicks: false,
+      trackOpens: false
     }
 
     http = Net::HTTP.new(url.host, url.port)
