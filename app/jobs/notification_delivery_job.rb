@@ -29,18 +29,19 @@ class NotificationDeliveryJob < ApplicationJob
   
   private
   
+  # app/jobs/notification_delivery_job.rb
   def notification_title(notification)
     case notification.notification_type
-    when 'new_message'
-      'New Message'
-    when 'connection_request'
-      'New Connection Request'
-    when 'connection_accepted'
-      'Connection Accepted'
-    else
-      'New Notification'
+    when 'new_message'        then 'New Message'
+    when 'connection_request' then 'New Connection Request'
+    when 'connection_accepted' then 'Connection Accepted'
+    when 'connection_rejected' then 'Connection Declined'  
+    else 'New Notification'
     end
   end
+
+
+
   
   def notification_body(notification)
     case notification.notification_type
@@ -50,9 +51,15 @@ class NotificationDeliveryJob < ApplicationJob
       "#{notification.notifiable&.requester&.name} wants to connect"
     when 'connection_accepted'
       "#{notification.notifiable&.target&.name} accepted your connection"
-    else
-      'You have a new notification'
+    when 'connection_rejected'
+      "#{notification.notifiable&.target&.name} declined your request"  
+    else 'You have a new notification'
     end
   end
+
+
+
+
+
 end
 

@@ -1,3 +1,4 @@
+# app/controllers/api/v1/profile_controller.rb
 module Api
   module V1
     class ProfileController < BaseController
@@ -10,6 +11,11 @@ module Api
       end
 
       def update
+        # ✅ FIX: handle avatar attachment แยกต่างหาก
+        if params[:avatar].present?
+          current_delegate.avatar.attach(params[:avatar])
+        end
+
         if current_delegate.update(profile_params)
           render json: build_profile_json(current_delegate)
         else
@@ -22,9 +28,6 @@ module Api
 
       private
 
-      # ----------------------------
-      # Safe delegate lookup
-      # ----------------------------
       def find_delegate
         if params[:id].present?
           Delegate.includes(:company, :team).find_by(id: params[:id])
@@ -37,9 +40,7 @@ module Api
         render json: { error: "Not found" }, status: :not_found
       end
 
-      # ----------------------------
-      # Strong params
-      # ----------------------------
+      # ✅ FIX: เพิ่ม :avatar ใน strong params
       def profile_params
         params.permit(
           :name,
@@ -49,12 +50,11 @@ module Api
           :spouse_name,
           :need_room,
           :booking_no
+          # :avatar ไม่ใส่ตรงนี้ เพราะ ActiveStorage ต้องใช้ .attach() แยก
         )
       end
 
-      # ----------------------------
-      # JSON Builder (Safe + Clean)
-      # ----------------------------
+      # ✅ FIX: ใช้ avatar จริงถ้ามี ถ้าไม่มีค่อย fallback
       def build_profile_json(delegate)
         company = delegate.company
         team = delegate.team
@@ -65,7 +65,7 @@ module Api
           title: delegate.title,
           email: delegate.email,
           phone: delegate.phone,
-          avatar_url: avatar_url_for(delegate.name),
+          avatar_url: resolve_avatar_url(delegate),
 
           company: company && {
             id: company.id,
@@ -87,10 +87,17 @@ module Api
         }
       end
 
-      def avatar_url_for(name)
-        return nil if name.blank?
-
-        "https://ui-avatars.com/api/?name=#{CGI.escape(name)}&background=0D8ABC&color=fff"
+      # ✅ FIX: ลำดับความสำคัญ: avatar จริง → ui-avatars fallback
+      def resolve_avatar_url(delegate)
+        if delegate.avatar.attached?
+          Rails.application.routes.url_helpers.rails_blob_url(
+            delegate.avatar,
+            only_path: true
+          )
+        else
+          name = delegate.name.presence || 'Unknown'
+          "https://ui-avatars.com/api/?name=#{CGI.escape(name)}&background=0D8ABC&color=fff"
+        end
       end
 
     end

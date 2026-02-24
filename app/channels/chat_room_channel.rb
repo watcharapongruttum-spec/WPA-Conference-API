@@ -127,7 +127,8 @@ class ChatRoomChannel < ApplicationCable::Channel
     msg = @room.chat_messages.find_by(id: data["message_id"])
     return unless msg && msg.sender == current_delegate
 
-    msg.update!(deleted_at: Time.current, is_deleted: true)
+    # msg.update!(deleted_at: Time.current, is_deleted: true)
+    msg.update!(deleted_at: Time.current)
 
     ChatRoomChannel.broadcast_to(@room, {
       type: "room_message_deleted",

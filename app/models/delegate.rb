@@ -1,11 +1,13 @@
 class Delegate < ApplicationRecord
   has_secure_password
 
-  validates :password, length: { minimum: 6 }, allow_nil: true
+  # validates :password, length: { minimum: 6 }, allow_nil: true
+  validates :password, length: { minimum: 8 }, allow_nil: true
 
   validates :device_token,
   length: { minimum: 20, maximum: 255 },
-  format: { with: /\A[\w\-\:]+\z/ },
+  # format: { with: /\A[\w\-\:]+\z/ },
+  format: { with: /\A[\w\-\:\/]+\z/ },
   allow_nil: true
 
   # ========================

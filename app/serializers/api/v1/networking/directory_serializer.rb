@@ -16,14 +16,20 @@ module Api
         end
 
         def avatar_url
-          # ใช้ fallback avatar เสมอ หลีกเลี่ยง ActiveStorage
           name = object.name.presence || 'Unknown'
           "https://ui-avatars.com/api/?name=#{CGI.escape(name)}&background=0D8ABC&color=fff"
         end
 
         def is_connected
-          # TODO: Implement actual connection check
-          false
+          # ✅ FIX: เช็ค connection จริงๆ ผ่าน scope (current_delegate)
+          return false unless scope
+
+          ConnectionRequest.where(status: :accepted).exists?(
+            [
+              "(requester_id = :me AND target_id = :other) OR (requester_id = :other AND target_id = :me)",
+              { me: scope.id, other: object.id }
+            ]
+          )
         end
       end
     end

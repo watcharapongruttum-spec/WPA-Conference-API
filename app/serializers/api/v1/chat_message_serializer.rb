@@ -32,7 +32,8 @@ module Api
           title: s.title,
           company_name: s.company&.name,
           # avatar_url: Api::V1::DelegateSerializer.new(s).avatar_url
-          avatar_url: s.avatar&.url
+          # avatar_url: s.avatar&.url
+          avatar_url: s.avatar_url
 
         }
       end

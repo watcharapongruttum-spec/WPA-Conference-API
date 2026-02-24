@@ -12,33 +12,32 @@ module Api
                              .page(params[:page] || 1)
                              .per(20)
 
-        render json: @delegates, each_serializer: Api::V1::Networking::DirectorySerializer
+        # ✅ FIX: ส่ง scope: current_delegate เพื่อให้ is_connected ทำงานได้
+        render json: @delegates,
+               each_serializer: Api::V1::Networking::DirectorySerializer,
+               scope: current_delegate
+
       rescue StandardError => e
         Rails.logger.error "Directory Error: #{e.class} - #{e.message}"
         Rails.logger.error e.backtrace.first(10).join("\n")
-        
-        render json: { 
+
+        render json: {
           error: 'Failed to load directory',
           message: Rails.env.development? ? e.message : nil
         }, status: :internal_server_error
       end
 
-
-
-      
       def unfriend
         delegate_id = params[:delegate_id]
         target = Delegate.find_by(id: delegate_id)
         return render json: { error: 'Delegate not found' }, status: :not_found unless target
 
-        # หา Connection record
         connection = Connection.where(
           requester_id: [current_delegate.id, target.id]
         ).where(
           target_id: [current_delegate.id, target.id]
         ).first
 
-        # หา ConnectionRequest ด้วย (ล้างทั้งคู่)
         conn_request = ConnectionRequest.where(
           requester_id: [current_delegate.id, target.id]
         ).where(
@@ -56,8 +55,6 @@ module Api
         render json: { message: 'Unfriended successfully' }, status: :ok
       end
 
-
-
       # GET /api/v1/networking/my_connections
       def my_connections
         @connections = Connection.accepted
@@ -66,11 +63,10 @@ module Api
                                  .includes(:requester, :target)
 
         render json: @connections, each_serializer: Api::V1::Networking::ConnectionSerializer
+
       rescue StandardError => e
         Rails.logger.error "My Connections Error: #{e.class} - #{e.message}"
-        Rails.logger.error e.backtrace.first(10).join("\n")
-        
-        render json: { 
+        render json: {
           error: 'Failed to load connections',
           message: Rails.env.development? ? e.message : nil
         }, status: :internal_server_error
@@ -83,11 +79,10 @@ module Api
                                  .includes(:requester)
 
         render json: @connections, each_serializer: Api::V1::Networking::ConnectionSerializer
+
       rescue StandardError => e
         Rails.logger.error "Pending Requests Error: #{e.class} - #{e.message}"
-        Rails.logger.error e.backtrace.first(10).join("\n")
-        
-        render json: { 
+        render json: {
           error: 'Failed to load requests',
           message: Rails.env.development? ? e.message : nil
         }, status: :internal_server_error

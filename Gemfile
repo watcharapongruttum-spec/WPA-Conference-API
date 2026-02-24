@@ -82,9 +82,5 @@ gem 'sidekiq', '~> 7.0'
 gem 'sentry-ruby'
 gem 'sentry-rails'
 
-
-
-
-gem 'httparty'
 gem 'httparty'
 
