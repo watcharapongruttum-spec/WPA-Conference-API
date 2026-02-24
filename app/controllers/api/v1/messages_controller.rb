@@ -3,49 +3,116 @@ module Api
     class MessagesController < ApplicationController
       before_action :set_message, only: [:update, :destroy, :mark_as_read]
 
+      # def rooms
+      #   me = current_delegate.id
+
+      #   conversations = ChatMessage
+      #                     .not_deleted
+      #                     .where("sender_id = :me OR recipient_id = :me", me: me)
+
+      #   partner_ids = conversations
+      #                   .pluck(:sender_id, :recipient_id)
+      #                   .flatten
+      #                   .uniq
+      #                   .reject { |id| id == me }
+
+      #   delegates = Delegate
+      #                 .where(id: partner_ids)
+      #                 .includes(:company)
+      #                 .index_by(&:id)
+
+      #   last_messages = ChatMessage
+      #                     .not_deleted
+      #                     .where(
+      #                       "(sender_id = :me OR recipient_id = :me)",
+      #                       me: me
+      #                     )
+      #                     .where(
+      #                       "sender_id IN (:ids) OR recipient_id IN (:ids)",
+      #                       ids: partner_ids
+      #                     )
+      #                     .includes(sender: :company, recipient: :company)
+      #                     .order(created_at: :desc)
+      #                     .group_by { |m|
+      #                       m.sender_id == me ? m.recipient_id : m.sender_id
+      #                     }
+
+      #   unread_counts = ChatMessage
+      #                     .not_deleted
+      #                     .where(recipient_id: me, read_at: nil)
+      #                     .group(:sender_id)
+      #                     .count
+
+      #   rooms = partner_ids.map do |partner_id|
+      #     partner = delegates[partner_id]
+      #     last_msg = last_messages[partner_id]&.first
+
+      #     {
+      #       id: partner_id,
+      #       room_kind: "direct",
+      #       delegate: {
+      #         id: partner.id,
+      #         name: partner.name,
+      #         title: partner.title,
+      #         avatar_url: partner.avatar&.url
+      #       },
+      #       last_message: last_msg&.content,
+      #       last_message_at: last_msg&.created_at,
+      #       unread_count: unread_counts[partner_id] || 0
+      #     }
+      #   end
+
+      #   rooms.sort_by! { |r| r[:last_message_at] || Time.at(0) }
+      #   rooms.reverse!
+
+      #   render json: rooms
+      # end
       def rooms
         me = current_delegate.id
 
-        conversations = ChatMessage
-                          .not_deleted
-                          .where("sender_id = :me OR recipient_id = :me", me: me)
+        partner_ids = ChatMessage
+          .not_deleted
+          .where("sender_id = :me OR recipient_id = :me", me: me)
+          .pluck(:sender_id, :recipient_id)
+          .flatten.uniq.reject { |id| id == me }
 
-        partner_ids = conversations
-                        .pluck(:sender_id, :recipient_id)
-                        .flatten
-                        .uniq
-                        .reject { |id| id == me }
+        return render json: [] if partner_ids.empty?
 
         delegates = Delegate
-                      .where(id: partner_ids)
-                      .includes(:company)
-                      .index_by(&:id)
+          .where(id: partner_ids)
+          .includes(:company)
+          .index_by(&:id)
 
+        # ✅ PostgreSQL DISTINCT ON — last message per partner ใน query เดียว
         last_messages = ChatMessage
-                          .not_deleted
-                          .where(
-                            "(sender_id = :me OR recipient_id = :me)",
-                            me: me
-                          )
-                          .where(
-                            "sender_id IN (:ids) OR recipient_id IN (:ids)",
-                            ids: partner_ids
-                          )
-                          .includes(sender: :company, recipient: :company)
-                          .order(created_at: :desc)
-                          .group_by { |m|
-                            m.sender_id == me ? m.recipient_id : m.sender_id
-                          }
+          .not_deleted
+          .select(
+            Arel.sql(
+              "DISTINCT ON (LEAST(sender_id, recipient_id), GREATEST(sender_id, recipient_id)) " \
+              "id, content, created_at, sender_id, recipient_id"
+            )
+          )
+          .where(
+            "(sender_id = :me AND recipient_id IN (:ids)) OR (sender_id IN (:ids) AND recipient_id = :me)",
+            me: me, ids: partner_ids
+          )
+          .order(
+            Arel.sql("LEAST(sender_id, recipient_id), GREATEST(sender_id, recipient_id), created_at DESC")
+          )
+          .index_by { |m| m.sender_id == me ? m.recipient_id : m.sender_id }
 
         unread_counts = ChatMessage
-                          .not_deleted
-                          .where(recipient_id: me, read_at: nil)
-                          .group(:sender_id)
-                          .count
+          .not_deleted
+          .where(recipient_id: me, read_at: nil)
+          .where(sender_id: partner_ids)
+          .group(:sender_id)
+          .count
 
         rooms = partner_ids.map do |partner_id|
           partner = delegates[partner_id]
-          last_msg = last_messages[partner_id]&.first
+          next unless partner
+
+          last_msg = last_messages[partner_id]
 
           {
             id: partner_id,
@@ -60,14 +127,13 @@ module Api
             last_message_at: last_msg&.created_at,
             unread_count: unread_counts[partner_id] || 0
           }
-        end
+        end.compact
 
         rooms.sort_by! { |r| r[:last_message_at] || Time.at(0) }
         rooms.reverse!
 
         render json: rooms
       end
-
 
 
 

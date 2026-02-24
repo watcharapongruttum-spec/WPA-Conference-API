@@ -1,4 +1,3 @@
-# app/controllers/api/v1/requests_controller.rb
 module Api
   module V1
     class RequestsController < ApplicationController
@@ -23,7 +22,6 @@ module Api
       # ============================
       # POST /api/v1/requests
       # ============================
-
       def create
         return render json: { error: 'Target ID is required' }, status: :unprocessable_entity unless params[:target_id].present?
 
@@ -46,7 +44,6 @@ module Api
         end
 
         ActiveRecord::Base.transaction do
-          # rejected record มีอยู่แล้ว → reset เป็น pending แทน create ใหม่
           @connection = existing || ConnectionRequest.new(
             requester_id: current_delegate.id,
             target_id: target.id
@@ -61,6 +58,7 @@ module Api
 
           AuditLogger.connection_request_created(@connection, request)
           Notification::BroadcastService.call(notification)
+          Rails.cache.delete("dashboard:#{target.id}:v1")        # ← เพิ่ม
         end
 
         render json: @connection,
@@ -84,7 +82,6 @@ module Api
         ActiveRecord::Base.transaction do
           connection.update!(status: :accepted)
 
-          # สร้าง Connection record เพื่อให้ my_connections และ unfriend ทำงานได้
           Connection.find_or_create_by!(
             requester_id: connection.requester_id,
             target_id: connection.target_id
@@ -98,6 +95,7 @@ module Api
 
           AuditLogger.connection_accepted(connection, request)
           Notification::BroadcastService.call(notification)
+          Rails.cache.delete("dashboard:#{connection.requester_id}:v1")  # ← เพิ่ม
         end
 
         render json: connection,
@@ -120,10 +118,19 @@ module Api
         ActiveRecord::Base.transaction do
           connection.update!(status: :rejected)
           AuditLogger.connection_rejected(connection, request)
+
+          notification = Notification.create!(
+            delegate: connection.requester,
+            notification_type: 'connection_rejected',
+            notifiable: connection
+          )
+
+          Notification::BroadcastService.call(notification)
+          Rails.cache.delete("dashboard:#{connection.requester_id}:v1")  # ← เพิ่ม
         end
 
         render json: connection,
-               serializer: Api::V1::ConnectionRequestSerializer
+              serializer: Api::V1::ConnectionRequestSerializer
       end
 
 
@@ -150,26 +157,19 @@ module Api
       end
 
 
-
       # ============================
       # DELETE /api/v1/requests/:id/cancel
       # ============================
       def cancel
         connection = ConnectionRequest.find_by(
           requester_id: current_delegate.id,
-          target_id: params[:id]   # ใช้ target_id แทน request id เพื่อให้ test cleanup ทำงานได้
+          target_id: params[:id]
         )
         return render json: { error: 'Not found' }, status: :not_found unless connection
 
         connection.destroy
         render json: { message: 'Cancelled' }, status: :ok
       end
-
-
-
-
-
-
 
 
       private

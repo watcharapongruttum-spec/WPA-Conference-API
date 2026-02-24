@@ -10,6 +10,7 @@ Rails.application.routes.draw do
 
       namespace :admin do
         get "clear_sidekiq", to: "maintenance#clear_sidekiq"
+        post "announcements", to: "announcements#create" 
       end
 
       # Deeplink
@@ -36,7 +37,6 @@ Rails.application.routes.draw do
       get 'dashboard', to: 'dashboard#show'
 
       # Delegates
-      # 🔴 ลบ search ออก — รวมเข้า index แล้ว ใช้ ?keyword=xxx แทน
       resources :delegates, only: [:index, :show] do
         collection do
           get :profile
