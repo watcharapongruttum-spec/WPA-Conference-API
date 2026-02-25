@@ -134,7 +134,7 @@ module Api
                         sender: :company,
                         recipient: :company
                       )
-                      .order(created_at: :desc)
+                      .reorder(created_at: :desc, id: :desc)  # ✅ สำคัญมาก
                       .page(page)
                       .per(per)
 
