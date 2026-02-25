@@ -10,11 +10,11 @@ module Api
         partner_ids = ChatMessage
           .not_deleted
           .where("sender_id = :me OR recipient_id = :me", me: me)
-          .where.not(recipient_id: nil)        # ← เพิ่ม: กัน group message (recipient_id = NULL)
-          .where.not(chat_room_id: nil.class)  # ← เพิ่ม: เฉพาะ direct message เท่านั้น
+          .where.not(recipient_id: nil)
+          .where(chat_room_id: nil)            # ✅ FIX 1: direct messages เท่านั้น (chat_room_id IS NULL)
           .pluck(:sender_id, :recipient_id)
           .flatten
-          .compact                             # ← เพิ่ม: ลบ nil ออก
+          .compact
           .uniq
           .reject { |id| id == me }
 
@@ -27,7 +27,8 @@ module Api
 
         last_messages = ChatMessage
           .not_deleted
-          .where.not(recipient_id: nil)        # ← เพิ่ม: กัน group message
+          .where.not(recipient_id: nil)
+          .where(chat_room_id: nil)            # ✅ FIX 1 (ต่อ): กัน group message ใน last_messages ด้วย
           .select(
             Arel.sql(
               "DISTINCT ON (LEAST(sender_id, recipient_id), GREATEST(sender_id, recipient_id)) " \
@@ -83,7 +84,6 @@ module Api
       def mark_as_read
         message = ChatMessage.find(params[:id])
 
-        # เฉพาะ recipient เท่านั้นที่ mark ได้
         return render json: { error: "Forbidden" }, status: :forbidden \
           unless message.recipient_id == current_delegate.id
 
@@ -96,14 +96,13 @@ module Api
       end
 
 
-
-
-
       # ================= INDEX =================
       def index
         @messages = ChatMessage
                       .not_deleted
                       .where("sender_id = :me OR recipient_id = :me", me: current_delegate.id)
+                      .where(chat_room_id: nil)      # ✅ FIX 2: กรอง group messages ออก
+                      .where.not(recipient_id: nil)  # ✅ FIX 2: เฉพาะ direct messages
                       .includes(
                         sender: :company,
                         recipient: :company
@@ -154,12 +153,6 @@ module Api
       end
 
 
-
-
-
-
-
-
       # ================= CREATE =================
       def create
         return render json: { error: "recipient_id required" }, status: :unprocessable_entity unless message_params[:recipient_id]
@@ -190,7 +183,6 @@ module Api
           )
         end
 
-        # ✅ trigger ActionCable + FCM (เฉพาะตอน recipient offline)
         Notification::CreateService.call(message)
 
         AuditLogger.message_created(message, request) if defined?(AuditLogger)
@@ -211,15 +203,6 @@ module Api
       end
 
 
-
-
-
-
-
-
-
-
-      
       # ================= UPDATE =================
       def update
         return render json: { error: "Forbidden" }, status: :forbidden unless @message.sender == current_delegate
@@ -267,23 +250,21 @@ module Api
       def unread_count
         sender_id = params[:sender_id].to_s.strip
 
-        # 🔥 ป้องกัน null / empty / non-integer
         unless sender_id.present? && sender_id =~ /\A\d+\z/
           return render json: { unread_count: 0 }
         end
 
         count = ChatMessage
                   .where(
-                    sender_id: sender_id.to_i,
+                    sender_id:    sender_id.to_i,
                     recipient_id: current_delegate.id,
-                    read_at: nil
+                    read_at:      nil,
+                    deleted_at:   nil   # ✅ FIX 3: ไม่นับ deleted messages
                   )
                   .count
 
         render json: { unread_count: count.to_i }
       end
-
-
 
 
       def online_status
@@ -297,12 +278,10 @@ module Api
         @message = ChatMessage.find(params[:id])
       end
 
-      # ⭐ Strong params สำหรับ create
       def message_params
         params.require(:message).permit(:recipient_id, :content)
       end
 
-      # ⭐ Strong params สำหรับ update
       def update_params
         params.require(:message).permit(:content)
       end

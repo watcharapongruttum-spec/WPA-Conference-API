@@ -26,6 +26,9 @@ class ChatMessage < ApplicationRecord
   validate :can_send_message
   validate :room_or_direct_present
 
+
+  has_many :message_reads, dependent: :destroy
+
   # ==========================
   # SCOPES
   # ==========================

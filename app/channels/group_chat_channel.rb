@@ -14,6 +14,7 @@ class GroupChatChannel < ApplicationCable::Channel
   end
 
   def unsubscribed
+    REDIS.del(room_active_key)
     Rails.logger.info "👋 GroupChatChannel unsubscribed delegate=#{current_delegate.id}"
   end
 
@@ -24,9 +25,12 @@ class GroupChatChannel < ApplicationCable::Channel
     return if content.blank?
 
     msg = @room.chat_messages.create!(
-      sender: current_delegate,
+      sender:  current_delegate,
       content: content
     )
+
+    # sender ถือว่าอ่านแล้ว
+    MessageRead.mark_for(delegate: current_delegate, message_ids: [msg.id])
 
     GroupChatChannel.broadcast_to(@room, {
       type:    "group_message",
@@ -34,10 +38,7 @@ class GroupChatChannel < ApplicationCable::Channel
       message: serialize_message(msg)
     })
 
-    # 🔴 FIX 3: สร้าง Notification สำหรับ member แต่ละคน
-    # เดิมไม่สร้างเลย → GET /notifications ไม่แสดง group message
     notify_group_members(msg)
-
     push_to_offline_members(msg)
 
   rescue ActiveRecord::RecordInvalid => e
@@ -91,21 +92,35 @@ class GroupChatChannel < ApplicationCable::Channel
   def enter_room(_data)
     REDIS.setex(room_active_key, 3600, "1")
 
+    # ดึง messages ที่ยังไม่อ่าน (ไม่ใช่ของตัวเอง)
     unread = @room.chat_messages
                   .where.not(sender_id: current_delegate.id)
-                  .where(read_at: nil, deleted_at: nil)
+                  .where(deleted_at: nil)
 
-    ids = unread.pluck(:id)
-    return if ids.empty?
+    unread_ids = unread.pluck(:id)
+    return if unread_ids.empty?
 
-    unread.update_all(read_at: Time.current)
+    # mark read ใน message_reads table (bulk upsert)
+    newly_read_ids = MessageRead.mark_for(
+      delegate:    current_delegate,
+      message_ids: unread_ids
+    )
 
+    return if newly_read_ids.empty?
+
+    now = Time.current
+
+    # broadcast แจ้งทุกคนในห้องว่า delegate นี้ได้อ่าน messages เหล่านี้แล้ว
     GroupChatChannel.broadcast_to(@room, {
       type:        "bulk_read",
       room_id:     @room.id,
-      message_ids: ids,
-      reader_id:   current_delegate.id,
-      read_at:     Time.current
+      message_ids: newly_read_ids,
+      reader: {
+        id:         current_delegate.id,
+        name:       current_delegate.name,
+        avatar_url: current_delegate.avatar_url
+      },
+      read_at: now
     })
   end
 
@@ -142,6 +157,19 @@ class GroupChatChannel < ApplicationCable::Channel
   end
 
   def serialize_message(msg)
+    readers = MessageRead
+                .includes(:delegate)
+                .where(chat_message_id: msg.id)
+                .where.not(delegate_id: msg.sender_id)
+                .map do |mr|
+                  {
+                    id:         mr.delegate.id,
+                    name:       mr.delegate.name,
+                    avatar_url: mr.delegate.avatar_url,
+                    read_at:    mr.read_at
+                  }
+                end
+
     {
       id:         msg.id,
       content:    msg.content,
@@ -152,7 +180,8 @@ class GroupChatChannel < ApplicationCable::Channel
         id:         current_delegate.id,
         name:       current_delegate.name,
         avatar_url: current_delegate.avatar_url
-      }
+      },
+      readers: readers   # ← ใหม่: รายชื่อคนที่อ่านแล้ว (ยกเว้น sender)
     }
   end
 
@@ -167,14 +196,12 @@ class GroupChatChannel < ApplicationCable::Channel
     "group_chat_open:#{@room.id}:#{current_delegate.id}"
   end
 
-  # 🔴 FIX 3: สร้าง Notification record สำหรับ member แต่ละคน ยกเว้น sender
   def notify_group_members(msg)
     recipient_ids = @room.chat_room_members
                          .where.not(delegate_id: current_delegate.id)
                          .pluck(:delegate_id)
 
     recipient_ids.each do |delegate_id|
-      # ข้ามถ้าเปิดห้องอยู่ (อ่านแล้วในทันที ไม่ต้อง notify)
       next if REDIS.get("group_chat_open:#{@room.id}:#{delegate_id}") == "1"
 
       delegate = Delegate.find_by(id: delegate_id)
@@ -186,16 +213,13 @@ class GroupChatChannel < ApplicationCable::Channel
         notifiable:        msg
       )
 
-      # clear dashboard cache ของ recipient ทันที
       Rails.cache.delete("dashboard:#{delegate_id}:v1")
-
       Notification::BroadcastService.call(notification)
     rescue => e
       Rails.logger.error "[GroupChatChannel] notify failed for delegate=#{delegate_id}: #{e.message}"
     end
   end
 
-  # ================= FCM PUSH =================
   def push_to_offline_members(msg)
     member_ids = @room.chat_room_members
                       .where.not(delegate_id: current_delegate.id)

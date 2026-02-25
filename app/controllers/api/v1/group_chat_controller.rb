@@ -77,8 +77,7 @@ module Api
       # GET /api/v1/group_chat/:id/messages
       def messages
         if @room.deleted_at.present?
-          return render json: { error: "Room has been deleted" },
-                        status: :gone
+          return render json: { error: "Room has been deleted" }, status: :gone
         end
 
         page = (params[:page] || 1).to_i
@@ -86,7 +85,7 @@ module Api
 
         msgs = @room.chat_messages
                     .where(deleted_at: nil)
-                    .includes(:sender)
+                    .includes(:sender, :message_reads => :delegate)  # ← eager load readers
                     .order(created_at: :desc)
                     .page(page).per(per)
 
@@ -102,7 +101,6 @@ module Api
       end
 
       # POST /api/v1/group_chat/:id/messages
-      # REST fallback — ใช้ตอน WebSocket ไม่ได้เชื่อม
       def send_message
         content = params[:content].to_s.strip
 
@@ -117,19 +115,16 @@ module Api
           content: content
         )
 
-        # Broadcast ผ่าน WebSocket
+        # sender อ่านแล้วเสมอ
+        MessageRead.mark_for(delegate: current_delegate, message_ids: [msg.id])
+
         GroupChatChannel.broadcast_to(@room, {
           type:    "group_message",
           room_id: @room.id,
           message: serialize_message(msg)
         })
 
-        # 🔴 FIX 3: สร้าง Notification record สำหรับ member แต่ละคนในห้อง
-        # เดิมไม่สร้างเลย → GET /notifications ไม่แสดง group message
-        # → PATCH /notifications/mark_all_as_read ไม่ครอบ group messages
         notify_group_members(msg)
-
-        # Push หา member ที่ offline
         push_to_offline_members(msg)
 
         render json: serialize_message(msg), status: :created
@@ -137,6 +132,33 @@ module Api
       rescue ActiveRecord::RecordInvalid => e
         render json: { error: e.record.errors.full_messages.join(", ") },
                status: :unprocessable_entity
+      end
+
+      # GET /api/v1/group_chat/:id/readers/:message_id
+      # endpoint แยก — ดู readers ของ message นั้นๆ
+      def readers
+        message = @room.chat_messages.find_by(id: params[:message_id])
+        return render json: { error: "Message not found" }, status: :not_found unless message
+
+        readers = MessageRead
+                    .includes(:delegate)
+                    .where(chat_message_id: message.id)
+                    .where.not(delegate_id: message.sender_id)
+                    .map do |mr|
+                      {
+                        id:         mr.delegate.id,
+                        name:       mr.delegate.name,
+                        avatar_url: mr.delegate.avatar_url,
+                        read_at:    mr.read_at
+                      }
+                    end
+
+        render json: {
+          message_id:    message.id,
+          total_members: @room.chat_room_members.count,
+          read_count:    readers.size + 1, # +1 รวม sender
+          readers:       readers
+        }
       end
 
       private
@@ -162,8 +184,42 @@ module Api
         }
       end
 
+
+
+
+
+
       def serialize_message(msg)
         sender = msg.sender
+
+        readers = if msg.association(:message_reads).loaded?
+          msg.message_reads
+            .reject { |mr| mr.delegate_id == msg.sender_id }
+            .map do |mr|
+              {
+                id:         mr.delegate.id,
+                name:       mr.delegate.name,
+                avatar_url: mr.delegate.avatar_url.presence ||
+                            "https://ui-avatars.com/api/?name=#{CGI.escape(mr.delegate.name.presence || 'Unknown')}",
+                read_at:    mr.read_at
+              }
+            end
+        else
+          MessageRead
+            .includes(:delegate)
+            .where(chat_message_id: msg.id)
+            .where.not(delegate_id: msg.sender_id)
+            .map do |mr|
+              {
+                id:         mr.delegate.id,
+                name:       mr.delegate.name,
+                avatar_url: mr.delegate.avatar_url.presence ||
+                            "https://ui-avatars.com/api/?name=#{CGI.escape(mr.delegate.name.presence || 'Unknown')}",
+                read_at:    mr.read_at
+              }
+            end
+        end
+
         {
           id:         msg.id,
           content:    msg.deleted_at? ? nil : msg.content,
@@ -178,19 +234,25 @@ module Api
             name:         sender&.name,
             title:        sender&.title,
             company_name: sender&.company&.name,
-            avatar_url:   sender&.avatar_url
-          }
+            avatar_url:   sender&.avatar_url.presence ||
+                          "https://ui-avatars.com/api/?name=#{CGI.escape(sender&.name.presence || 'Unknown')}"
+          },
+          readers: readers
         }
       end
 
-      # 🔴 FIX 3: สร้าง Notification สำหรับ member ทุกคน ยกเว้น sender
+
+
+
+
+
+
       def notify_group_members(msg)
         recipient_ids = @room.chat_room_members
                              .where.not(delegate_id: current_delegate.id)
                              .pluck(:delegate_id)
 
         recipient_ids.each do |delegate_id|
-          # ข้ามถ้าเปิดห้องอยู่ (อ่านแล้วในทันที)
           next if REDIS.get("group_chat_open:#{@room.id}:#{delegate_id}") == "1"
 
           delegate = Delegate.find_by(id: delegate_id)
@@ -202,9 +264,7 @@ module Api
             notifiable:        msg
           )
 
-          # clear dashboard cache ของ recipient
           Rails.cache.delete("dashboard:#{delegate_id}:v1")
-
           Notification::BroadcastService.call(notification)
         rescue => e
           Rails.logger.error "[GroupChat] notify failed for delegate=#{delegate_id}: #{e.message}"
@@ -217,15 +277,8 @@ module Api
                           .pluck(:delegate_id)
 
         member_ids.each do |delegate_id|
-          room_open = REDIS.get("group_chat_open:#{@room.id}:#{delegate_id}") == "1"
-          online    = Chat::PresenceService.online?(delegate_id)
-
-          Rails.logger.info "[GroupChat] delegate=#{delegate_id} room_open=#{room_open} online=#{online}"
-
-          next if room_open
-          next if online
-
-          Rails.logger.info "[GroupChat] → enqueue GroupMessagePushJob for delegate=#{delegate_id}"
+          next if REDIS.get("group_chat_open:#{@room.id}:#{delegate_id}") == "1"
+          next if Chat::PresenceService.online?(delegate_id)
 
           GroupMessagePushJob.perform_later(
             delegate_id: delegate_id,
