@@ -84,22 +84,28 @@ module Api
 
           Connection.find_or_create_by!(
             requester_id: connection.requester_id,
-            target_id: connection.target_id
+            target_id:    connection.target_id
           ) { |c| c.status = "accepted" }
 
+          # ✅ ส่งข้อความอัตโนมัติหาทั้งสองฝ่าย
+          send_connected_message(
+            from: current_delegate,          # B (คนกด Accept)
+            to:   connection.requester       # A (คนส่ง Request)
+          )
+
           notification = Notification.create!(
-            delegate: connection.requester,
+            delegate:          connection.requester,
             notification_type: 'connection_accepted',
-            notifiable: connection
+            notifiable:        connection
           )
 
           AuditLogger.connection_accepted(connection, request)
           Notification::BroadcastService.call(notification)
-          Rails.cache.delete("dashboard:#{connection.requester_id}:v1")  # ← เพิ่ม
+          Rails.cache.delete("dashboard:#{connection.requester_id}:v1")
         end
 
         render json: connection,
-               serializer: Api::V1::ConnectionRequestSerializer
+              serializer: Api::V1::ConnectionRequestSerializer
       end
 
 
@@ -173,6 +179,41 @@ module Api
 
 
       private
+
+      # ============================
+      # AUTO MESSAGE เมื่อเป็นเพื่อนกัน
+      # ============================
+      def send_connected_message(from:, to:)
+        # ข้อความหา A (จาก B) — "เราเป็นเพื่อนกันแล้ว"
+        msg_to_requester = ChatMessage.create!(
+          sender:    from,
+          recipient: to,
+          content:   "🤝 คุณและ #{from.name} เป็นเพื่อนกันแล้ว!"
+        )
+
+        # ข้อความหา B (จาก A) — ให้ B เห็นในหน้าแชทของตัวเองด้วย
+        msg_to_acceptor = ChatMessage.create!(
+          sender:    to,
+          recipient: from,
+          content:   "🤝 คุณและ #{to.name} เป็นเพื่อนกันแล้ว!"
+        )
+
+        # Broadcast ผ่าน WS ทันที
+        broadcast_connected_message(msg_to_requester)
+        broadcast_connected_message(msg_to_acceptor)
+      end
+
+      def broadcast_connected_message(message)
+        payload = {
+          type:    'new_message',
+          message: Api::V1::ChatMessageSerializer
+                    .new(message)
+                    .serializable_hash
+        }
+
+        ChatChannel.broadcast_to(message.recipient, payload)
+        ChatChannel.broadcast_to(message.sender,    payload)
+      end
 
       def render_not_found
         render json: {
