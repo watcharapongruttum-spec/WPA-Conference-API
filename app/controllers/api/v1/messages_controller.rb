@@ -117,6 +117,7 @@ module Api
 
       # ================= CONVERSATION =================
       def conversation
+        
         other_id = params[:delegate_id]
         page = (params[:page] || 1).to_i
         per  = [(params[:per] || 50).to_i, 100].min
