@@ -157,52 +157,55 @@ module Api
 
 
 
-    # ================= CREATE =================
-    def create
-      return render json: { error: "recipient_id required" }, status: :unprocessable_entity unless message_params[:recipient_id]
+      # ================= CREATE =================
+      def create
+        return render json: { error: "recipient_id required" }, status: :unprocessable_entity unless message_params[:recipient_id]
 
-      content = message_params[:content].to_s.strip
+        content = message_params[:content].to_s.strip
 
-      if content.blank?
-        return render json: {
+        if content.blank?
+          return render json: {
+            error: "Validation failed",
+            details: { content: ["cannot be blank"] }
+          }, status: :unprocessable_entity
+        end
+
+        if content.length > 2000
+          return render json: {
+            error: "Validation failed",
+            details: { content: ["must be between 1 and 2000 characters"] }
+          }, status: :unprocessable_entity
+        end
+
+        message = nil
+
+        ActiveRecord::Base.transaction do
+          message = Chat::SendMessageService.call(
+            sender: current_delegate,
+            recipient_id: message_params[:recipient_id],
+            content: content
+          )
+        end
+
+        # ✅ trigger ActionCable + FCM (เฉพาะตอน recipient offline)
+        Notification::CreateService.call(message)
+
+        AuditLogger.message_created(message, request) if defined?(AuditLogger)
+
+        message = ChatMessage
+                    .includes(sender: :company, recipient: :company)
+                    .find(message.id)
+
+        render json: message,
+              serializer: Api::V1::ChatMessageSerializer,
+              status: :created
+
+      rescue ActiveRecord::RecordInvalid => e
+        render json: {
           error: "Validation failed",
-          details: { content: ["cannot be blank"] }
+          details: e.record.errors.full_messages
         }, status: :unprocessable_entity
       end
-
-      if content.length > 2000
-        return render json: {
-          error: "Validation failed",
-          details: { content: ["must be between 1 and 2000 characters"] }
-        }, status: :unprocessable_entity
-      end
-
-      message = nil
-
-      ActiveRecord::Base.transaction do
-        message = Chat::SendMessageService.call(
-          sender: current_delegate,
-          recipient_id: message_params[:recipient_id],
-          content: content
-        )
-      end
-
-      AuditLogger.message_created(message, request) if defined?(AuditLogger)
-
-      message = ChatMessage
-                  .includes(sender: :company, recipient: :company)
-                  .find(message.id)
-
-      render json: message,
-            serializer: Api::V1::ChatMessageSerializer,
-            status: :created
-
-    rescue ActiveRecord::RecordInvalid => e
-      render json: {
-        error: "Validation failed",
-        details: e.record.errors.full_messages
-      }, status: :unprocessable_entity
-    end
 
 
 

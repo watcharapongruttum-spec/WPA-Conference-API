@@ -8,6 +8,19 @@ Rails.application.routes.draw do
   namespace :api do
     namespace :v1 do
 
+      scope "/group_chat", controller: "group_chat" do
+        get    "/",            action: :index,          as: :group_chat_rooms
+        post   "/",            action: :create_room,    as: :group_chat_create_room
+        post   "/:id/join",    action: :join,            as: :group_chat_join
+        delete "/:id/leave",   action: :leave,           as: :group_chat_leave
+        delete "/:id",         action: :destroy_room,    as: :group_chat_destroy_room
+        get    "/:id/messages", action: :messages,       as: :group_chat_messages
+        post   "/:id/messages", action: :send_message,   as: :group_chat_send_message
+      end
+
+
+
+
       namespace :admin do
         get "clear_sidekiq", to: "maintenance#clear_sidekiq"
         post "announcements", to: "announcements#create" 

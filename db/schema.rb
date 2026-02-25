@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.0].define(version: 2026_02_18_033807) do
+ActiveRecord::Schema[7.0].define(version: 2026_02_25_045148) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -37,7 +37,7 @@ ActiveRecord::Schema[7.0].define(version: 2026_02_18_033807) do
   end
 
   create_table "audit_logs", force: :cascade do |t|
-    t.bigint "delegate_id", null: false
+    t.bigint "delegate_id"
     t.string "action", null: false
     t.string "auditable_type", null: false
     t.bigint "auditable_id"
@@ -423,7 +423,7 @@ ActiveRecord::Schema[7.0].define(version: 2026_02_18_033807) do
     t.index ["branch_id"], name: "index_delegates_on_branch_id"
     t.index ["company_id"], name: "index_delegates_on_company_id"
     t.index ["device_token"], name: "idx_delegates_device_token"
-    t.index ["email"], name: "index_delegates_on_email"
+    t.index ["email"], name: "idx_delegates_email_unique", unique: true
     t.index ["reset_password_token"], name: "index_delegates_on_reset_password_token", unique: true
   end
 

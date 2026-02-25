@@ -65,9 +65,25 @@ class FcmService
     nil
   end
 
-  def self.handle_invalid_token(token, body)  # ✅ auto cleanup
-    return unless body.include?("UNREGISTERED")
+  # def self.handle_invalid_token(token, body)  # ✅ auto cleanup
+  #   return unless body.include?("UNREGISTERED")
+  #   Delegate.find_by(device_token: token)&.update(device_token: nil)
+  #   Rails.logger.warn "🗑 Removed invalid FCM token"
+  # end
+
+  def self.handle_invalid_token(token, body)
+    parsed = JSON.parse(body)
+    error_code = parsed.dig("error", "details")&.find { |d| d["errorCode"].present? }&.dig("errorCode")
+    status     = parsed.dig("error", "status")
+
+    return unless error_code == "UNREGISTERED" || status == "NOT_FOUND"
+
     Delegate.find_by(device_token: token)&.update(device_token: nil)
-    Rails.logger.warn "🗑 Removed invalid FCM token"
+    Rails.logger.warn "🗑 Removed invalid FCM token (#{error_code || status})"
+  rescue JSON::ParserError
+    Rails.logger.error "❌ FCM: Could not parse error body: #{body}"
   end
+
+
+
 end

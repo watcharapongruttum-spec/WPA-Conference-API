@@ -10,41 +10,39 @@ class LeaveForm < ApplicationRecord
   }
 
   # =========================
-  # BULK LEAVE
+  # BULK LEAVE — Partial success (ไม่ใช้ transaction เพื่อให้บางตัว save ได้)
   # =========================
   def self.bulk_report!(leaves:, reporter:)
     raise 'leaves is required' if leaves.blank?
 
     created_ids = []
-    errors = []
+    errors      = []
 
-    transaction do
-      leaves.each do |leave|
-        begin
-          lf = create!(
-            schedule_id: leave[:schedule_id],
-            leave_type_id: leave[:leave_type_id],
-            explanation: leave[:explanation],
-            reported_by_id: reporter.id,
-            status: 'reported',
-            reported_at: Time.current
-          )
-
-          created_ids << lf.id
-        rescue => e
-          errors << {
-            schedule_id: leave[:schedule_id],
-            message: e.message
-          }
-        end
-      end
+    # ❌ เอา transaction ออก เพราะ rescue ข้างในทำให้ transaction commit บางส่วนได้อยู่แล้ว
+    # ถ้าต้องการ partial success → ไม่ใช้ transaction
+    # ถ้าต้องการ all-or-nothing → ใช้ transaction แต่เอา rescue ออก แล้วให้ raise ลอยขึ้นไป
+    leaves.each do |leave|
+      lf = create!(
+        schedule_id:    leave[:schedule_id],
+        leave_type_id:  leave[:leave_type_id],
+        explanation:    leave[:explanation],
+        reported_by_id: reporter.id,
+        status:         'reported',
+        reported_at:    Time.current
+      )
+      created_ids << lf.id
+    rescue => e
+      errors << {
+        schedule_id: leave[:schedule_id],
+        message:     e.message
+      }
     end
 
     {
-      success: true,
+      success:       errors.empty?,
       created_count: created_ids.size,
-      created_ids: created_ids,
-      errors: errors
+      created_ids:   created_ids,
+      errors:        errors
     }
   end
 end
