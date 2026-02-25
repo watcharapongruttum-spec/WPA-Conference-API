@@ -1,13 +1,32 @@
-# app/services/chat/read_service.rb
-
 module Chat
   class ReadService
 
     # ================= READ ALL (API) =================
     def self.read_all(delegate)
+      now = Time.current
+
+      # แชท 1-1
       ChatMessage
         .where(recipient_id: delegate.id, read_at: nil)
-        .update_all(read_at: Time.current)
+        .update_all(read_at: now)
+
+      # Group chat
+      group_room_ids = ChatRoomMember
+                        .joins(:chat_room)
+                        .where(delegate_id: delegate.id)
+                        .where(chat_rooms: { deleted_at: nil })
+                        .pluck(:chat_room_id)
+
+      if group_room_ids.any?
+        ChatMessage
+          .where(chat_room_id: group_room_ids)
+          .where(read_at: nil, deleted_at: nil)
+          .where.not(sender_id: delegate.id)
+          .update_all(read_at: now)
+      end
+
+      # ✅ Clear dashboard cache หลัง mark read
+      Rails.cache.delete("dashboard:#{delegate.id}:v1")
     end
 
     # ================= MARK ONE =================
@@ -18,12 +37,12 @@ module Chat
       message.update_column(:read_at, now)
 
       payload = {
-        type: 'message_read',
+        type:       'message_read',
         message_id: message.id,
-        read_at: now
+        read_at:    now
       }
 
-      ChatChannel.broadcast_to(message.sender, payload)
+      ChatChannel.broadcast_to(message.sender,    payload)
       ChatChannel.broadcast_to(message.recipient, payload)
     end
 
@@ -32,9 +51,9 @@ module Chat
       now = Time.current
 
       scope = ChatMessage
-                .where(sender_id: target_id,
+                .where(sender_id:    target_id,
                        recipient_id: user_id,
-                       read_at: nil)
+                       read_at:      nil)
 
       ids = scope.pluck(:id)
       scope.update_all(read_at: now)
@@ -42,15 +61,15 @@ module Chat
       return if ids.empty?
 
       payload = {
-        type: 'bulk_read',
+        type:        'bulk_read',
         message_ids: ids,
-        read_at: now
+        read_at:     now
       }
 
       user   = Delegate.find(user_id)
       target = Delegate.find(target_id)
 
-      ChatChannel.broadcast_to(user, payload)
+      ChatChannel.broadcast_to(user,   payload)
       ChatChannel.broadcast_to(target, payload)
     end
 
@@ -69,12 +88,13 @@ module Chat
         ChatChannel.broadcast_to(
           Delegate.find(sender_id),
           {
-            type: 'message_read',
+            type:       'message_read',
             message_id: msg_id,
-            read_at: now
+            read_at:    now
           }
         )
       end
     end
+
   end
 end

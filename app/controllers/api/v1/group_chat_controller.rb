@@ -76,6 +76,11 @@ module Api
 
       # GET /api/v1/group_chat/:id/messages
       def messages
+        if @room.deleted_at.present?
+          return render json: { error: "Room has been deleted" },
+                        status: :gone
+        end
+
         page = (params[:page] || 1).to_i
         per  = [(params[:per] || 50).to_i, 100].min
 
@@ -112,12 +117,17 @@ module Api
           content: content
         )
 
-        # Broadcast เหมือน GroupChatChannel#speak
+        # Broadcast ผ่าน WebSocket
         GroupChatChannel.broadcast_to(@room, {
           type:    "group_message",
           room_id: @room.id,
           message: serialize_message(msg)
         })
+
+        # 🔴 FIX 3: สร้าง Notification record สำหรับ member แต่ละคนในห้อง
+        # เดิมไม่สร้างเลย → GET /notifications ไม่แสดง group message
+        # → PATCH /notifications/mark_all_as_read ไม่ครอบ group messages
+        notify_group_members(msg)
 
         # Push หา member ที่ offline
         push_to_offline_members(msg)
@@ -171,6 +181,34 @@ module Api
             avatar_url:   sender&.avatar_url
           }
         }
+      end
+
+      # 🔴 FIX 3: สร้าง Notification สำหรับ member ทุกคน ยกเว้น sender
+      def notify_group_members(msg)
+        recipient_ids = @room.chat_room_members
+                             .where.not(delegate_id: current_delegate.id)
+                             .pluck(:delegate_id)
+
+        recipient_ids.each do |delegate_id|
+          # ข้ามถ้าเปิดห้องอยู่ (อ่านแล้วในทันที)
+          next if REDIS.get("group_chat_open:#{@room.id}:#{delegate_id}") == "1"
+
+          delegate = Delegate.find_by(id: delegate_id)
+          next unless delegate
+
+          notification = ::Notification.create!(
+            delegate:          delegate,
+            notification_type: 'new_group_message',
+            notifiable:        msg
+          )
+
+          # clear dashboard cache ของ recipient
+          Rails.cache.delete("dashboard:#{delegate_id}:v1")
+
+          Notification::BroadcastService.call(notification)
+        rescue => e
+          Rails.logger.error "[GroupChat] notify failed for delegate=#{delegate_id}: #{e.message}"
+        end
       end
 
       def push_to_offline_members(msg)

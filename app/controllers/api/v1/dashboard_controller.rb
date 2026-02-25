@@ -30,32 +30,50 @@ module Api
         connections_count = me.connected_delegates.count
 
         system_notifications_count = me.notifications
-                                       .where.not(notification_type: 'new_message')
-                                       .where(read_at: nil)
-                                       .count
+                                      .where.not(notification_type: 'new_message')
+                                      .where(read_at: nil)
+                                      .count
 
-        message_unread_count = ChatMessage
-                                 .where(
-                                   recipient_id: me.id,
-                                   read_at: nil,
-                                   deleted_at: nil
-                                 )
-                                 .count
+        # ✅ แชท 1-1 unread
+        direct_unread = ChatMessage
+                          .where(
+                            recipient_id: me.id,
+                            read_at:      nil,
+                            deleted_at:   nil
+                          )
+                          .count
+
+        # ✅ Group chat unread — เฉพาะห้องที่เป็น member
+        group_room_ids = ChatRoomMember
+                          .joins(:chat_room)
+                          .where(delegate_id: me.id)
+                          .where(chat_rooms: { deleted_at: nil })
+                          .pluck(:chat_room_id)
+
+        group_unread = group_room_ids.any? ?
+                        ChatMessage
+                          .where(chat_room_id: group_room_ids)
+                          .where(read_at: nil, deleted_at: nil)
+                          .where.not(sender_id: me.id)
+                          .count
+                        : 0
+
+        message_unread_count = direct_unread + group_unread
 
         pending_requests_count = ConnectionRequest
-                                   .where(
-                                     target_id: me.id,
-                                     status: "pending"
-                                   )
-                                   .count
+                                  .where(
+                                    target_id: me.id,
+                                    status:    "pending"
+                                  )
+                                  .count
 
         {
-          unread_notifications_count: system_notifications_count,
+          unread_notifications_count:         system_notifications_count,
           unread_message_notifications_count: message_unread_count,
-          new_messages_count: message_unread_count,
-          pending_requests_count: pending_requests_count,
-          upcoming_schedule_count: booked_upcoming + targeted_upcoming,
-          connections_count: connections_count
+          new_messages_count:                 message_unread_count,
+          pending_requests_count:             pending_requests_count,
+          upcoming_schedule_count:            booked_upcoming + targeted_upcoming,
+          connections_count:                  connections_count
         }
       end
 

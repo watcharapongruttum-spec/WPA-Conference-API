@@ -10,8 +10,13 @@ module Api
         partner_ids = ChatMessage
           .not_deleted
           .where("sender_id = :me OR recipient_id = :me", me: me)
+          .where.not(recipient_id: nil)        # ← เพิ่ม: กัน group message (recipient_id = NULL)
+          .where.not(chat_room_id: nil.class)  # ← เพิ่ม: เฉพาะ direct message เท่านั้น
           .pluck(:sender_id, :recipient_id)
-          .flatten.uniq.reject { |id| id == me }
+          .flatten
+          .compact                             # ← เพิ่ม: ลบ nil ออก
+          .uniq
+          .reject { |id| id == me }
 
         return render json: [] if partner_ids.empty?
 
@@ -20,9 +25,9 @@ module Api
           .includes(:company)
           .index_by(&:id)
 
-        # ✅ PostgreSQL DISTINCT ON — last message per partner ใน query เดียว
         last_messages = ChatMessage
           .not_deleted
+          .where.not(recipient_id: nil)        # ← เพิ่ม: กัน group message
           .select(
             Arel.sql(
               "DISTINCT ON (LEAST(sender_id, recipient_id), GREATEST(sender_id, recipient_id)) " \
@@ -52,19 +57,17 @@ module Api
           last_msg = last_messages[partner_id]
 
           {
-            id: partner_id,
-            room_kind: "direct",
+            id:              partner_id,
+            room_kind:       "direct",
             delegate: {
-              id: partner.id,
-              name: partner.name,
-              title: partner.title,
-              # avatar_url: partner.avatar&.url
-              # avatar_url: s.avatar_url
+              id:         partner.id,
+              name:       partner.name,
+              title:      partner.title,
               avatar_url: partner.avatar_url
             },
-            last_message: last_msg&.content,
+            last_message:    last_msg&.content,
             last_message_at: last_msg&.created_at,
-            unread_count: unread_counts[partner_id] || 0
+            unread_count:    unread_counts[partner_id] || 0
           }
         end.compact
 
