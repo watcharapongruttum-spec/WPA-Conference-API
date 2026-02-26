@@ -163,13 +163,20 @@ class Delegate < ApplicationRecord
   # Avatar
   # ========================
 
+  # ✅ แก้แล้ว — fallback ui-avatars อัตโนมัติ
   def avatar_url
-    return nil unless avatar.attached?
+    if avatar.attached?
+      Rails.application.routes.url_helpers.rails_blob_url(
+        avatar,
+        only_path: true
+      )
+    else
+      ui_avatar_url
+    end
+  end
 
-    Rails.application.routes.url_helpers.rails_blob_url(
-      avatar,
-      only_path: true
-    )
+  def ui_avatar_url
+    "https://ui-avatars.com/api/?name=#{CGI.escape(name.presence || 'Unknown')}&background=0D8ABC&color=fff"
   end
 
 

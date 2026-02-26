@@ -155,7 +155,7 @@ module Api
               id: req.requester.id,
               name: req.requester.name,
               title: req.requester.title,
-              avatar_url: Api::V1::DelegateSerializer.new(req.requester).avatar_url
+              avatar_url: req.requester.avatar_url
             },
             created_at: req.created_at
           }

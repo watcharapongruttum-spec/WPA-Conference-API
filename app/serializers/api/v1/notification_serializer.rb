@@ -48,20 +48,22 @@ module Api
         }
       end
 
+
+      
+      # ✅ แก้แล้ว — เรียก model method (ซึ่ง fallback ให้เองแล้ว)
       def delegate_json(delegate)
         return nil unless delegate
-
-        # 🔴 FIX 4: avatar fallback — Delegate#avatar_url คืน nil ถ้าไม่มี attachment
-        # ทุก serializer อื่นใช้ ui-avatars แต่ตัวนี้ลืม → client ได้ null
-        avatar = delegate.avatar_url.presence ||
-                 "https://ui-avatars.com/api/?name=#{CGI.escape(delegate.name.presence || 'Unknown')}&background=0D8ABC&color=fff"
-
         {
           id:         delegate.id,
           name:       delegate.name,
-          avatar_url: avatar
+          avatar_url: delegate.avatar_url  # ✅ model จัดการ fallback เอง
         }
       end
+
+
+
+
+
     end
   end
 end

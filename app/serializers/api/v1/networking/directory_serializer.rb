@@ -15,9 +15,9 @@ module Api
           object.company&.country || 'N/A'
         end
 
+        # ✅ แก้แล้ว
         def avatar_url
-          name = object.name.presence || 'Unknown'
-          "https://ui-avatars.com/api/?name=#{CGI.escape(name)}&background=0D8ABC&color=fff"
+          object.avatar_url
         end
 
         def is_connected

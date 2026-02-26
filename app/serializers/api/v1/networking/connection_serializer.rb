@@ -17,22 +17,21 @@ module Api
 
         private
 
+        # ✅ แก้แล้ว
         def delegate_info(delegate)
           return nil unless delegate
-
           {
             id: delegate.id,
             name: delegate.name || 'Unknown',
             title: delegate.title,
             company_name: delegate.company&.name || 'N/A',
-            avatar_url: avatar_url_for(delegate)
+            avatar_url: delegate.avatar_url 
           }
         end
 
-        def avatar_url_for(delegate)
-          name = delegate.name.presence || 'Unknown'
-          "https://ui-avatars.com/api/?name=#{CGI.escape(name)}&background=0D8ABC&color=fff"
-        end
+
+
+
       end
     end
   end

@@ -38,18 +38,27 @@ module Api
         }
       end
 
+
+      # ✅ แก้แล้ว — เรียก model method โดยตรง
       def recipient
         r = object.recipient
         return nil unless r
-
         {
           id: r.id,
           name: r.name,
           title: r.title,
           company_name: r.company&.name,
-          avatar_url: Api::V1::DelegateSerializer.new(r).avatar_url
+          avatar_url: r.avatar_url  # ✅
         }
       end
+
+
+
+
+
+
+
+
     end
   end
 end

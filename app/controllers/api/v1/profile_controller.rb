@@ -65,7 +65,7 @@ module Api
           title: delegate.title,
           email: delegate.email,
           phone: delegate.phone,
-          avatar_url: resolve_avatar_url(delegate),
+          avatar_url: delegate.avatar_url,
 
           company: company && {
             id: company.id,
@@ -87,18 +87,7 @@ module Api
         }
       end
 
-      # ✅ FIX: ลำดับความสำคัญ: avatar จริง → ui-avatars fallback
-      def resolve_avatar_url(delegate)
-        if delegate.avatar.attached?
-          Rails.application.routes.url_helpers.rails_blob_url(
-            delegate.avatar,
-            only_path: true
-          )
-        else
-          name = delegate.name.presence || 'Unknown'
-          "https://ui-avatars.com/api/?name=#{CGI.escape(name)}&background=0D8ABC&color=fff"
-        end
-      end
+
 
     end
   end

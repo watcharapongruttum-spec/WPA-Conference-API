@@ -17,9 +17,9 @@ module Api
         end
       end
       
-      # ใช้ fallback avatar เสมอ หลีกเลี่ยง ActiveStorage ทั้งหมด
+      # ✅ แก้แล้ว
       def avatar_url
-        "https://ui-avatars.com/api/?name=#{CGI.escape(object.name || 'Unknown')}&background=0D8ABC&color=fff"
+        object.avatar_url
       end
       
       def team

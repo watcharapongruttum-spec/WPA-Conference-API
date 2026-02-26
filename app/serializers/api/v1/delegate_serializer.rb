@@ -27,9 +27,9 @@ module Api
   end
 
   # ---------------- AVATAR ----------------
+  # ✅ แก้แล้ว — เรียก model method
   def avatar_url
-    name = object.name.presence || 'Unknown'
-    "https://ui-avatars.com/api/?name=#{CGI.escape(name)}&background=0D8ABC&color=fff"
+    object.avatar_url
   end
 
   # ---------------- LOGIN ----------------
