@@ -3,7 +3,7 @@ module Chat
   class PresenceService
     PREFIX      = "chat:online"
     CONN_PREFIX = "chat:connections"
-    TTL         = 3600
+    TTL         = 30
 
     # return: connection count หลัง increment
     def self.online(user_id)
