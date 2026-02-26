@@ -6,7 +6,8 @@ class ChatChannel < ApplicationCable::Channel
   def subscribed
     stream_for current_delegate
 
-    REDIS.incr("chat:connections:#{current_delegate.id}")
+    # ✅ PresenceService จัดการ connection count + online key รวมกัน
+    Chat::PresenceService.online(current_delegate.id)
 
     if params[:with_id].present?
       REDIS.setex(
@@ -15,27 +16,15 @@ class ChatChannel < ApplicationCable::Channel
         params[:with_id]
       )
     end
-
-    # 🔴 FIX: ลบ REDIS.setex("chat:online:...") ออก
-    # เดิมมี 2 บรรทัดที่ set online status คนละ key:
-    #   REDIS.setex("chat:online:#{id}", ...)       ← key หนึ่ง
-    #   Chat::PresenceService.online(id)             ← อีก key หนึ่ง ("online_user:#{id}")
-    # ทำให้ PresenceService.online? คืน false เสมอ
-    # แก้แล้วโดยให้ PresenceService เป็น single source of truth
-    Chat::PresenceService.online(current_delegate.id)
   end
 
   def unsubscribed
-    count = REDIS.decr("chat:connections:#{current_delegate.id}").to_i
+    # ✅ offline() จะเช็ค count เอง — ถ้า multi-device ยังไม่ del online key
+    remaining = Chat::PresenceService.offline(current_delegate.id)
 
-    if count <= 0
+    if remaining <= 0
       REDIS.del("chat:active_room:#{current_delegate.id}")
-      REDIS.del("chat:connections:#{current_delegate.id}")
     end
-
-    # 🔴 FIX: ลบ REDIS.del("chat:online:...") ออก
-    # ให้ PresenceService จัดการ online key เพียงที่เดียว
-    Chat::PresenceService.offline(current_delegate.id)
   end
 
   def enter_room(data)
@@ -60,9 +49,9 @@ class ChatChannel < ApplicationCable::Channel
     payload = safe_json(data)
 
     message = Chat::SendMessageService.call(
-      sender: current_delegate,
+      sender:       current_delegate,
       recipient_id: payload['recipient_id'],
-      content: payload['content']
+      content:      payload['content']
     )
 
     Notification::CreateService.call(message)
