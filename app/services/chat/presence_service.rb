@@ -1,43 +1,74 @@
 # app/services/chat/presence_service.rb
 module Chat
   class PresenceService
-    PREFIX      = "chat:online"
     CONN_PREFIX = "chat:connections"
-    TTL         = 30
+    TTL = 30.seconds
 
-    # return: connection count หลัง increment
+    # -------------------------
+    # User connected
+    # -------------------------
     def self.online(user_id)
-      count = REDIS.incr("#{CONN_PREFIX}:#{user_id}")
-      REDIS.expire("#{CONN_PREFIX}:#{user_id}", TTL)
-      REDIS.setex("#{PREFIX}:#{user_id}", TTL, "1")
+      key = conn_key(user_id)
+
+      count = REDIS.incr(key)
+      REDIS.expire(key, TTL)
+
+      Rails.logger.debug "[Presence] user=#{user_id} online count=#{count}"
+
       count
     end
 
-    # return: connection count หลัง decrement
+    # -------------------------
+    # User disconnected
+    # -------------------------
     def self.offline(user_id)
-      count = REDIS.decr("#{CONN_PREFIX}:#{user_id}").to_i
+      key = conn_key(user_id)
+
+      count = REDIS.decr(key).to_i
 
       if count <= 0
-        REDIS.del("#{CONN_PREFIX}:#{user_id}")
-        REDIS.del("#{PREFIX}:#{user_id}")
+        REDIS.del(key)
+        count = 0
+      else
+        REDIS.expire(key, TTL)
       end
+
+      Rails.logger.debug "[Presence] user=#{user_id} offline count=#{count}"
 
       count
     end
 
+    # -------------------------
+    # Is user online?
+    # -------------------------
     def self.online?(user_id)
-      REDIS.get("#{PREFIX}:#{user_id}") == "1"
+      connection_count(user_id) > 0
     end
 
-    # เรียกตอน heartbeat — ต่อ TTL ออกไป
+    # -------------------------
+    # Heartbeat
+    # -------------------------
     def self.refresh(user_id)
-      return unless online?(user_id)
-      REDIS.expire("#{PREFIX}:#{user_id}", TTL)
-      REDIS.expire("#{CONN_PREFIX}:#{user_id}", TTL)
+      key = conn_key(user_id)
+
+      if connection_count(user_id) > 0
+        REDIS.expire(key, TTL)
+        Rails.logger.debug "[Presence] user=#{user_id} refreshed"
+      end
     end
 
+    # -------------------------
+    # Get connection count
+    # -------------------------
     def self.connection_count(user_id)
-      REDIS.get("#{CONN_PREFIX}:#{user_id}").to_i
+      REDIS.get(conn_key(user_id)).to_i
+    end
+
+    # -------------------------
+    private
+    # -------------------------
+    def self.conn_key(user_id)
+      "#{CONN_PREFIX}:#{user_id}"
     end
   end
 end
