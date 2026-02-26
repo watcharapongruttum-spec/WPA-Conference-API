@@ -1,4 +1,3 @@
-# app/services/fcm_service.rb
 require 'googleauth'
 require 'net/http'
 require 'json'
@@ -15,9 +14,25 @@ class FcmService
     payload = {
       message: {
         token: token,
-        notification: { title: title, body: body },
-        android: { priority: "high" },
-        apns: { headers: { "apns-priority": "10" } },
+        notification: {
+          title: title,
+          body: body
+        },
+        android: {
+          priority: "high",
+          notification: {
+            sound: "default",
+            click_action: "FLUTTER_NOTIFICATION_CLICK"
+          }
+        },
+        apns: {
+          payload: {
+            aps: {
+              sound: "default",
+              badge: 1
+            }
+          }
+        },
         data: data.transform_values(&:to_s)
       }
     }.to_json
@@ -52,17 +67,13 @@ class FcmService
     "https://fcm.googleapis.com/v1/projects/#{ENV.fetch('FIREBASE_PROJECT_ID')}/messages:send"
   end
 
-
-
-
+  # ✅ รองรับทั้ง Production (ENV JSON) และ Local (ไฟล์)
   def self.fetch_access_token
     Rails.cache.fetch("fcm_access_token", expires_in: 50.minutes) do
       json_io =
         if ENV['FIREBASE_CREDENTIALS_JSON'].present?
-          # ✅ Production: ใช้ JSON จาก ENV
           StringIO.new(ENV['FIREBASE_CREDENTIALS_JSON'])
         else
-          # ✅ Local: ใช้ไฟล์
           File.open(Rails.root.join(ENV.fetch('FIREBASE_CREDENTIALS_PATH')))
         end
 
@@ -78,13 +89,7 @@ class FcmService
     nil
   end
 
-
-
-
-
-
-  
-
+  # ลบ token ที่ invalid
   def self.handle_invalid_token(token, body)
     parsed = JSON.parse(body)
     error_code = parsed.dig("error", "details")
@@ -93,20 +98,15 @@ class FcmService
     status  = parsed.dig("error", "status")
     message = parsed.dig("error", "message").to_s
 
-    # ✅ ครอบคลุม 3 case:
-    # 1. UNREGISTERED  — token ถูก unregister แล้ว
-    # 2. NOT_FOUND     — token ไม่มีใน FCM
-    # 3. not a valid   — token format ผิด
     invalid = error_code == "UNREGISTERED" ||
               status == "NOT_FOUND" ||
               message.include?("not a valid FCM registration token")
 
     return unless invalid
 
-    # ✅ ลบทุก delegate ที่มี token นี้ (กัน token ซ้ำหลาย account)
     count = Delegate.where(device_token: token).update_all(device_token: nil)
-    Rails.logger.warn "🗑 Removed invalid FCM token from #{count} delegate(s) (#{error_code || status || 'invalid_token'})"
+    Rails.logger.warn "🗑 Removed invalid FCM token from #{count} delegate(s)"
   rescue JSON::ParserError
-    Rails.logger.error "❌ FCM: Could not parse error body: #{body}"
+    Rails.logger.error "❌ FCM: Could not parse error body"
   end
 end
