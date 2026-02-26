@@ -43,6 +43,7 @@ Rails.application.routes.draw do
       # Profile
       get   'profile(/:id)', to: 'profile#show'
       patch 'profile',       to: 'profile#update'
+      patch 'profile/avatar', to: 'profile#update_avatar'
 
       # Device token
       patch 'device_token', to: 'devices#update'
