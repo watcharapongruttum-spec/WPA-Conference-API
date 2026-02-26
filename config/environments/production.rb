@@ -48,6 +48,9 @@ Rails.application.configure do
     /https?:\/\/.*/
   ]
 
+  config.action_cable.disable_request_forgery_protection = true
+
+  
   # Allow all hosts (Render internal)
   config.hosts.clear
 end
