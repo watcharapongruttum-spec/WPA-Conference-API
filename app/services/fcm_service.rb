@@ -8,10 +8,15 @@ class FcmService
   def self.send_push(token:, title:, body:, data: {})
     return false if token.blank?
 
+    debug_id = SecureRandom.hex(4)
+    started_at = Time.current
+
+    Rails.logger.warn "🚀 [FCM-#{debug_id}] START token=#{token.last(10)} title=#{title}"
+
     access_token = fetch_access_token
     return false unless access_token
 
-    payload = {
+    payload_hash = {
       message: {
         token: token,
         notification: {
@@ -35,7 +40,9 @@ class FcmService
         },
         data: data.transform_values(&:to_s)
       }
-    }.to_json
+    }
+
+    Rails.logger.warn "📦 [FCM-#{debug_id}] PAYLOAD=#{payload_hash}"
 
     uri = URI(fcm_endpoint)
     http = Net::HTTP.new(uri.host, uri.port)
@@ -44,20 +51,25 @@ class FcmService
     request = Net::HTTP::Post.new(uri)
     request['Authorization'] = "Bearer #{access_token}"
     request['Content-Type'] = 'application/json'
-    request.body = payload
+    request.body = payload_hash.to_json
 
-    response = http.request(request)
+    duration = Benchmark.realtime do
+      @response = http.request(request)
+    end
 
-    if response.code == '200'
-      Rails.logger.info "✅ FCM Sent successfully to #{token.last(10)}"
+    Rails.logger.warn "⏱ [FCM-#{debug_id}] duration=#{(duration * 1000).round}ms"
+
+    if @response.code == '200'
+      Rails.logger.warn "✅ [FCM-#{debug_id}] SUCCESS #{token.last(10)}"
       true
     else
-      Rails.logger.error "❌ FCM Error #{response.code}: #{response.body}"
-      handle_invalid_token(token, response.body)
+      Rails.logger.error "❌ [FCM-#{debug_id}] ERROR #{@response.code} #{@response.body}"
+      handle_invalid_token(token, @response.body)
       false
     end
+
   rescue => e
-    Rails.logger.error "❌ FCM Exception: #{e.message}"
+    Rails.logger.error "💥 [FCM-#{debug_id}] EXCEPTION #{e.class} #{e.message}"
     false
   end
 
