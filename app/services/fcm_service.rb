@@ -52,18 +52,38 @@ class FcmService
     "https://fcm.googleapis.com/v1/projects/#{ENV.fetch('FIREBASE_PROJECT_ID')}/messages:send"
   end
 
+
+
+
   def self.fetch_access_token
     Rails.cache.fetch("fcm_access_token", expires_in: 50.minutes) do
+      json_io =
+        if ENV['FIREBASE_CREDENTIALS_JSON'].present?
+          # ✅ Production: ใช้ JSON จาก ENV
+          StringIO.new(ENV['FIREBASE_CREDENTIALS_JSON'])
+        else
+          # ✅ Local: ใช้ไฟล์
+          File.open(Rails.root.join(ENV.fetch('FIREBASE_CREDENTIALS_PATH')))
+        end
+
       credentials = Google::Auth::ServiceAccountCredentials.make_creds(
-        json_key_io: File.open(Rails.root.join(ENV.fetch('FIREBASE_CREDENTIALS_PATH'))),
+        json_key_io: json_io,
         scope: SCOPE
       )
+
       credentials.fetch_access_token!['access_token']
     end
   rescue => e
     Rails.logger.error "❌ FCM Auth Error: #{e.message}"
     nil
   end
+
+
+
+
+
+
+  
 
   def self.handle_invalid_token(token, body)
     parsed = JSON.parse(body)

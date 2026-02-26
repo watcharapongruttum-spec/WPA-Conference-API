@@ -1,16 +1,12 @@
-# app/serializers/api/v1/notification_serializer.rb
 module Api
   module V1
     class NotificationSerializer < ActiveModel::Serializer
-      # 🔴 FIX 1: เปลี่ยน :unread? → :is_unread
-      # AMS บางเวอร์ชัน parse method name ที่มี "?" ไม่ได้ → crash หรือ JSON key = "unread?"
       attributes :id, :type, :read_at, :created_at, :is_unread, :notifiable
 
       def type
         object.notification_type
       end
 
-      # 🔴 FIX 1 (ต่อ): method แทน :unread?
       def is_unread
         object.read_at.nil?
       end
@@ -19,25 +15,19 @@ module Api
         item = object.notifiable
         return nil unless item
 
-        case object.notifiable_type
-        when 'ConnectionRequest'
-          connection_json(item)
-        when 'ChatMessage', 'Message'
+        case object.notification_type
+        when 'new_message'
           message_json(item)
+        when 'new_group_message'
+          group_message_json(item)       # ✅ แยก case
+        when 'connection_request', 'connection_accepted', 'connection_rejected'
+          connection_json(item)
+        when 'admin_announce'
+          announce_json(item)
         end
       end
 
       private
-
-      def connection_json(connection)
-        {
-          type:      'connection_request',
-          id:        connection.id,
-          requester: delegate_json(connection.requester),
-          target:    delegate_json(connection.target),
-          status:    connection.status
-        }
-      end
 
       def message_json(message)
         {
@@ -48,22 +38,44 @@ module Api
         }
       end
 
+      def group_message_json(message)
+        {
+          type:       'group_message',
+          id:         message.id,
+          room_id:    message.chat_room_id,        # ✅ frontend navigate ได้
+          room_title: message.chat_room&.title,    # ✅ แสดงชื่อห้อง
+          sender:     delegate_json(message.sender),
+          content:    message.content.to_s.truncate(50)
+        }
+      end
 
-      
-      # ✅ แก้แล้ว — เรียก model method (ซึ่ง fallback ให้เองแล้ว)
+      def connection_json(connection)
+        {
+          type:                  'connection_request',
+          connection_request_id: connection.id,    # ✅ ใช้ accept/reject
+          id:                    connection.id,
+          requester:             delegate_json(connection.requester),
+          target:                delegate_json(connection.target),
+          status:                connection.status
+        }
+      end
+
+      def announce_json(announcement)
+        {
+          type:    'admin_announce',
+          id:      announcement&.id,
+          content: announcement&.content&.truncate(200)
+        }
+      end
+
       def delegate_json(delegate)
         return nil unless delegate
         {
           id:         delegate.id,
           name:       delegate.name,
-          avatar_url: delegate.avatar_url  # ✅ model จัดการ fallback เอง
+          avatar_url: delegate.avatar_url
         }
       end
-
-
-
-
-
     end
   end
 end
