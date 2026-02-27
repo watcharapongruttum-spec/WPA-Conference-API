@@ -10,11 +10,11 @@ module Api
 
         render json: tables.map { |table|
           {
-            id: table.id,
+            id:           table.id,
             table_number: table.table_number,
-            status: get_table_status(table.table_number),
-            occupancy: get_table_occupancy(table.table_number),
-            capacity: 4
+            status:       get_table_status(table.table_number),
+            occupancy:    get_table_occupancy(table.table_number),
+            capacity:     4
           }
         }
       end
@@ -22,31 +22,31 @@ module Api
       # GET /api/v1/tables/:id
       def show
         table_number = params[:id]
-
         table = Table.find_by(table_number: table_number)
         return render json: { error: "Not found" }, status: :not_found unless table
 
         schedules = Schedule.where(table_number: table_number)
-                            .includes(:booker, :table)
+                            .includes(:booker, :delegate, :table)
                             .order(:start_at)
 
         render json: {
           table_number: table_number,
-          status: get_table_status(table_number),
-          occupancy: get_table_occupancy(table_number),
-          capacity: 4,
-          occupants: schedules.filter_map(&:booker).uniq.map do |d|
-            Api::V1::DelegateSerializer.new(d).serializable_hash
-          end,
-          timeline: schedules.map do |s|
-            Api::V1::ScheduleSerializer.new(s, scope: current_delegate).serializable_hash
-          end
+          status:       get_table_status(table_number),
+          occupancy:    get_table_occupancy(table_number),
+          capacity:     4,
+          occupants:    schedules.filter_map { |s| s.booker || s.delegate }.uniq.map do |d|
+                          Api::V1::DelegateSerializer.new(d).serializable_hash
+                        end,
+          timeline:     schedules.map do |s|
+                          Api::V1::ScheduleSerializer.new(s, scope: current_delegate).serializable_hash
+                        end
         }
       rescue StandardError => e
         Rails.logger.error "Tables#show error: #{e.message}"
         render json: { error: "Internal server error" }, status: :internal_server_error
       end
 
+      # GET /api/v1/tables/time_view
       def time_view
         conference  = Conference.find_by(is_current: true) || Conference.order(conference_year: :desc).first
         target_year = conference&.conference_year&.to_i || FALLBACK_YEAR.call
@@ -55,111 +55,62 @@ module Api
         user_selected_time     = params[:time].present?
         user_selected_datetime = user_selected_date && user_selected_time
 
-        # ✅ FIX TIMEZONE: ใช้ Bangkok time zone ตลอด
-        # อย่าใช้ Date.today เพราะอาจเป็น UTC — ใช้ Time.current.in_time_zone('Asia/Bangkok').to_date แทน
         bkk_now    = Time.current.in_time_zone('Asia/Bangkok')
         input_date = params[:date].present? ? params[:date].to_date : bkk_now.to_date
-        input_time = params[:time] || bkk_now.strftime("%H:%M")
+        input_time = params[:time].presence || bkk_now.strftime("%H:%M")
 
-        # ✅ FIX: สร้าง datetime ใน Bangkok zone แบบ explicit
-        begin
-          datetime = Time.zone.parse("#{target_year}-#{input_date.strftime('%m-%d')} #{input_time}")
-        rescue ArgumentError
-          datetime = bkk_now
-        end
+        datetime = parse_bangkok_datetime(target_year, input_date, input_time, bkk_now)
 
-        has_data_in_year = Schedule
-                           .where("EXTRACT(YEAR FROM start_at AT TIME ZONE 'Asia/Bangkok') = ?", target_year)
-                           .where("delegate_id IS NOT NULL OR booker_id IS NOT NULL")
-                           .exists?
-
-        unless has_data_in_year
+        # ถ้าปีนั้นไม่มีข้อมูล ให้หา actual year จาก DB
+        unless schedule_exists_in_year?(target_year)
           actual_year = Schedule
                         .where("delegate_id IS NOT NULL OR booker_id IS NOT NULL")
                         .order(:start_at)
                         .first&.start_at&.in_time_zone('Asia/Bangkok')&.year
-
           if actual_year
             target_year = actual_year
-            begin
-              datetime = Time.zone.parse("#{target_year}-#{input_date.strftime('%m-%d')} #{input_time}")
-            rescue ArgumentError
-              datetime = bkk_now
-            end
+            datetime    = parse_bangkok_datetime(target_year, input_date, input_time, bkk_now)
           end
         end
 
-        schedules = Schedule
-                    .includes(:delegate, :booker, :table, team: [:delegates, :company], booker: :company)
-                    .where(start_at: datetime)
-                    .where("delegate_id IS NOT NULL OR booker_id IS NOT NULL")
+        # โหลด schedules ของ datetime นั้น
+        schedules = load_schedules_at(datetime)
 
+        # fallback 1: ไม่มีข้อมูลตาม time → ใช้เวลาแรกของวันนั้น
         if schedules.empty? && !user_selected_datetime
-          # ✅ FIX: ใช้ Bangkok date ในการ query
-          first_time = Schedule
-                       .where("DATE(start_at AT TIME ZONE 'Asia/Bangkok') = ?", input_date)
-                       .where("EXTRACT(YEAR FROM start_at AT TIME ZONE 'Asia/Bangkok') = ?", target_year)
-                       .where("delegate_id IS NOT NULL OR booker_id IS NOT NULL")
-                       .order(:start_at).first
+          first_of_day = Schedule
+                         .where("DATE(start_at AT TIME ZONE 'Asia/Bangkok') = ?", input_date)
+                         .where("EXTRACT(YEAR FROM start_at AT TIME ZONE 'Asia/Bangkok') = ?", target_year)
+                         .where("delegate_id IS NOT NULL OR booker_id IS NOT NULL")
+                         .order(:start_at)
+                         .first
 
-          if first_time
-            datetime  = first_time.start_at
-            schedules = Schedule
-                        .includes(:delegate, :booker, :table, team: [:delegates, :company], booker: :company)
-                        .where(start_at: datetime)
-                        .where("delegate_id IS NOT NULL OR booker_id IS NOT NULL")
+          if first_of_day
+            datetime  = first_of_day.start_at
+            schedules = load_schedules_at(datetime)
           end
         end
 
+        # fallback 2: ไม่มีข้อมูลของวันนั้น → ใช้ schedule แรกสุดของปี
         if schedules.empty? && !user_selected_datetime
-          first_schedule = Schedule
-                           .where("EXTRACT(YEAR FROM start_at AT TIME ZONE 'Asia/Bangkok') = ?", target_year)
-                           .where("delegate_id IS NOT NULL OR booker_id IS NOT NULL")
-                           .order(:start_at).first
-
-          if first_schedule
-            datetime  = first_schedule.start_at
-            schedules = Schedule
-                        .includes(:delegate, :booker, :table, team: [:delegates, :company], booker: :company)
-                        .where(start_at: datetime)
-                        .where("delegate_id IS NOT NULL OR booker_id IS NOT NULL")
-          end
-        end
-
-        # ✅ FIX: ใช้ Bangkok timezone + Arel.sql() เพื่อกัน Rails 7 raw SQL block
-        all_times_today = Schedule
-                          .where("DATE(start_at AT TIME ZONE 'Asia/Bangkok') = ?", datetime.in_time_zone('Asia/Bangkok').to_date)
+          first_of_year = Schedule
+                          .where("EXTRACT(YEAR FROM start_at AT TIME ZONE 'Asia/Bangkok') = ?", target_year)
                           .where("delegate_id IS NOT NULL OR booker_id IS NOT NULL")
                           .order(:start_at)
-                          .pluck(:start_at)
-                          .map { |t| t.in_time_zone('Asia/Bangkok').iso8601 }
-                          .uniq
+                          .first
 
-        all_days = conference
-          .conference_dates
-          .joins(:schedules)
-          .where("schedules.delegate_id IS NOT NULL OR schedules.booker_id IS NOT NULL")
-          .pluck(:on_date)
-          .uniq
-          .sort
-
-        my_schedule = current_delegate && schedules.find do |s|
-          s.delegate_id == current_delegate.id || s.booker_id == current_delegate.id
+          if first_of_year
+            datetime  = first_of_year.start_at
+            schedules = load_schedules_at(datetime)
+          end
         end
 
-        schedule_by_table = schedules.group_by { |s| s.table_number.to_s.strip }
-
-        # ✅ FIX times_today: กรองด้วย conference_date_id ไม่ใช่ DATE()
-        # เพราะ schedule เวลาเย็น Bangkok (เช่น 20:00 UTC) = 03:00 Bangkok วันถัดไป
-        # → ถ้าใช้ DATE() ใน Bangkok zone จะดึงสองวัน
-        # conference_date.on_date คือ "วัน" ที่ถูกต้องของ slot ทั้งหมด
-        bkk_date = datetime.in_time_zone('Asia/Bangkok').to_date
+        # all_times_today: ใช้ conference_date_id เพื่อกัน timezone ข้ามวัน
+        # (schedule เวลาเย็น Bangkok เช่น 20:00 UTC = 03:00 Bangkok วันถัดไป
+        #  ถ้าใช้ DATE() จะดึงมา 2 วัน → ใช้ conference_date_id แทน)
+        bkk_date        = datetime.in_time_zone('Asia/Bangkok').to_date
         conference_date = conference.conference_dates.find_by(on_date: bkk_date)
-
-        # fallback: ถ้าไม่เจอตาม date ให้ดึงจาก schedule ที่ query มาได้
-        if conference_date.nil? && schedules.any?
-          conference_date = schedules.first.conference_date
-        end
+        conference_date ||= schedules.first&.conference_date
 
         all_times_today = if conference_date
           Schedule
@@ -173,51 +124,50 @@ module Api
           []
         end
 
-        numeric_tables = Table.where("table_number ~ '^[0-9]+$'")
-        first_table    = numeric_tables.find_by(table_number: "1")
-        columns        = 6
+        all_days = conference
+                   .conference_dates
+                   .joins(:schedules)
+                   .where("schedules.delegate_id IS NOT NULL OR schedules.booker_id IS NOT NULL")
+                   .pluck(:on_date)
+                   .uniq
+                   .sort
 
-        if first_table.present?
-          begin
-            near     = YAML.safe_load(first_table.adjacent_tables || "--- []")
-            vertical = near.map(&:to_i).find { |n| n > 1 && (n - 1) > 1 }
-            columns  = vertical - 1 if vertical
-          rescue StandardError
-            columns = 6
-          end
+        my_schedule = current_delegate && schedules.find do |s|
+          s.delegate_id == current_delegate.id || s.booker_id == current_delegate.id
         end
 
-        total_tables = numeric_tables.count
-        rows         = (total_tables.to_f / columns).ceil
-        layout       = { type: "grid", rows: rows, columns: columns }
+        schedule_by_table = schedules.group_by { |s| s.table_number.to_s.strip }
+
+        # Layout
+        numeric_tables = Table.where("table_number ~ '^[0-9]+$'")
+        columns        = detect_columns(numeric_tables)
+        total_tables   = numeric_tables.count
+        rows           = (total_tables.to_f / columns).ceil
+        layout         = { type: "grid", rows: rows, columns: columns }
 
         all_tables = Table.all.sort_by do |t|
-          num = t.table_number.to_s
-          num =~ /^\d+$/ ? [0, num.to_i] : [1, num]
+          t.table_number.to_s =~ /^\d+$/ ? [0, t.table_number.to_i] : [1, t.table_number.to_s]
         end
 
         tables = all_tables.map do |table|
           key             = table.table_number.to_s.strip
           table_schedules = schedule_by_table[key] || []
+          meetings        = table_schedules.map { |s| build_meeting_info(s) }
 
-          # ✅ ดึง meeting ทั้ง 2 ฝั่ง (booker + team) สำหรับโต๊ะนี้
-          meetings = table_schedules.map { |s| build_meeting_info(s) }
-
-          # backward compat — delegates flat list
-          delegates = table_schedules.flat_map do |s|
-            people = []
-            people << s.delegate if s.delegate.present?
-            people << s.booker   if s.booker.present?
-            people
-          end.uniq(&:id).map do |d|
-            {
-              delegate_id:   d.id,
-              delegate_name: d.name,
-              company:       d.company&.name || "N/A",
-              avatar_url:    "https://ui-avatars.com/api/?name=#{CGI.escape(d.name)}",
-              title:         d.title
-            }
-          end
+          # delegates flat list (backward compat)
+          # booker || delegate เพื่อรองรับทั้ง 2 กรณี (verified: query 1 = 0)
+          flat_delegates = table_schedules
+                           .flat_map { |s| [s.booker, s.delegate].compact }
+                           .uniq(&:id)
+                           .map do |d|
+                             {
+                               delegate_id:   d.id,
+                               delegate_name: d.name,
+                               company:       d.company&.name || "N/A",
+                               avatar_url:    "https://ui-avatars.com/api/?name=#{CGI.escape(d.name)}",
+                               title:         d.title
+                             }
+                           end
 
           near_tables = begin
             YAML.safe_load(table.adjacent_tables || "--- []")
@@ -230,46 +180,86 @@ module Api
             table_number: table.table_number,
             near_tables:  near_tables,
             meetings:     meetings,
-            delegates:    delegates       # backward compat
+            delegates:    flat_delegates
           }
         end
 
         render json: {
-          year:         target_year,
-          date:         datetime.in_time_zone('Asia/Bangkok').to_date,
-          time:         datetime.in_time_zone('Asia/Bangkok').iso8601,  # ✅ Bangkok time
-          my_table:     my_schedule&.table_number,
-          layout:       layout,
-          tables:       tables,
-          times_today:  all_times_today,
-          days:         all_days
+          year:        target_year,
+          date:        bkk_date,
+          time:        datetime.in_time_zone('Asia/Bangkok').iso8601,
+          my_table:    my_schedule&.table_number,
+          layout:      layout,
+          tables:      tables,
+          times_today: all_times_today,
+          days:        all_days
         }
       end
 
       private
 
-      # ✅ สร้าง meeting info 2 ฝั่ง: booker (ผู้จอง) กับ team ที่ถูกจอง
-      def build_meeting_info(schedule)
-        booker = schedule.booker
-        team   = schedule.team   # belongs_to :team, foreign_key: :target_id
+      def parse_bangkok_datetime(year, date, time_str, fallback)
+        Time.zone.parse("#{year}-#{date.strftime('%m-%d')} #{time_str}")
+      rescue ArgumentError
+        fallback
+      end
 
-        side_a = if booker
+      def schedule_exists_in_year?(year)
+        Schedule
+          .where("EXTRACT(YEAR FROM start_at AT TIME ZONE 'Asia/Bangkok') = ?", year)
+          .where("delegate_id IS NOT NULL OR booker_id IS NOT NULL")
+          .exists?
+      end
+
+      # includes ครอบคลุมทั้ง booker และ delegate พร้อม company
+      def load_schedules_at(datetime)
+        Schedule
+          .includes(
+            :table,
+            booker:   :company,
+            delegate: :company,
+            team:     [:delegates, :company]
+          )
+          .where(start_at: datetime)
+          .where("delegate_id IS NOT NULL OR booker_id IS NOT NULL")
+      end
+
+      def detect_columns(numeric_tables)
+        first_table = numeric_tables.find_by(table_number: "1")
+        return 6 unless first_table
+
+        near     = YAML.safe_load(first_table.adjacent_tables || "--- []")
+        vertical = near.map(&:to_i).find { |n| n > 1 && (n - 1) > 1 }
+        vertical ? vertical - 1 : 6
+      rescue StandardError
+        6
+      end
+
+      # side_a: booker ก่อน fallback delegate
+      #   - verified: Schedule ที่ booker_id=nil AND delegate_id=nil = 0 → side_a ไม่มีทางเป็น null
+      # side_b: team via target_id
+      #   - verified: ทุก target_id เป็น Team ID → ไม่มีกรณีชนกับ Delegate
+      def build_meeting_info(schedule)
+        person_a = schedule.booker || schedule.delegate
+        team     = schedule.team
+
+        side_a = if person_a
           {
-            delegate_id: booker.id,
-            name:        booker.name,
-            title:       booker.title,
-            company_id:  booker.company_id,
-            company:     booker.company&.name || "N/A",
-            avatar_url:  "https://ui-avatars.com/api/?name=#{CGI.escape(booker.name)}"
+            delegate_id: person_a.id,
+            name:        person_a.name,
+            title:       person_a.title,
+            company_id:  person_a.company_id,
+            company:     person_a.company&.name || "N/A",
+            avatar_url:  "https://ui-avatars.com/api/?name=#{CGI.escape(person_a.name)}"
           }
         end
 
         side_b = if team
           members = team.delegates.map do |d|
             {
-              id:        d.id,
-              name:      d.name,
-              title:     d.title,
+              id:         d.id,
+              name:       d.name,
+              title:      d.title,
               avatar_url: "https://ui-avatars.com/api/?name=#{CGI.escape(d.name)}"
             }
           end
@@ -285,20 +275,18 @@ module Api
 
         {
           schedule_id: schedule.id,
-          start_at:    schedule.start_at&.in_time_zone('Asia/Bangkok')&.iso8601,  # ✅ Bangkok
+          start_at:    schedule.start_at&.in_time_zone('Asia/Bangkok')&.iso8601,
           end_at:      schedule.end_at&.in_time_zone('Asia/Bangkok')&.iso8601,
-          side_a:      side_a,   # booker (บริษัทที่จอง)
-          side_b:      side_b    # team/บริษัทที่ถูกนัด
+          side_a:      side_a,
+          side_b:      side_b
         }
       end
 
       def get_table_status(table_number)
         occupancy = get_table_occupancy(table_number)
-        if occupancy.zero?
-          "empty"
-        else
-          occupancy >= 4 ? "full" : "partial"
-        end
+        return "empty"   if occupancy.zero?
+        return "full"    if occupancy >= 4
+        "partial"
       end
 
       def get_table_occupancy(table_number)
