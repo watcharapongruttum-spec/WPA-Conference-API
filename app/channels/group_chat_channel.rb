@@ -1,6 +1,5 @@
 # app/channels/group_chat_channel.rb
 class GroupChatChannel < ApplicationCable::Channel
-
   def subscribed
     @room = ChatRoom.find(params[:room_id])
 
@@ -25,24 +24,23 @@ class GroupChatChannel < ApplicationCable::Channel
     return if content.blank?
 
     msg = @room.chat_messages.create!(
-      sender:  current_delegate,
+      sender: current_delegate,
       content: content
     )
 
     MessageRead.mark_for(delegate: current_delegate, message_ids: [msg.id])
 
     GroupChatChannel.broadcast_to(@room, {
-      type:    "group_message",
-      room_id: @room.id,
-      message: serialize_message(msg)
-    })
+                                    type: "group_message",
+                                    room_id: @room.id,
+                                    message: serialize_message(msg)
+                                  })
 
     notify_group_members(msg)
     push_to_offline_members(msg)
-
   rescue ActiveRecord::RecordInvalid => e
     transmit(type: "error", message: e.message)
-  rescue => e
+  rescue StandardError => e
     Rails.logger.error "[GroupChatChannel#speak] #{e.message}"
     transmit(type: "error", message: "Failed to send message")
   end
@@ -55,18 +53,17 @@ class GroupChatChannel < ApplicationCable::Channel
     return transmit(type: "error", message: "Message deleted") if msg.deleted?
 
     msg.update!(
-      content:   data["content"].to_s.strip,
+      content: data["content"].to_s.strip,
       edited_at: Time.current
     )
 
     GroupChatChannel.broadcast_to(@room, {
-      type:       "group_message_edited",
-      room_id:    @room.id,
-      message_id: msg.id,
-      content:    msg.content,
-      edited_at:  msg.edited_at
-    })
-
+                                    type: "group_message_edited",
+                                    room_id: @room.id,
+                                    message_id: msg.id,
+                                    content: msg.content,
+                                    edited_at: msg.edited_at
+                                  })
   rescue ActiveRecord::RecordInvalid => e
     transmit(type: "error", message: e.message)
   end
@@ -81,10 +78,10 @@ class GroupChatChannel < ApplicationCable::Channel
     msg.update!(deleted_at: Time.current)
 
     GroupChatChannel.broadcast_to(@room, {
-      type:       "group_message_deleted",
-      room_id:    @room.id,
-      message_id: msg.id
-    })
+                                    type: "group_message_deleted",
+                                    room_id: @room.id,
+                                    message_id: msg.id
+                                  })
   end
 
   # ================= ENTER ROOM =================
@@ -99,7 +96,7 @@ class GroupChatChannel < ApplicationCable::Channel
     return if unread_ids.empty?
 
     newly_read_ids = MessageRead.mark_for(
-      delegate:    current_delegate,
+      delegate: current_delegate,
       message_ids: unread_ids
     )
 
@@ -108,16 +105,16 @@ class GroupChatChannel < ApplicationCable::Channel
     now = Time.current
 
     GroupChatChannel.broadcast_to(@room, {
-      type:        "bulk_read",
-      room_id:     @room.id,
-      message_ids: newly_read_ids,
-      reader: {
-        id:         current_delegate.id,
-        name:       current_delegate.name,
-        avatar_url: current_delegate.avatar_url
-      },
-      read_at: now
-    })
+                                    type: "bulk_read",
+                                    room_id: @room.id,
+                                    message_ids: newly_read_ids,
+                                    reader: {
+                                      id: current_delegate.id,
+                                      name: current_delegate.name,
+                                      avatar_url: current_delegate.avatar_url
+                                    },
+                                    read_at: now
+                                  })
   end
 
   # ================= LEAVE ROOM =================
@@ -128,24 +125,25 @@ class GroupChatChannel < ApplicationCable::Channel
   # ================= TYPING =================
   def typing(_data)
     GroupChatChannel.broadcast_to(@room, {
-      type:        "typing",
-      room_id:     @room.id,
-      delegate_id: current_delegate.id,
-      name:        current_delegate.name
-    })
+                                    type: "typing",
+                                    room_id: @room.id,
+                                    delegate_id: current_delegate.id,
+                                    name: current_delegate.name
+                                  })
   end
 
   # ================= STOP TYPING =================
   def stop_typing(_data)
     GroupChatChannel.broadcast_to(@room, {
-      type:        "stop_typing",
-      room_id:     @room.id,
-      delegate_id: current_delegate.id
-    })
+                                    type: "stop_typing",
+                                    room_id: @room.id,
+                                    delegate_id: current_delegate.id
+                                  })
   end
 
   # =================================================
   private
+
   # =================================================
 
   def parse(data)
@@ -154,27 +152,27 @@ class GroupChatChannel < ApplicationCable::Channel
 
   def serialize_message(msg)
     readers = MessageRead
-                .includes(:delegate)
-                .where(chat_message_id: msg.id)
-                .where.not(delegate_id: msg.sender_id)
-                .map do |mr|
-                  {
-                    id:         mr.delegate.id,
-                    name:       mr.delegate.name,
-                    avatar_url: mr.delegate.avatar_url,
-                    read_at:    mr.read_at
-                  }
-                end
+              .includes(:delegate)
+              .where(chat_message_id: msg.id)
+              .where.not(delegate_id: msg.sender_id)
+              .map do |mr|
+                {
+                  id: mr.delegate.id,
+                  name: mr.delegate.name,
+                  avatar_url: mr.delegate.avatar_url,
+                  read_at: mr.read_at
+                }
+              end
 
     {
-      id:         msg.id,
-      content:    msg.content,
+      id: msg.id,
+      content: msg.content,
       created_at: msg.created_at,
-      edited_at:  msg.edited_at,
+      edited_at: msg.edited_at,
       deleted_at: msg.deleted_at,
       sender: {
-        id:         current_delegate.id,
-        name:       current_delegate.name,
+        id: current_delegate.id,
+        name: current_delegate.name,
         avatar_url: current_delegate.avatar_url
       },
       readers: readers
@@ -183,7 +181,7 @@ class GroupChatChannel < ApplicationCable::Channel
 
   def find_own_message(message_id)
     @room.chat_messages.find_by(
-      id:        message_id,
+      id: message_id,
       sender_id: current_delegate.id
     )
   end
@@ -196,26 +194,26 @@ class GroupChatChannel < ApplicationCable::Channel
     recipient_ids = @room.chat_room_members
                          .where.not(delegate_id: current_delegate.id)
                          .pluck(:delegate_id)
+    delegates = Delegate.where(id: recipient_ids).index_by(&:id)
 
     recipient_ids.each do |delegate_id|
       # ✅ FIX: ใส่ begin/end ใน each เพื่อให้ loop ทำงานต่อแม้ error
-      begin
-        next if REDIS.get("group_chat_open:#{@room.id}:#{delegate_id}") == "1"
 
-        delegate = Delegate.find_by(id: delegate_id)
-        next unless delegate
+      next if REDIS.get("group_chat_open:#{@room.id}:#{delegate_id}") == "1"
 
-        notification = ::Notification.create!(
-          delegate:          delegate,
-          notification_type: 'new_group_message',
-          notifiable:        msg
-        )
+      delegate = delegates[delegate_id]
+      next unless delegate
 
-        Rails.cache.delete("dashboard:#{delegate_id}:v1")
-        Notification::BroadcastService.call(notification)
-      rescue => e
-        Rails.logger.error "[GroupChatChannel] notify failed for delegate=#{delegate_id}: #{e.message}"
-      end
+      notification = ::Notification.create!(
+        delegate: delegate,
+        notification_type: "new_group_message",
+        notifiable: msg
+      )
+
+      Rails.cache.delete("dashboard:#{delegate_id}:v1")
+      Notification::BroadcastService.call(notification)
+    rescue StandardError => e
+      Rails.logger.error "[GroupChatChannel] notify failed for delegate=#{delegate_id}: #{e.message}"
     end
   end
 
@@ -230,10 +228,10 @@ class GroupChatChannel < ApplicationCable::Channel
 
       GroupMessagePushJob.perform_later(
         delegate_id: delegate_id,
-        room_id:     @room.id,
-        room_title:  @room.title,
+        room_id: @room.id,
+        room_title: @room.title,
         sender_name: current_delegate.name,
-        content:     msg.content
+        content: msg.content
       )
     end
   end

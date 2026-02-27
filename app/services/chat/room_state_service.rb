@@ -1,6 +1,5 @@
 module Chat
   class RoomStateService
-
     def self.open_room(viewer_id, target_id)
       REDIS.setex(ChatKeys.chat_open(viewer_id, target_id), 60, "1")
     end
@@ -20,6 +19,5 @@ module Chat
     def self.recipient_open?(recipient_id, sender_id)
       REDIS.get(ChatKeys.chat_open(recipient_id, sender_id)) == "1"
     end
-
   end
 end

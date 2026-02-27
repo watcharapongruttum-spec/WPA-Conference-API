@@ -10,7 +10,7 @@ class CreateMessageReads < ActiveRecord::Migration[7.0]
     end
 
     # กัน duplicate — delegate อ่าน message เดียวกันได้แค่ 1 ครั้ง
-    add_index :message_reads, [:chat_message_id, :delegate_id], unique: true
+    add_index :message_reads, %i[chat_message_id delegate_id], unique: true
 
     # query "ใครอ่าง message X บ้าง" เร็วขึ้น
     add_index :message_reads, :read_at

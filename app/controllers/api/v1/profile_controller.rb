@@ -2,7 +2,6 @@
 module Api
   module V1
     class ProfileController < BaseController
-
       # ==================
       # GET /api/v1/profile
       # GET /api/v1/profile/:id
@@ -10,6 +9,7 @@ module Api
       def show
         delegate = find_delegate
         return render_not_found unless delegate
+
         render json: build_profile_json(delegate)
       end
 
@@ -43,13 +43,13 @@ module Api
 
         if result[:success]
           render json: {
-            success:    true,
+            success: true,
             avatar_url: current_delegate.avatar_url
           }
         else
           render json: {
             success: false,
-            error:   result[:error]
+            error: result[:error]
           }, status: :unprocessable_entity
         end
       end
@@ -64,15 +64,15 @@ module Api
         # กรณี multipart/form-data — ได้ UploadedFile มาตรง ๆ
         if avatar_param.respond_to?(:content_type)
           return validate_and_attach(
-            io:           avatar_param,
+            io: avatar_param,
             content_type: avatar_param.content_type,
-            filename:     avatar_param.original_filename
+            filename: avatar_param.original_filename
           )
         end
 
         # กรณี application/json — base64 string
         if avatar_param.is_a?(String) && avatar_param.include?("base64,")
-          match = avatar_param.match(/\Adata:([-\w]+\/[-\w+]+)?;base64,(.*)/m)
+          match = avatar_param.match(%r{\Adata:([-\w]+/[-\w+]+)?;base64,(.*)}m)
           return { success: false, error: "Invalid base64 format" } unless match
 
           content_type = match[1] || "image/jpeg"
@@ -80,16 +80,15 @@ module Api
           extension    = content_type.split("/").last.gsub("jpeg", "jpg")
 
           return validate_and_attach(
-            io:           StringIO.new(decoded),
+            io: StringIO.new(decoded),
             content_type: content_type,
-            filename:     "avatar_#{current_delegate.id}.#{extension}",
-            size:         decoded.bytesize
+            filename: "avatar_#{current_delegate.id}.#{extension}",
+            size: decoded.bytesize
           )
         end
 
         { success: false, error: "Invalid avatar format" }
-
-      rescue => e
+      rescue StandardError => e
         Rails.logger.error "[ProfileController#attach_avatar] #{e.message}"
         { success: false, error: "Failed to process image" }
       end
@@ -97,23 +96,19 @@ module Api
       def validate_and_attach(io:, content_type:, filename:, size: nil)
         # เช็ค content type
         allowed = %w[image/jpeg image/jpg image/png image/webp]
-        unless allowed.include?(content_type)
-          return { success: false, error: "Only JPEG, PNG, WebP allowed" }
-        end
+        return { success: false, error: "Only JPEG, PNG, WebP allowed" } unless allowed.include?(content_type)
 
         # เช็ค size (ถ้ามี — multipart เช็คจาก .size, base64 ส่ง size มาเอง)
         file_size = size || (io.respond_to?(:size) ? io.size : 0)
-        if file_size > 5.megabytes
-          return { success: false, error: "Image must be less than 5MB" }
-        end
+        return { success: false, error: "Image must be less than 5MB" } if file_size > 5.megabytes
 
         # ลบรูปเก่าก่อน
         current_delegate.avatar.purge if current_delegate.avatar.attached?
 
         # attach ใหม่
         current_delegate.avatar.attach(
-          io:           io,
-          filename:     filename,
+          io: io,
+          filename: filename,
           content_type: content_type
         )
 
@@ -151,30 +146,29 @@ module Api
         company = delegate.company
         team    = delegate.team
         {
-          id:         delegate.id,
-          name:       delegate.name,
-          title:      delegate.title,
-          email:      delegate.email,
-          phone:      delegate.phone,
+          id: delegate.id,
+          name: delegate.name,
+          title: delegate.title,
+          email: delegate.email,
+          phone: delegate.phone,
           avatar_url: delegate.avatar_url,
           company: company && {
-            id:      company.id,
-            name:    company.name,
+            id: company.id,
+            name: company.name,
             country: company.country
           },
           team: team && {
-            id:           team.id,
-            name:         team.name,
+            id: team.id,
+            name: team.name,
             country_code: team.country_code
           },
           first_conference: delegate.first_conference,
           spouse_attending: delegate.spouse_attending,
-          spouse_name:      delegate.spouse_name,
-          need_room:        delegate.need_room,
-          booking_no:       delegate.booking_no
+          spouse_name: delegate.spouse_name,
+          need_room: delegate.need_room,
+          booking_no: delegate.booking_no
         }
       end
-
     end
   end
 end

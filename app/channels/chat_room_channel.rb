@@ -27,34 +27,34 @@ class ChatRoomChannel < ApplicationCable::Channel
     end
 
     payload = if msg
-      {
-        id: msg.id,
-        content: msg.content,
-        created_at: msg.created_at,
-        sender: {
-          id: current_delegate.id,
-          name: current_delegate.name,
-          avatar_url: current_delegate.avatar_url
-        }
-      }
-    else
-      {
-        id: SecureRandom.uuid,
-        content: content,
-        created_at: Time.current,
-        sender: {
-          id: current_delegate.id,
-          name: current_delegate.name,
-          avatar_url: current_delegate.avatar_url
-        }
-      }
-    end
+                {
+                  id: msg.id,
+                  content: msg.content,
+                  created_at: msg.created_at,
+                  sender: {
+                    id: current_delegate.id,
+                    name: current_delegate.name,
+                    avatar_url: current_delegate.avatar_url
+                  }
+                }
+              else
+                {
+                  id: SecureRandom.uuid,
+                  content: content,
+                  created_at: Time.current,
+                  sender: {
+                    id: current_delegate.id,
+                    name: current_delegate.name,
+                    avatar_url: current_delegate.avatar_url
+                  }
+                }
+              end
 
     ChatRoomChannel.broadcast_to(@room, {
-      type: "room_message",
-      room_id: @room.id,
-      message: payload
-    })
+                                   type: "room_message",
+                                   room_id: @room.id,
+                                   message: payload
+                                 })
 
     # ✅ เรียก instance method ถูกต้อง
     auto_read_if_open(msg) if msg
@@ -86,10 +86,10 @@ class ChatRoomChannel < ApplicationCable::Channel
     msg.update!(content: data["content"], edited_at: Time.current)
 
     ChatRoomChannel.broadcast_to(@room, {
-      type: "room_message_updated",
-      message_id: msg.id,
-      content: msg.content
-    })
+                                   type: "room_message_updated",
+                                   message_id: msg.id,
+                                   content: msg.content
+                                 })
   end
 
   # ================= DELETE =================
@@ -101,13 +101,14 @@ class ChatRoomChannel < ApplicationCable::Channel
     msg.update!(deleted_at: Time.current)
 
     ChatRoomChannel.broadcast_to(@room, {
-      type: "room_message_deleted",
-      message_id: msg.id
-    })
+                                   type: "room_message_deleted",
+                                   message_id: msg.id
+                                 })
   end
 
   # =================================================
   private
+
   # =================================================
 
   def parse(data)
@@ -129,6 +130,7 @@ class ChatRoomChannel < ApplicationCable::Channel
   def other_user_open?
     other = other_user
     return false unless other
+
     redis.get(presence_key(other.id, current_delegate.id)) == "1"
   end
 
@@ -140,10 +142,10 @@ class ChatRoomChannel < ApplicationCable::Channel
     msg.update!(read_at: Time.current)
 
     ChatRoomChannel.broadcast_to(@room, {
-      type: "message_read",
-      message_id: msg.id,
-      read_at: msg.read_at
-    })
+                                   type: "message_read",
+                                   message_id: msg.id,
+                                   read_at: msg.read_at
+                                 })
   end
 
   def mark_conversation_as_read(target_id)
@@ -162,9 +164,9 @@ class ChatRoomChannel < ApplicationCable::Channel
     ChatMessage.where(id: ids).update_all(read_at: now)
 
     ChatRoomChannel.broadcast_to(@room, {
-      type: "bulk_read",
-      message_ids: ids,
-      read_at: now
-    })
+                                   type: "bulk_read",
+                                   message_ids: ids,
+                                   read_at: now
+                                 })
   end
 end

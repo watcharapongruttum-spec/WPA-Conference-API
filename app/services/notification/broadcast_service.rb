@@ -4,13 +4,13 @@ class Notification::BroadcastService
 
   def self.call(notification)
     serialized = Api::V1::NotificationSerializer
-                   .new(notification)
-                   .serializable_hash
+                 .new(notification)
+                 .serializable_hash
 
     # ActionCable ส่งทุก type เสมอ (in-app notification)
     NotificationChannel.broadcast_to(
       notification.delegate,
-      type:         'new_notification',
+      type: "new_notification",
       notification: serialized
     )
 

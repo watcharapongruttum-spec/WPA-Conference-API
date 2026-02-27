@@ -7,7 +7,7 @@ module Api
           @delegates = Delegate.includes(:company, :team)
                                .page(params[:page] || 1)
                                .per(20)
-          
+
           render json: @delegates, each_serializer: Api::V1::Networking::DirectorySerializer
         end
       end

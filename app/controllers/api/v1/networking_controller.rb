@@ -2,11 +2,10 @@
 module Api
   module V1
     class NetworkingController < ApplicationController
-
       # GET /api/v1/networking/directory
       def directory
         @delegates = Delegate.includes(:company, :team)
-                             .where.not(name: [nil, ''])
+                             .where.not(name: [nil, ""])
                              .where.not(id: current_delegate.id)
                              .order(name: :asc)
                              .page(params[:page] || 1)
@@ -16,13 +15,12 @@ module Api
         render json: @delegates,
                each_serializer: Api::V1::Networking::DirectorySerializer,
                scope: current_delegate
-
       rescue StandardError => e
         Rails.logger.error "Directory Error: #{e.class} - #{e.message}"
         Rails.logger.error e.backtrace.first(10).join("\n")
 
         render json: {
-          error: 'Failed to load directory',
+          error: "Failed to load directory",
           message: Rails.env.development? ? e.message : nil
         }, status: :internal_server_error
       end
@@ -30,21 +28,20 @@ module Api
       def unfriend
         delegate_id = params[:delegate_id]
         target = Delegate.find_by(id: delegate_id)
-        return render json: { error: 'Delegate not found' }, status: :not_found unless target
+        return render json: { error: "Delegate not found" }, status: :not_found unless target
 
+        # ✅ FIX: query ถูกต้อง — หา pair (A→B หรือ B→A)
         connection = Connection.where(
-          requester_id: [current_delegate.id, target.id]
-        ).where(
-          target_id: [current_delegate.id, target.id]
+          "(requester_id = :me AND target_id = :other) OR (requester_id = :other AND target_id = :me)",
+          me: current_delegate.id, other: target.id
         ).first
 
         conn_request = ConnectionRequest.where(
-          requester_id: [current_delegate.id, target.id]
-        ).where(
-          target_id: [current_delegate.id, target.id]
+          "(requester_id = :me AND target_id = :other) OR (requester_id = :other AND target_id = :me)",
+          me: current_delegate.id, other: target.id
         ).first
 
-        return render json: { error: 'Connection not found' }, status: :not_found \
+        return render json: { error: "Connection not found" }, status: :not_found \
           unless connection || conn_request
 
         ActiveRecord::Base.transaction do
@@ -52,7 +49,7 @@ module Api
           conn_request&.destroy
         end
 
-        render json: { message: 'Unfriended successfully' }, status: :ok
+        render json: { message: "Unfriended successfully" }, status: :ok
       end
 
       # GET /api/v1/networking/my_connections
@@ -63,11 +60,10 @@ module Api
                                  .includes(:requester, :target)
 
         render json: @connections, each_serializer: Api::V1::Networking::ConnectionSerializer
-
       rescue StandardError => e
         Rails.logger.error "My Connections Error: #{e.class} - #{e.message}"
         render json: {
-          error: 'Failed to load connections',
+          error: "Failed to load connections",
           message: Rails.env.development? ? e.message : nil
         }, status: :internal_server_error
       end
@@ -79,15 +75,13 @@ module Api
                                  .includes(:requester)
 
         render json: @connections, each_serializer: Api::V1::Networking::ConnectionSerializer
-
       rescue StandardError => e
         Rails.logger.error "Pending Requests Error: #{e.class} - #{e.message}"
         render json: {
-          error: 'Failed to load requests',
+          error: "Failed to load requests",
           message: Rails.env.development? ? e.message : nil
         }, status: :internal_server_error
       end
-
     end
   end
 end

@@ -6,8 +6,7 @@ class Api::V1::LeaveFormsController < ApplicationController
     )
 
     render json: result
-
-  rescue => e
+  rescue StandardError => e
     render json: { error: e.message }, status: :unprocessable_entity
   end
 
@@ -16,7 +15,7 @@ class Api::V1::LeaveFormsController < ApplicationController
   def leave_form_params
     params.require(:leave_form).permit(
       leaves: [
-        :schedule_id,    # ← เพิ่มบรรทัดนี้
+        :schedule_id, # ← เพิ่มบรรทัดนี้
         :start_date,
         :end_date,
         :reason,

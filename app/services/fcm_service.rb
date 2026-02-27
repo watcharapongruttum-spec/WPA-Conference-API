@@ -1,15 +1,15 @@
-require 'googleauth'
-require 'net/http'
-require 'json'
+require "googleauth"
+require "net/http"
+require "json"
 
 class FcmService
-  SCOPE = 'https://www.googleapis.com/auth/firebase.messaging'
+  SCOPE = "https://www.googleapis.com/auth/firebase.messaging".freeze
 
   def self.send_push(token:, title:, body:, data: {})
     return false if token.blank?
 
     debug_id = SecureRandom.hex(4)
-    started_at = Time.current
+    Time.current
 
     Rails.logger.warn "🚀 [FCM-#{debug_id}] START token=#{token.last(10)} title=#{title}"
 
@@ -49,8 +49,8 @@ class FcmService
     http.use_ssl = true
 
     request = Net::HTTP::Post.new(uri)
-    request['Authorization'] = "Bearer #{access_token}"
-    request['Content-Type'] = 'application/json'
+    request["Authorization"] = "Bearer #{access_token}"
+    request["Content-Type"] = "application/json"
     request.body = payload_hash.to_json
 
     duration = Benchmark.realtime do
@@ -59,7 +59,7 @@ class FcmService
 
     Rails.logger.warn "⏱ [FCM-#{debug_id}] duration=#{(duration * 1000).round}ms"
 
-    if @response.code == '200'
+    if @response.code == "200"
       Rails.logger.warn "✅ [FCM-#{debug_id}] SUCCESS #{token.last(10)}"
       true
     else
@@ -67,13 +67,10 @@ class FcmService
       handle_invalid_token(token, @response.body)
       false
     end
-
-  rescue => e
+  rescue StandardError => e
     Rails.logger.error "💥 [FCM-#{debug_id}] EXCEPTION #{e.class} #{e.message}"
     false
   end
-
-  private
 
   def self.fcm_endpoint
     "https://fcm.googleapis.com/v1/projects/#{ENV.fetch('FIREBASE_PROJECT_ID')}/messages:send"
@@ -83,10 +80,10 @@ class FcmService
   def self.fetch_access_token
     Rails.cache.fetch("fcm_access_token", expires_in: 50.minutes) do
       json_io =
-        if ENV['FIREBASE_CREDENTIALS_JSON'].present?
-          StringIO.new(ENV['FIREBASE_CREDENTIALS_JSON'])
+        if ENV["FIREBASE_CREDENTIALS_JSON"].present?
+          StringIO.new(ENV["FIREBASE_CREDENTIALS_JSON"])
         else
-          File.open(Rails.root.join(ENV.fetch('FIREBASE_CREDENTIALS_PATH')))
+          File.open(Rails.root.join(ENV.fetch("FIREBASE_CREDENTIALS_PATH")))
         end
 
       credentials = Google::Auth::ServiceAccountCredentials.make_creds(
@@ -94,9 +91,9 @@ class FcmService
         scope: SCOPE
       )
 
-      credentials.fetch_access_token!['access_token']
+      credentials.fetch_access_token!["access_token"]
     end
-  rescue => e
+  rescue StandardError => e
     Rails.logger.error "❌ FCM Auth Error: #{e.message}"
     nil
   end

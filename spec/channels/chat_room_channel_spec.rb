@@ -1,8 +1,7 @@
 # spec/channels/chat_room_channel_spec.rb
-require 'rails_helper'
+require "rails_helper"
 
 RSpec.describe ChatRoomChannel, type: :channel do
-
   let(:delegate1) { create(:delegate) }
   let(:delegate2) { create(:delegate) }
   let(:room) do
@@ -28,9 +27,9 @@ RSpec.describe ChatRoomChannel, type: :channel do
 
   describe "#send_message" do
     it "broadcasts room_message" do
-      expect {
+      expect do
         perform :send_message, content: "Hello"
-      }.to have_broadcasted_to(room).with(
+      end.to have_broadcasted_to(room).with(
         hash_including(type: "room_message")
       )
     end
@@ -57,9 +56,9 @@ RSpec.describe ChatRoomChannel, type: :channel do
     end
 
     it "ignores blank content" do
-      expect {
+      expect do
         perform :send_message, content: "   "
-      }.not_to change(ChatMessage, :count)
+      end.not_to change(ChatMessage, :count)
     end
   end
 
@@ -103,5 +102,4 @@ RSpec.describe ChatRoomChannel, type: :channel do
       expect(subscription).to be_rejected
     end
   end
-
 end

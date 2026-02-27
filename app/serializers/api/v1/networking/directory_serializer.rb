@@ -1,5 +1,5 @@
 # app/serializers/api/v1/networking/directory_serializer.rb
-require 'cgi'
+require "cgi"
 
 module Api
   module V1
@@ -8,11 +8,11 @@ module Api
         attributes :id, :name, :title, :company_name, :avatar_url, :country_code, :is_connected
 
         def company_name
-          object.company&.name || 'N/A'
+          object.company&.name || "N/A"
         end
 
         def country_code
-          object.company&.country || 'N/A'
+          object.company&.country || "N/A"
         end
 
         # ✅ แก้แล้ว

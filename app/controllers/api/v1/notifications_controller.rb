@@ -1,28 +1,27 @@
 module Api
   module V1
     class NotificationsController < ApplicationController
-
       # GET /api/v1/notifications
       def index
         notifications = current_delegate.notifications
 
         case params[:type]
-        when 'system'
-          notifications = notifications.where.not(notification_type: 'new_message')
-        when 'message'
-          notifications = notifications.where(notification_type: 'new_message')
+        when "system"
+          notifications = notifications.where.not(notification_type: "new_message")
+        when "message"
+          notifications = notifications.where(notification_type: "new_message")
         end
 
         @notifications = notifications
-          .order(created_at: :desc)
-          .limit(50)
-          .includes(
-            notifiable: [
-              { sender: { avatar_attachment: :blob } },
-              { requester: { avatar_attachment: :blob } },
-              { target: { avatar_attachment: :blob } }
-            ]
-          )
+                         .order(created_at: :desc)
+                         .limit(50)
+                         .includes(
+                           notifiable: [
+                             { sender: { avatar_attachment: :blob } },
+                             { requester: { avatar_attachment: :blob } },
+                             { target: { avatar_attachment: :blob } }
+                           ]
+                         )
 
         render json: @notifications,
                each_serializer: Api::V1::NotificationSerializer
@@ -33,14 +32,14 @@ module Api
         @notification = current_delegate.notifications.find_by(id: params[:id])
 
         if @notification.nil?
-          render json: { error: 'Notification not found or does not belong to you' },
+          render json: { error: "Notification not found or does not belong to you" },
                  status: :not_found
           return
         end
 
         if @notification.read_at.present?
           render json: {
-            message: 'Notification already marked as read',
+            message: "Notification already marked as read",
             data: Api::V1::NotificationSerializer.new(@notification).serializable_hash
           }, status: :ok
           return
@@ -50,7 +49,7 @@ module Api
           render json: @notification, serializer: Api::V1::NotificationSerializer
         else
           render json: {
-            error: 'Failed to mark notification as read',
+            error: "Failed to mark notification as read",
             errors: @notification.errors.full_messages
           }, status: :unprocessable_entity
         end
@@ -61,18 +60,18 @@ module Api
         scope = current_delegate.notifications.where(read_at: nil)
 
         case params[:type]
-        when 'system'
-          scope = scope.where.not(notification_type: 'new_message')
-        when 'message'
-          scope = scope.where(notification_type: 'new_message')
+        when "system"
+          scope = scope.where.not(notification_type: "new_message")
+        when "message"
+          scope = scope.where(notification_type: "new_message")
         end
 
         updated_count = scope.count
         scope.update_all(read_at: Time.current)
-        Rails.cache.delete("dashboard:#{current_delegate.id}:v1")  # ← เพิ่ม
+        Rails.cache.delete("dashboard:#{current_delegate.id}:v1") # ← เพิ่ม
 
         render json: {
-          message: 'All notifications marked as read',
+          message: "All notifications marked as read",
           count: updated_count
         }
       end
@@ -82,15 +81,14 @@ module Api
         scope = current_delegate.notifications.where(read_at: nil)
 
         case params[:type]
-        when 'system'
-          scope = scope.where.not(notification_type: 'new_message')
-        when 'message'
-          scope = scope.where(notification_type: 'new_message')
+        when "system"
+          scope = scope.where.not(notification_type: "new_message")
+        when "message"
+          scope = scope.where(notification_type: "new_message")
         end
 
         render json: { unread_count: scope.count }
       end
-
     end
   end
 end

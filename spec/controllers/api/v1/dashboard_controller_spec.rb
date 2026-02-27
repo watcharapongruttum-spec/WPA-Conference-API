@@ -1,15 +1,14 @@
 # spec/controllers/api/v1/dashboard_controller_spec.rb
-require 'rails_helper'
+require "rails_helper"
 
 RSpec.describe Api::V1::DashboardController, type: :controller do
-
   describe "GET #show" do
     let(:me)      { create(:delegate) }
     let(:other)   { create(:delegate) }
     let(:room)    { create(:chat_room, room_kind: :group) }
 
     before do
-      request.headers['Authorization'] = "Bearer #{me.generate_jwt_token}"
+      request.headers["Authorization"] = "Bearer #{me.generate_jwt_token}"
       room.chat_room_members.create!(delegate: me,    role: :member)
       room.chat_room_members.create!(delegate: other, role: :member)
     end
@@ -20,7 +19,7 @@ RSpec.describe Api::V1::DashboardController, type: :controller do
     context "group unread count" do
       it "counts unread group messages correctly via MessageRead" do
         # other ส่ง message — me ยังไม่ได้อ่าน
-        msg = create(:chat_message, chat_room: room, sender: other, content: "hello")
+        create(:chat_message, chat_room: room, sender: other, content: "hello")
 
         get :show
         data = JSON.parse(response.body)
@@ -51,7 +50,7 @@ RSpec.describe Api::V1::DashboardController, type: :controller do
 
       it "does NOT count deleted messages" do
         create(:chat_message, chat_room: room, sender: other,
-               content: "deleted", deleted_at: Time.current)
+                              content: "deleted", deleted_at: Time.current)
 
         get :show
         data = JSON.parse(response.body)
@@ -72,6 +71,5 @@ RSpec.describe Api::V1::DashboardController, type: :controller do
         expect(data["new_messages_count"]).to eq(2)
       end
     end
-
   end
 end

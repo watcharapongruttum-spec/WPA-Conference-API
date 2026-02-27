@@ -1,6 +1,5 @@
 # app/controllers/api/v1/admin/announcements_controller.rb
 class Api::V1::Admin::AnnouncementsController < Api::V1::BaseController
-
   def create
     message = params[:message] || params.dig(:notification, :message)
 
@@ -15,10 +14,10 @@ class Api::V1::Admin::AnnouncementsController < Api::V1::BaseController
     Delegate.find_each do |delegate|
       # ✅ 1. Real-time ผ่าน ActionCable (ตอนแอปเปิดอยู่)
       NotificationChannel.broadcast_to(delegate, {
-        type: "admin_announce",
-        message: message,
-        sent_at: sent_at
-      })
+                                         type: "admin_announce",
+                                         message: message,
+                                         sent_at: sent_at
+                                       })
 
       # ✅ 2. FCM Push ผ่าน Background Job (ไม่ block request แล้ว)
       if delegate.device_token.present? && delegate.device_token.length >= 20
@@ -32,8 +31,7 @@ class Api::V1::Admin::AnnouncementsController < Api::V1::BaseController
     render json: {
       status: "ok",
       message: message,
-      push_queued: push_count   # เปลี่ยนชื่อ key ให้ตรงความจริง
+      push_queued: push_count # เปลี่ยนชื่อ key ให้ตรงความจริง
     }, status: :ok
   end
-
 end

@@ -1,7 +1,7 @@
 # app/services/chat/presence_service.rb
 module Chat
   class PresenceService
-    CONN_PREFIX = "chat:connections"
+    CONN_PREFIX = "chat:connections".freeze
     TTL = 30.seconds
 
     # -------------------------
@@ -42,7 +42,7 @@ module Chat
     # Is user online?
     # -------------------------
     def self.online?(user_id)
-      connection_count(user_id) > 0
+      connection_count(user_id).positive?
     end
 
     # -------------------------
@@ -51,10 +51,10 @@ module Chat
     def self.refresh(user_id)
       key = conn_key(user_id)
 
-      if connection_count(user_id) > 0
-        REDIS.expire(key, TTL)
-        Rails.logger.debug "[Presence] user=#{user_id} refreshed"
-      end
+      return unless connection_count(user_id).positive?
+
+      REDIS.expire(key, TTL)
+      Rails.logger.debug "[Presence] user=#{user_id} refreshed"
     end
 
     # -------------------------
@@ -65,7 +65,7 @@ module Chat
     end
 
     # -------------------------
-    private
+
     # -------------------------
     def self.conn_key(user_id)
       "#{CONN_PREFIX}:#{user_id}"

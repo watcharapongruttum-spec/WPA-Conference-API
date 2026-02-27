@@ -2,7 +2,6 @@
 module Api
   module V1
     class DevicesController < ApplicationController
-
       # PATCH /api/v1/device_token
       def update
         unless params[:device].present?
@@ -33,7 +32,6 @@ module Api
         end
 
         render json: { success: true }
-
       rescue ActiveRecord::RecordInvalid => e
         render json: { error: e.message }, status: :unprocessable_entity
       end

@@ -53,6 +53,7 @@ class Api::V1::ScheduleSerializer < ActiveModel::Serializer
   # ===============================
   def duration_minutes
     return 0 unless object.start_at && object.end_at
+
     ((object.end_at - object.start_at) / 60).to_i
   end
 
@@ -77,14 +78,14 @@ class Api::V1::ScheduleSerializer < ActiveModel::Serializer
     }
   end
 
-
   # ===============================
   # PRIVATE
   # ===============================
   private
+
   def format_time(time)
     return nil unless time
+
     time.utc.iso8601(3)
   end
-
 end

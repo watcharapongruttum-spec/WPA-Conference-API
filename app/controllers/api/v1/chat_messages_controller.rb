@@ -3,9 +3,7 @@ class Api::V1::ChatMessagesController < ApplicationController
   def create
     room = ChatRoom.find(params[:chat_room_id])
 
-    unless room.can_send_message?(current_delegate)
-      return render json: { error: "Not allowed" }, status: :forbidden
-    end
+    return render json: { error: "Not allowed" }, status: :forbidden unless room.can_send_message?(current_delegate)
 
     message = room.chat_messages.create!(
       sender: current_delegate,
@@ -13,14 +11,14 @@ class Api::V1::ChatMessagesController < ApplicationController
     )
 
     serialized = Api::V1::ChatMessageSerializer
-                   .new(message)
-                   .serializable_hash[:data]
+                 .new(message)
+                 .serializable_hash[:data]
 
     ChatRoomChannel.broadcast_to(room, {
-      type: "room_message",
-      room_id: room.id,
-      message: serialized
-    })
+                                   type: "room_message",
+                                   room_id: room.id,
+                                   message: serialized
+                                 })
 
     render json: message, serializer: Api::V1::ChatMessageSerializer
   end

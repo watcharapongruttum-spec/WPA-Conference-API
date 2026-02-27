@@ -1,5 +1,4 @@
 class Rack::Attack
-
   # ==========================================
   # CACHE STORE
   # ==========================================
@@ -12,6 +11,7 @@ class Rack::Attack
     def bearer_token
       auth = get_header('HTTP_AUTHORIZATION')
       return nil unless auth&.start_with?('Bearer ')
+
       auth.split(' ').last
     end
 
@@ -44,27 +44,24 @@ class Rack::Attack
     # 🚀 Burst protection (กัน spam รัวใน 1 วินาที)
     throttle('messages/burst', limit: 20, period: 1.second) do |req|
       next unless req.post? && req.path.start_with?('/api/v1/messages')
+
       req.jwt_delegate_id || req.ip
     end
 
     # 🛡 Normal usage
     throttle('messages/normal', limit: 300, period: 1.minute) do |req|
       next unless req.post? && req.path.start_with?('/api/v1/messages')
+
       req.jwt_delegate_id || req.ip
     end
 
   end
 
-
-
-
   # ==========================================
   # DEVICE TOKEN (กัน spam update DB)
   # ==========================================
   throttle('device_token/user', limit: 10, period: 1.minute) do |req|
-    if req.patch? && req.path == '/api/v1/device_token'
-      req.jwt_delegate_id || req.ip
-    end
+    req.jwt_delegate_id || req.ip if req.patch? && req.path == '/api/v1/device_token'
   end
 
   # ==========================================
@@ -109,22 +106,7 @@ class Rack::Attack
     Rails.logger.warn "[Rack::Attack] #{payload[:filter]} blocked #{payload[:request].ip}"
   end
 
-
-
-
-
-
-
   throttle('reset_password/ip', limit: 5, period: 30.minute) do |req|
     req.ip if req.post? && req.path == '/api/v1/reset_password'
   end
-
-
-
-
-
-
-
-
-
 end

@@ -2,8 +2,8 @@
 module Api
   module V1
     class GroupChatController < ApplicationController
-      before_action :set_room,      except: [:index, :create_room]
-      before_action :verify_member, except: [:index, :create_room, :join]
+      before_action :set_room,      except: %i[index create_room]
+      before_action :verify_member, except: %i[index create_room join]
 
       # GET /api/v1/group_chat
       def index
@@ -19,17 +19,16 @@ module Api
       # POST /api/v1/group_chat
       def create_room
         room = ChatRoom.create!(
-          title:     params[:title],
+          title: params[:title],
           room_kind: :group
         )
 
         room.chat_room_members.create!(
           delegate_id: current_delegate.id,
-          role:        :admin
+          role: :admin
         )
 
         render json: serialize_room(room), status: :created
-
       rescue ActiveRecord::RecordInvalid => e
         render json: { error: e.record.errors.full_messages.join(", ") },
                status: :unprocessable_entity
@@ -43,7 +42,7 @@ module Api
 
         @room.chat_room_members.create!(
           delegate_id: current_delegate.id,
-          role:        :member
+          role: :member
         )
 
         render json: { success: true, room_id: @room.id }
@@ -55,7 +54,7 @@ module Api
         return render json: { error: "Not a member" }, status: :unprocessable_entity unless member
 
         if member.role == "admin" &&
-           @room.chat_room_members.where(role: :admin).count == 1
+           @room.chat_room_members.where(role: :admin).one?
           return render json: { error: "Last admin cannot leave" },
                         status: :unprocessable_entity
         end
@@ -76,9 +75,7 @@ module Api
 
       # GET /api/v1/group_chat/:id/messages
       def messages
-        if @room.deleted_at.present?
-          return render json: { error: "Room has been deleted" }, status: :gone
-        end
+        return render json: { error: "Room has been deleted" }, status: :gone if @room.deleted_at.present?
 
         page = (params[:page] || 1).to_i
         per  = [(params[:per] || 50).to_i, 100].min
@@ -92,8 +89,8 @@ module Api
         render json: {
           data: msgs.map { |m| serialize_message(m) },
           meta: {
-            page:        page,
-            per:         per,
+            page: page,
+            per: per,
             total_pages: msgs.total_pages,
             total_count: msgs.total_count
           }
@@ -104,30 +101,33 @@ module Api
       def send_message
         content = params[:content].to_s.strip
 
-        return render json: { error: "Content cannot be blank" },
-                      status: :unprocessable_entity if content.blank?
+        if content.blank?
+          return render json: { error: "Content cannot be blank" },
+                        status: :unprocessable_entity
+        end
 
-        return render json: { error: "Content too long (max 2000)" },
-                      status: :unprocessable_entity if content.length > 2000
+        if content.length > 2000
+          return render json: { error: "Content too long (max 2000)" },
+                        status: :unprocessable_entity
+        end
 
         msg = @room.chat_messages.create!(
-          sender:  current_delegate,
+          sender: current_delegate,
           content: content
         )
 
         MessageRead.mark_for(delegate: current_delegate, message_ids: [msg.id])
 
         GroupChatChannel.broadcast_to(@room, {
-          type:    "group_message",
-          room_id: @room.id,
-          message: serialize_message(msg)
-        })
+                                        type: "group_message",
+                                        room_id: @room.id,
+                                        message: serialize_message(msg)
+                                      })
 
         notify_group_members(msg)
         push_to_offline_members(msg)
 
         render json: serialize_message(msg), status: :created
-
       rescue ActiveRecord::RecordInvalid => e
         render json: { error: e.record.errors.full_messages.join(", ") },
                status: :unprocessable_entity
@@ -139,23 +139,23 @@ module Api
         return render json: { error: "Message not found" }, status: :not_found unless message
 
         readers = MessageRead
-                    .includes(:delegate)
-                    .where(chat_message_id: message.id)
-                    .where.not(delegate_id: message.sender_id)
-                    .map do |mr|
-                      {
-                        id:         mr.delegate.id,
-                        name:       mr.delegate.name,
-                        avatar_url: mr.delegate.avatar_url,
-                        read_at:    mr.read_at
-                      }
-                    end
+                  .includes(:delegate)
+                  .where(chat_message_id: message.id)
+                  .where.not(delegate_id: message.sender_id)
+                  .map do |mr|
+                    {
+                      id: mr.delegate.id,
+                      name: mr.delegate.name,
+                      avatar_url: mr.delegate.avatar_url,
+                      read_at: mr.read_at
+                    }
+                  end
 
         render json: {
-          message_id:    message.id,
+          message_id: message.id,
           total_members: @room.chat_room_members.count,
-          read_count:    readers.size + 1,
-          readers:       readers
+          read_count: readers.size + 1,
+          readers: readers
         }
       end
 
@@ -168,17 +168,17 @@ module Api
       end
 
       def verify_member
-        unless @room.chat_room_members.exists?(delegate_id: current_delegate.id)
-          render json: { error: "Not a member of this room" }, status: :forbidden
-        end
+        return if @room.chat_room_members.exists?(delegate_id: current_delegate.id)
+
+        render json: { error: "Not a member of this room" }, status: :forbidden
       end
 
       def serialize_room(room)
         {
-          id:           room.id,
-          title:        room.title,
+          id: room.id,
+          title: room.title,
           member_count: room.chat_room_members.count,
-          created_at:   room.created_at
+          created_at: room.created_at
         }
       end
 
@@ -186,49 +186,49 @@ module Api
         sender = msg.sender
 
         readers = if msg.association(:message_reads).loaded?
-          msg.message_reads
-            .reject { |mr| mr.delegate_id == msg.sender_id }
-            .map do |mr|
-              {
-                id:         mr.delegate.id,
-                name:       mr.delegate.name,
-                avatar_url: mr.delegate.avatar_url.presence ||
+                    msg.message_reads
+                       .reject { |mr| mr.delegate_id == msg.sender_id }
+                       .map do |mr|
+                         {
+                           id: mr.delegate.id,
+                           name: mr.delegate.name,
+                           avatar_url: mr.delegate.avatar_url.presence ||
+                             "https://ui-avatars.com/api/?name=#{CGI.escape(mr.delegate.name.presence || 'Unknown')}",
+                           read_at: mr.read_at
+                         }
+                       end
+                  else
+                    MessageRead
+                      .includes(:delegate)
+                      .where(chat_message_id: msg.id)
+                      .where.not(delegate_id: msg.sender_id)
+                      .map do |mr|
+                        {
+                          id: mr.delegate.id,
+                          name: mr.delegate.name,
+                          avatar_url: mr.delegate.avatar_url.presence ||
                             "https://ui-avatars.com/api/?name=#{CGI.escape(mr.delegate.name.presence || 'Unknown')}",
-                read_at:    mr.read_at
-              }
-            end
-        else
-          MessageRead
-            .includes(:delegate)
-            .where(chat_message_id: msg.id)
-            .where.not(delegate_id: msg.sender_id)
-            .map do |mr|
-              {
-                id:         mr.delegate.id,
-                name:       mr.delegate.name,
-                avatar_url: mr.delegate.avatar_url.presence ||
-                            "https://ui-avatars.com/api/?name=#{CGI.escape(mr.delegate.name.presence || 'Unknown')}",
-                read_at:    mr.read_at
-              }
-            end
-        end
+                          read_at: mr.read_at
+                        }
+                      end
+                  end
 
         {
-          id:         msg.id,
-          content:    msg.deleted_at? ? nil : msg.content,
+          id: msg.id,
+          content: msg.deleted_at? ? nil : msg.content,
           created_at: msg.created_at,
-          edited_at:  msg.edited_at,
+          edited_at: msg.edited_at,
           deleted_at: msg.deleted_at,
           is_deleted: msg.deleted_at?,
-          is_edited:  msg.edited_at?,
-          read_at:    msg.read_at,
+          is_edited: msg.edited_at?,
+          read_at: msg.read_at,
           sender: {
-            id:           sender&.id,
-            name:         sender&.name,
-            title:        sender&.title,
+            id: sender&.id,
+            name: sender&.name,
+            title: sender&.title,
             company_name: sender&.company&.name,
-            avatar_url:   sender&.avatar_url.presence ||
-                          "https://ui-avatars.com/api/?name=#{CGI.escape(sender&.name.presence || 'Unknown')}"
+            avatar_url: sender&.avatar_url.presence ||
+              "https://ui-avatars.com/api/?name=#{CGI.escape(sender&.name.presence || 'Unknown')}"
           },
           readers: readers
         }
@@ -238,26 +238,26 @@ module Api
         recipient_ids = @room.chat_room_members
                              .where.not(delegate_id: current_delegate.id)
                              .pluck(:delegate_id)
+        delegates = Delegate.where(id: recipient_ids).index_by(&:id)
 
         recipient_ids.each do |delegate_id|
           # ✅ FIX: ใส่ begin/end ใน each เพื่อให้ loop ทำงานต่อแม้ error
-          begin
-            next if REDIS.get("group_chat_open:#{@room.id}:#{delegate_id}") == "1"
 
-            delegate = Delegate.find_by(id: delegate_id)
-            next unless delegate
+          next if REDIS.get("group_chat_open:#{@room.id}:#{delegate_id}") == "1"
 
-            notification = ::Notification.create!(
-              delegate:          delegate,
-              notification_type: 'new_group_message',
-              notifiable:        msg
-            )
+          delegate = delegates[delegate_id]
+          next unless delegate
 
-            Rails.cache.delete("dashboard:#{delegate_id}:v1")
-            Notification::BroadcastService.call(notification)
-          rescue => e
-            Rails.logger.error "[GroupChat] notify failed for delegate=#{delegate_id}: #{e.message}"
-          end
+          notification = ::Notification.create!(
+            delegate: delegate,
+            notification_type: "new_group_message",
+            notifiable: msg
+          )
+
+          Rails.cache.delete("dashboard:#{delegate_id}:v1")
+          Notification::BroadcastService.call(notification)
+        rescue StandardError => e
+          Rails.logger.error "[GroupChat] notify failed for delegate=#{delegate_id}: #{e.message}"
         end
       end
 
@@ -272,10 +272,10 @@ module Api
 
           GroupMessagePushJob.perform_later(
             delegate_id: delegate_id,
-            room_id:     @room.id,
-            room_title:  @room.title,
+            room_id: @room.id,
+            room_title: @room.title,
             sender_name: current_delegate.name,
-            content:     msg.content
+            content: msg.content
           )
         end
       end

@@ -1,5 +1,5 @@
-require_relative "boot"
-require "rails/all"
+require_relative 'boot'
+require 'rails/all'
 
 Bundler.require(*Rails.groups)
 
@@ -25,13 +25,12 @@ module WPAConferenceApi
     # CACHE (จำเป็นสำหรับ Rack::Attack)
     # ==============================
     # config.cache_store = :memory_store
-      config.cache_store = :redis_cache_store, { url: ENV['REDIS_URL'] }
-
+    config.cache_store = :redis_cache_store, { url: ENV['REDIS_URL'] }
 
     # ==============================
     # RACK ATTACK
     # ==============================
-    require "rack/attack"
+    require 'rack/attack'
     config.middleware.use Rack::Attack
   end
 end

@@ -2,7 +2,6 @@
 # FactoryBot factories สำหรับ test ทั้งหมด
 
 FactoryBot.define do
-
   factory :company do
     sequence(:name) { |n| "Company #{n}" }
     sequence(:email) { |n| "company#{n}@example.com" }
@@ -73,7 +72,7 @@ FactoryBot.define do
 
   factory :table do
     association :conference
-    sequence(:table_number) { |n| n.to_s }
+    sequence(:table_number, &:to_s)
   end
 
   factory :security_log do
@@ -81,5 +80,4 @@ FactoryBot.define do
     event { "login" }
     ip { "127.0.0.1" }
   end
-
 end

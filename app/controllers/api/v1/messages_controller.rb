@@ -1,55 +1,54 @@
 module Api
   module V1
     class MessagesController < ApplicationController
-      before_action :set_message, only: [:update, :destroy, :mark_as_read]
-
+      before_action :set_message, only: %i[update destroy mark_as_read]
 
       def rooms
         me = current_delegate.id
 
         partner_ids = ChatMessage
-          .not_deleted
-          .where("sender_id = :me OR recipient_id = :me", me: me)
-          .where.not(recipient_id: nil)
-          .where(chat_room_id: nil)            # ✅ FIX 1: direct messages เท่านั้น (chat_room_id IS NULL)
-          .pluck(:sender_id, :recipient_id)
-          .flatten
-          .compact
-          .uniq
-          .reject { |id| id == me }
+                      .not_deleted
+                      .where("sender_id = :me OR recipient_id = :me", me: me)
+                      .where.not(recipient_id: nil)
+                      .where(chat_room_id: nil) # ✅ FIX 1: direct messages เท่านั้น (chat_room_id IS NULL)
+                      .pluck(:sender_id, :recipient_id)
+                      .flatten
+                      .compact
+                      .uniq
+                      .reject { |id| id == me }
 
         return render json: [] if partner_ids.empty?
 
         delegates = Delegate
-          .where(id: partner_ids)
-          .includes(:company)
-          .index_by(&:id)
+                    .where(id: partner_ids)
+                    .includes(:company)
+                    .index_by(&:id)
 
         last_messages = ChatMessage
-          .not_deleted
-          .where.not(recipient_id: nil)
-          .where(chat_room_id: nil)            # ✅ FIX 1 (ต่อ): กัน group message ใน last_messages ด้วย
-          .select(
-            Arel.sql(
-              "DISTINCT ON (LEAST(sender_id, recipient_id), GREATEST(sender_id, recipient_id)) " \
-              "id, content, created_at, sender_id, recipient_id"
-            )
-          )
-          .where(
-            "(sender_id = :me AND recipient_id IN (:ids)) OR (sender_id IN (:ids) AND recipient_id = :me)",
-            me: me, ids: partner_ids
-          )
-          .order(
-            Arel.sql("LEAST(sender_id, recipient_id), GREATEST(sender_id, recipient_id), created_at DESC")
-          )
-          .index_by { |m| m.sender_id == me ? m.recipient_id : m.sender_id }
+                        .not_deleted
+                        .where.not(recipient_id: nil)
+                        .where(chat_room_id: nil) # ✅ FIX 1 (ต่อ): กัน group message ใน last_messages ด้วย
+                        .select(
+                          Arel.sql(
+                            "DISTINCT ON (LEAST(sender_id, recipient_id), GREATEST(sender_id, recipient_id)) " \
+                            "id, content, created_at, sender_id, recipient_id"
+                          )
+                        )
+                        .where(
+                          "(sender_id = :me AND recipient_id IN (:ids)) OR (sender_id IN (:ids) AND recipient_id = :me)",
+                          me: me, ids: partner_ids
+                        )
+                        .order(
+                          Arel.sql("LEAST(sender_id, recipient_id), GREATEST(sender_id, recipient_id), created_at DESC")
+                        )
+                        .index_by { |m| m.sender_id == me ? m.recipient_id : m.sender_id }
 
         unread_counts = ChatMessage
-          .not_deleted
-          .where(recipient_id: me, read_at: nil)
-          .where(sender_id: partner_ids)
-          .group(:sender_id)
-          .count
+                        .not_deleted
+                        .where(recipient_id: me, read_at: nil)
+                        .where(sender_id: partner_ids)
+                        .group(:sender_id)
+                        .count
 
         rooms = partner_ids.map do |partner_id|
           partner = delegates[partner_id]
@@ -58,17 +57,17 @@ module Api
           last_msg = last_messages[partner_id]
 
           {
-            id:              partner_id,
-            room_kind:       "direct",
+            id: partner_id,
+            room_kind: "direct",
             delegate: {
-              id:         partner.id,
-              name:       partner.name,
-              title:      partner.title,
+              id: partner.id,
+              name: partner.name,
+              title: partner.title,
               avatar_url: partner.avatar_url
             },
-            last_message:    last_msg&.content,
+            last_message: last_msg&.content,
             last_message_at: last_msg&.created_at,
-            unread_count:    unread_counts[partner_id] || 0
+            unread_count: unread_counts[partner_id] || 0
           }
         end.compact
 
@@ -77,8 +76,6 @@ module Api
 
         render json: rooms
       end
-
-
 
       # ================= MARK AS READ (single) =================
       def mark_as_read
@@ -95,49 +92,46 @@ module Api
         render json: { success: true, read_at: message.read_at }
       end
 
-
       # ================= INDEX =================
       def index
         @messages = ChatMessage
-                      .not_deleted
-                      .where("sender_id = :me OR recipient_id = :me", me: current_delegate.id)
-                      .where(chat_room_id: nil)      # ✅ FIX 2: กรอง group messages ออก
-                      .where.not(recipient_id: nil)  # ✅ FIX 2: เฉพาะ direct messages
-                      .includes(
-                        sender: :company,
-                        recipient: :company
-                      )
-                      .order(created_at: :desc)
-                      .page(params[:page] || 1)
-                      .per([params[:per].to_i, 100].min)
+                    .not_deleted
+                    .where("sender_id = :me OR recipient_id = :me", me: current_delegate.id)
+                    .where(chat_room_id: nil)      # ✅ FIX 2: กรอง group messages ออก
+                    .where.not(recipient_id: nil)  # ✅ FIX 2: เฉพาะ direct messages
+                    .includes(
+                      sender: :company,
+                      recipient: :company
+                    )
+                    .order(created_at: :desc)
+                    .page(params[:page] || 1)
+                    .per([params[:per].to_i, 100].min)
 
         render json: @messages, each_serializer: Api::V1::ChatMessageSerializer
       end
 
-
       # ================= CONVERSATION =================
       def conversation
-        
         other_id = params[:delegate_id]
         page = (params[:page] || 1).to_i
         per  = [(params[:per] || 50).to_i, 100].min
 
         @messages = ChatMessage
-                      .not_deleted
-                      .where(
-                        "(sender_id = :me AND recipient_id = :other)
+                    .not_deleted
+                    .where(
+                      "(sender_id = :me AND recipient_id = :other)
                         OR
                         (sender_id = :other AND recipient_id = :me)",
-                        me: current_delegate.id,
-                        other: other_id
-                      )
-                      .includes(
-                        sender: :company,
-                        recipient: :company
-                      )
-                      .reorder(created_at: :desc, id: :desc)  # ✅ สำคัญมาก
-                      .page(page)
-                      .per(per)
+                      me: current_delegate.id,
+                      other: other_id
+                    )
+                    .includes(
+                      sender: :company,
+                      recipient: :company
+                    )
+                    .reorder(created_at: :desc, id: :desc) # ✅ สำคัญมาก
+                    .page(page)
+                    .per(per)
 
         render json: {
           data: ActiveModelSerializers::SerializableResource.new(
@@ -153,10 +147,12 @@ module Api
         }
       end
 
-
       # ================= CREATE =================
       def create
-        return render json: { error: "recipient_id required" }, status: :unprocessable_entity unless message_params[:recipient_id]
+        unless message_params[:recipient_id]
+          return render json: { error: "recipient_id required" },
+                        status: :unprocessable_entity
+        end
 
         content = message_params[:content].to_s.strip
 
@@ -189,13 +185,12 @@ module Api
         AuditLogger.message_created(message, request) if defined?(AuditLogger)
 
         message = ChatMessage
-                    .includes(sender: :company, recipient: :company)
-                    .find(message.id)
+                  .includes(sender: :company, recipient: :company)
+                  .find(message.id)
 
         render json: message,
-              serializer: Api::V1::ChatMessageSerializer,
-              status: :created
-
+               serializer: Api::V1::ChatMessageSerializer,
+               status: :created
       rescue ActiveRecord::RecordInvalid => e
         render json: {
           error: "Validation failed",
@@ -203,15 +198,12 @@ module Api
         }, status: :unprocessable_entity
       end
 
-
       # ================= UPDATE =================
       def update
         return render json: { error: "Forbidden" }, status: :forbidden unless @message.sender == current_delegate
         return render json: { error: "Message deleted" }, status: :unprocessable_entity if @message.deleted?
 
-        if update_params[:content].blank?
-          return render json: { error: "Content cannot be blank" }, status: :unprocessable_entity
-        end
+        return render json: { error: "Content cannot be blank" }, status: :unprocessable_entity if update_params[:content].blank?
 
         old_content = @message.content
 
@@ -246,27 +238,23 @@ module Api
         render json: { message: "All messages marked as read" }
       end
 
-
       # ================= UNREAD COUNT =================
       def unread_count
         sender_id = params[:sender_id].to_s.strip
 
-        unless sender_id.present? && sender_id =~ /\A\d+\z/
-          return render json: { unread_count: 0 }
-        end
+        return render json: { unread_count: 0 } unless sender_id.present? && sender_id =~ /\A\d+\z/
 
         count = ChatMessage
-                  .where(
-                    sender_id:    sender_id.to_i,
-                    recipient_id: current_delegate.id,
-                    read_at:      nil,
-                    deleted_at:   nil   # ✅ FIX 3: ไม่นับ deleted messages
-                  )
-                  .count
+                .where(
+                  sender_id: sender_id.to_i,
+                  recipient_id: current_delegate.id,
+                  read_at: nil,
+                  deleted_at: nil # ✅ FIX 3: ไม่นับ deleted messages
+                )
+                .count
 
         render json: { unread_count: count.to_i }
       end
-
 
       def online_status
         online = Chat::PresenceService.online?(params[:user_id])

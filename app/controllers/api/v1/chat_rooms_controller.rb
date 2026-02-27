@@ -1,13 +1,13 @@
 module Api
   module V1
     class ChatRoomsController < ApplicationController
-      before_action :set_room, only: [:destroy, :join, :leave]
+      before_action :set_room, only: %i[destroy join leave]
 
       # ================= INDEX =================
       def index
         rooms = current_delegate.chat_rooms
-          .where(deleted_at: nil)
-          .includes(:chat_room_members)
+                                .where(deleted_at: nil)
+                                .includes(:chat_room_members)
 
         render json: rooms.map { |room|
           {
@@ -18,8 +18,6 @@ module Api
           }
         }
       end
-
-
 
       # ================= CREATE =================
       def create
@@ -40,14 +38,12 @@ module Api
           title: room.title,
           room_kind: room.room_kind
         }, status: :created
-
       rescue ActiveRecord::RecordInvalid => e
         render json: {
           error: "Validation failed",
           messages: e.record.errors.full_messages
         }, status: :unprocessable_entity
       end
-
 
       # ================= DESTROY =================
       def destroy
@@ -104,7 +100,7 @@ module Api
         member = @room.chat_room_members.find_by(delegate: current_delegate)
         return render json: { error: "Not member" }, status: :not_found unless member
 
-        if member.admin? && @room.chat_room_members.where(role: :admin).count == 1
+        if member.admin? && @room.chat_room_members.where(role: :admin).one?
           return render json: { error: "Last admin cannot leave" }, status: :unprocessable_entity
         end
 
@@ -132,7 +128,6 @@ module Api
         }, status: :bad_request
         nil
       end
-
 
       # ================= CALLBACK =================
       def set_room

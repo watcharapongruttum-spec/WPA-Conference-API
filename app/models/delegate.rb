@@ -5,10 +5,10 @@ class Delegate < ApplicationRecord
   validates :password, length: { minimum: 8 }, allow_nil: true
 
   validates :device_token,
-  length: { minimum: 20, maximum: 255 },
-  # format: { with: /\A[\w\-\:]+\z/ },
-  format: { with: /\A[\w\-\:\/]+\z/ },
-  allow_nil: true
+            length: { minimum: 20, maximum: 255 },
+            # format: { with: /\A[\w\-\:]+\z/ },
+            format: { with: %r{\A[\w\-:/]+\z} },
+            allow_nil: true
 
   # ========================
   # Associations
@@ -21,13 +21,13 @@ class Delegate < ApplicationRecord
   # Schedules
   # ------------------------
   has_many :booked_schedules,
-           class_name: 'Schedule',
-           foreign_key: 'booker_id',
+           class_name: "Schedule",
+           foreign_key: "booker_id",
            dependent: :destroy
 
   has_many :targeted_schedules,
-           class_name: 'Schedule',
-           foreign_key: 'target_id',
+           class_name: "Schedule",
+           foreign_key: "target_id",
            dependent: :destroy
 
   has_many :schedules
@@ -41,13 +41,13 @@ class Delegate < ApplicationRecord
   # Connections
   # ------------------------
   has_many :connection_requests_as_requester,
-           class_name: 'ConnectionRequest',
-           foreign_key: 'requester_id',
+           class_name: "ConnectionRequest",
+           foreign_key: "requester_id",
            dependent: :destroy
 
   has_many :connection_requests_as_target,
-           class_name: 'ConnectionRequest',
-           foreign_key: 'target_id',
+           class_name: "ConnectionRequest",
+           foreign_key: "target_id",
            dependent: :destroy
 
   # ------------------------
@@ -57,12 +57,12 @@ class Delegate < ApplicationRecord
   has_many :chat_rooms, through: :chat_room_members
 
   has_many :sent_messages,
-           class_name: 'ChatMessage',
+           class_name: "ChatMessage",
            foreign_key: :sender_id,
            dependent: :destroy
 
   has_many :received_messages,
-           class_name: 'ChatMessage',
+           class_name: "ChatMessage",
            foreign_key: :recipient_id,
            dependent: :destroy
 
@@ -153,10 +153,10 @@ class Delegate < ApplicationRecord
 
   def connected_delegates
     ConnectionRequest.accepted
-      .where(requester: self)
-      .or(ConnectionRequest.accepted.where(target: self))
-      .includes(:requester, :target)
-      .map { |c| c.requester == self ? c.target : c.requester }
+                     .where(requester: self)
+                     .or(ConnectionRequest.accepted.where(target: self))
+                     .includes(:requester, :target)
+                     .map { |c| c.requester == self ? c.target : c.requester }
   end
 
   # ========================
@@ -180,53 +180,42 @@ class Delegate < ApplicationRecord
       path = Rails.application.routes.url_helpers.rails_blob_path(
         avatar, only_path: true
       )
-      
-      host     = ENV.fetch('APP_HOST', 'localhost:3000')
-      protocol = host.include?('localhost') ? 'http' : 'https'
-      
+
+      host     = ENV.fetch("APP_HOST", "localhost:3000")
+      protocol = host.include?("localhost") ? "http" : "https"
+
       "#{protocol}://#{host}#{path}"
     else
       ui_avatar_url
     end
   end
 
-
-
-
-
-
   def ui_avatar_url
     "https://ui-avatars.com/api/?name=#{CGI.escape(name.presence || 'Unknown')}&background=0D8ABC&color=fff"
   end
 
-
   def connection_status_with(me)
-    return 'none' if me.nil? || me.id == id
+    return "none" if me.nil? || me.id == id
 
     connection = ConnectionRequest
-                  .where(
-                    "(requester_id = :me AND target_id = :other)
+                 .where(
+                   "(requester_id = :me AND target_id = :other)
                       OR (requester_id = :other AND target_id = :me)",
-                    me: me.id,
-                    other: id
-                  )
-                  .order(created_at: :desc)
-                  .first
+                   me: me.id,
+                   other: id
+                 )
+                 .order(created_at: :desc)
+                 .first
 
-    return 'none' unless connection
+    return "none" unless connection
 
     case connection.status
-    when 'accepted'
-      'connected'
-    when 'pending'
-      connection.requester_id == me.id ? 'requested_by_me' : 'requested_to_me'
+    when "accepted"
+      "connected"
+    when "pending"
+      connection.requester_id == me.id ? "requested_by_me" : "requested_to_me"
     else
-      'none'
+      "none"
     end
   end
-
-
-
-
-
 end

@@ -10,44 +10,41 @@ class Schedule < ApplicationRecord
   belongs_to :delegate, optional: true
   belongs_to :team, foreign_key: :target_id, optional: true
 
-
   has_many :leave_forms
 
   has_one :latest_leave_form,
-        -> { order(created_at: :desc) },
-        class_name: "LeaveForm"
-
+          -> { order(created_at: :desc) },
+          class_name: "LeaveForm"
 
   # ===============================
   # DEFAULT INCLUDE
   # ===============================
-scope :with_full_data, -> {
-  includes(
-    :conference_date,
-    latest_leave_form: :leave_type,
-    team: :delegates,
-    booker: :company,
-    target: :company
-  )
-}
-
+  scope :with_full_data, lambda {
+    includes(
+      :conference_date,
+      latest_leave_form: :leave_type,
+      team: :delegates,
+      booker: :company,
+      target: :company
+    )
+  }
 
   # ===============================
   # BASIC SCOPES
   # ===============================
-  scope :mine, ->(delegate_id) {
+  scope :mine, lambda { |delegate_id|
     where("schedules.booker_id = :id OR schedules.target_id = :id", id: delegate_id)
   }
 
-  scope :not_mine, ->(delegate_id) {
+  scope :not_mine, lambda { |delegate_id|
     where.not("schedules.booker_id = :id OR schedules.target_id = :id", id: delegate_id)
   }
 
-  scope :by_date, ->(conference_date_id) {
+  scope :by_date, lambda { |conference_date_id|
     where(conference_date_id: conference_date_id)
   }
 
-  scope :sorted, ->(sort_by = nil, sort_dir = nil) {
+  scope :sorted, lambda { |sort_by = nil, sort_dir = nil|
     allowed = %w[start_at end_at created_at table_number]
     column  = allowed.include?(sort_by) ? sort_by : "start_at"
     dir     = sort_dir == "desc" ? "desc" : "asc"
@@ -57,7 +54,7 @@ scope :with_full_data, -> {
   # ===============================
   # SEARCH NAME
   # ===============================
-  scope :search_name, ->(keyword) {
+  scope :search_name, lambda { |keyword|
     left_joins(:booker, :target).where(
       "bookers_delegates.name ILIKE :k OR targets_delegates.name ILIKE :k",
       k: "%#{keyword}%"
@@ -86,13 +83,19 @@ scope :with_full_data, -> {
   # RESOLVE DATE
   # ===============================
   def self.resolve_date(params_date, delegate_id, conference, available_dates)
-    return Date.parse(params_date) rescue nil if params_date.present?
+    if params_date.present?
+      begin
+        return Date.parse(params_date)
+      rescue StandardError
+        nil
+      end
+    end
 
     first = joins(:conference_date)
-              .where(conference_dates: { conference_id: conference.id })
-              .mine(delegate_id)
-              .order("conference_dates.on_date ASC")
-              .first
+            .where(conference_dates: { conference_id: conference.id })
+            .mine(delegate_id)
+            .order("conference_dates.on_date ASC")
+            .first
 
     first&.conference_date&.on_date || available_dates.first
   end
@@ -102,6 +105,7 @@ scope :with_full_data, -> {
   # ===============================
   def self.format_time(time)
     return nil unless time
+
     time.utc.iso8601(3)
   end
 
@@ -124,23 +128,21 @@ scope :with_full_data, -> {
 
     # PERSONAL MEETINGS
     personal = with_full_data
-                .mine(delegate.id)
-                .by_date(conference_date.id)
-                .sorted
-                .to_a
+               .mine(delegate.id)
+               .by_date(conference_date.id)
+               .sorted
+               .to_a
 
     # GLOBAL EVENTS
     global = ConferenceSchedule
-              .by_date(conference_date.id)
-              .only_events
-              .sorted
-              .to_a
-
-    merged = []
+             .by_date(conference_date.id)
+             .only_events
+             .sorted
+             .to_a
 
     # EVENTS
-    global.each do |g|
-      merged << {
+    merged = global.map do |g|
+      {
         type: "event",
         id: g.id,
         title: g.title,
@@ -199,8 +201,8 @@ scope :with_full_data, -> {
   # INDEX
   # ===============================
   def self.build_index(delegate:, params:)
-    page     = params[:page].to_i > 0 ? params[:page].to_i : 1
-    per_page = params[:per_page].to_i > 0 ? params[:per_page].to_i : 20
+    page     = params[:page].to_i.positive? ? params[:page].to_i : 1
+    per_page = params[:per_page].to_i.positive? ? params[:per_page].to_i : 20
     offset   = (page - 1) * per_page
 
     q = with_full_data
@@ -223,10 +225,8 @@ scope :with_full_data, -> {
   # MERGE TIMELINE (ของเดิม)
   # ===============================
   def self.merge_timeline(personal:, global:)
-    items = []
-
-    global.each do |g|
-      items << {
+    items = global.map do |g|
+      {
         type: "event",
         id: g.id,
         title: g.title,
@@ -254,6 +254,7 @@ scope :with_full_data, -> {
   # ===============================
   def team_delegates
     return Delegate.none unless target_id
+
     Delegate.where(team_id: target_id)
   end
 end

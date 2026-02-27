@@ -21,8 +21,7 @@ class ChatRoom < ApplicationRecord
 
   def can_send_message?(delegate)
     return true unless room_kind_event?
+
     chat_room_members.exists?(delegate: delegate, role: :admin)
   end
-
-
 end

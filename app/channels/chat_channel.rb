@@ -1,25 +1,25 @@
 # app/channels/chat_channel.rb
-require Rails.root.join('app/constants/chat_keys')
+require Rails.root.join("app/constants/chat_keys")
 
 class ChatChannel < ApplicationCable::Channel
   def subscribed
     stream_for current_delegate
     Chat::PresenceService.online(current_delegate.id)
 
-    if params[:with_id].present?
-      REDIS.setex(
-        "chat:active_room:#{current_delegate.id}",
-        3600,
-        params[:with_id]
-      )
-    end
+    return unless params[:with_id].present?
+
+    REDIS.setex(
+      "chat:active_room:#{current_delegate.id}",
+      3600,
+      params[:with_id]
+    )
   end
 
   def unsubscribed
     remaining = Chat::PresenceService.offline(current_delegate.id)
-    if remaining <= 0
-      REDIS.del("chat:active_room:#{current_delegate.id}")
-    end
+    return unless remaining <= 0
+
+    REDIS.del("chat:active_room:#{current_delegate.id}")
   end
 
   # ✅ เพิ่ม: heartbeat — ต่ออายุ online key
@@ -34,9 +34,9 @@ class ChatChannel < ApplicationCable::Channel
     return unless recipient
 
     ChatChannel.broadcast_to(recipient, {
-      type:      "typing_start",
-      sender_id: current_delegate.id
-    })
+                               type: "typing_start",
+                               sender_id: current_delegate.id
+                             })
   end
 
   def typing_stop(data)
@@ -45,9 +45,9 @@ class ChatChannel < ApplicationCable::Channel
     return unless recipient
 
     ChatChannel.broadcast_to(recipient, {
-      type:      "typing_stop",
-      sender_id: current_delegate.id
-    })
+                               type: "typing_stop",
+                               sender_id: current_delegate.id
+                             })
   end
 
   def enter_room(data)
@@ -68,12 +68,12 @@ class ChatChannel < ApplicationCable::Channel
   def send_message(data)
     payload = safe_json(data)
     message = Chat::SendMessageService.call(
-      sender:       current_delegate,
-      recipient_id: payload['recipient_id'],
-      content:      payload['content']
+      sender: current_delegate,
+      recipient_id: payload["recipient_id"],
+      content: payload["content"]
     )
     Notification::CreateService.call(message)
-  rescue => e
+  rescue StandardError => e
     handle_error(e)
   end
 
@@ -85,6 +85,6 @@ class ChatChannel < ApplicationCable::Channel
 
   def handle_error(error)
     Rails.logger.error "❌ ChatChannel error: #{error.class} - #{error.message}"
-    transmit(type: 'error', message: error.message)
+    transmit(type: "error", message: error.message)
   end
 end

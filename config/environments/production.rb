@@ -1,4 +1,4 @@
-require "active_support/core_ext/integer/time"
+require 'active_support/core_ext/integer/time'
 
 Rails.application.configure do
   # Performance
@@ -14,7 +14,7 @@ Rails.application.configure do
   config.log_tags = [:request_id]
   config.log_formatter = ::Logger::Formatter.new
 
-  if ENV["RAILS_LOG_TO_STDOUT"].present?
+  if ENV['RAILS_LOG_TO_STDOUT'].present?
     logger = ActiveSupport::Logger.new(STDOUT)
     logger.formatter = config.log_formatter
     config.logger = ActiveSupport::TaggedLogging.new(logger)
@@ -29,8 +29,8 @@ Rails.application.configure do
   # IMPORTANT: APP HOST
   # =========================
   config.action_mailer.default_url_options = {
-    host: ENV.fetch("APP_HOST"),
-    protocol: "https"
+    host: ENV.fetch('APP_HOST'),
+    protocol: 'https'
   }
 
   config.action_mailer.perform_deliveries = true
@@ -40,17 +40,16 @@ Rails.application.configure do
   # Action Cable
   # =========================
   config.action_cable.url = ENV.fetch(
-    "ACTION_CABLE_URL",
-    "wss://#{ENV.fetch("APP_HOST")}/cable"
+    'ACTION_CABLE_URL',
+    "wss://#{ENV.fetch('APP_HOST')}/cable"
   )
 
   config.action_cable.allowed_request_origins = [
-    /https?:\/\/.*/
+    %r{https?://.*}
   ]
 
   config.action_cable.disable_request_forgery_protection = true
 
-  
   # Allow all hosts (Render internal)
   config.hosts.clear
 end

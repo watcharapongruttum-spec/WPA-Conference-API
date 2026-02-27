@@ -3,7 +3,7 @@ module Api
     module Admin
       class MaintenanceController < ApplicationController
         def clear_sidekiq
-          require 'sidekiq/api'
+          require "sidekiq/api"
 
           Sidekiq::Queue.all.each(&:clear)
           Sidekiq::RetrySet.new.clear

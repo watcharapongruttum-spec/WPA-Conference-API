@@ -8,13 +8,13 @@ class CreateMessages < ActiveRecord::Migration[7.0]
       t.datetime :read_at
       t.timestamps
     end
-    
+
     # เพิ่ม foreign keys
     add_foreign_key :messages, :delegates, column: :sender_id
     add_foreign_key :messages, :delegates, column: :recipient_id
-    
+
     # เพิ่มดัชนี
-    add_index :messages, [:sender_id, :recipient_id]
+    add_index :messages, %i[sender_id recipient_id]
     add_index :messages, :created_at
   end
 end

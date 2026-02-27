@@ -16,7 +16,7 @@ class AnnouncementPushJob < ApplicationJob
         sent_at: sent_at
       }
     )
-  rescue => e
+  rescue StandardError => e
     Rails.logger.error "[AnnouncementPushJob] Failed for delegate #{delegate_id}: #{e.message}"
   end
 end

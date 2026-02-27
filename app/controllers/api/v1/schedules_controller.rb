@@ -1,7 +1,6 @@
 module Api
   module V1
     class SchedulesController < ApplicationController
-
       # ===============================
       # INDEX
       # ===============================
@@ -144,9 +143,7 @@ module Api
           schedules: timeline
         }
 
-        if include_user
-          response[:user] = Api::V1::DelegateSerializer.new(result[:user])
-        end
+        response[:user] = Api::V1::DelegateSerializer.new(result[:user]) if include_user
 
         render json: response
       end

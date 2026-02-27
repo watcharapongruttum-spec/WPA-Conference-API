@@ -9,14 +9,14 @@ class GroupMessagePushJob < ApplicationJob
 
     FcmService.send_push(
       token: delegate.device_token,
-      title: "#{room_title}",
+      title: room_title.to_s,
       body: "#{sender_name}: #{content.truncate(100)}",
       data: {
         type: "group_message",
         room_id: room_id.to_s
       }
     )
-  rescue => e
+  rescue StandardError => e
     Rails.logger.error "[GroupMessagePushJob] Failed: #{e.message}"
   end
 end

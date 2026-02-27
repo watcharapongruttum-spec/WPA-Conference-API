@@ -51,14 +51,13 @@ class NotificationDeliveryJob < ApplicationJob
 
     elsif count <= SUMMARY_THRESHOLD
       Rails.logger.warn "🤐 [NDJ-#{debug_id}] burst suppressed"
-      return
+      nil
 
     else
       Rails.logger.warn "📦 [NDJ-#{debug_id}] send_summary count=#{count}"
       send_summary(notification, count, debug_id)
     end
-
-  rescue => e
+  rescue StandardError => e
     Rails.logger.error "💥 [NDJ-#{debug_id}] Failed: #{e.class} #{e.message}"
     Rails.logger.error e.backtrace.take(5).join("\n")
   end

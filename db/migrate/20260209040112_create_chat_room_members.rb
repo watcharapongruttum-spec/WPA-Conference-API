@@ -6,6 +6,6 @@ class CreateChatRoomMembers < ActiveRecord::Migration[7.0]
       t.timestamps
     end
 
-    add_index :chat_room_members, [:chat_room_id, :delegate_id], unique: true
+    add_index :chat_room_members, %i[chat_room_id delegate_id], unique: true
   end
 end

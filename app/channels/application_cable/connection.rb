@@ -5,7 +5,7 @@ module ApplicationCable
     def connect
       self.current_delegate = find_verified_delegate
       Rails.logger.info "✅ ActionCable connected delegate=#{current_delegate.id}"
-    rescue => e
+    rescue StandardError => e
       Rails.logger.error "❌ ActionCable rejected: #{e.class} - #{e.message}"
       reject_unauthorized_connection
     end
@@ -20,23 +20,10 @@ module ApplicationCable
       raise "Delegate not found" unless delegate
 
       delegate
-
     rescue JWT::ExpiredSignature
       raise "Token expired"
     rescue JWT::DecodeError => e
       raise "JWT invalid: #{e.message}"
     end
-
-
-
-
-
-
-
-
-
-
-
-
   end
 end

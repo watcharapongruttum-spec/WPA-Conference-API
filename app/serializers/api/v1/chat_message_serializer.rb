@@ -6,21 +6,9 @@ module Api
       attribute :deleted_at
       attribute :is_deleted
 
-
-
-
-    def is_deleted
-      object.deleted_at.present?
-    end
-
-
-
-
-
-
-
-
-      
+      def is_deleted
+        object.deleted_at.present?
+      end
 
       def sender
         s = object.sender
@@ -38,27 +26,19 @@ module Api
         }
       end
 
-
       # ✅ แก้แล้ว — เรียก model method โดยตรง
       def recipient
         r = object.recipient
         return nil unless r
+
         {
           id: r.id,
           name: r.name,
           title: r.title,
           company_name: r.company&.name,
-          avatar_url: r.avatar_url  # ✅
+          avatar_url: r.avatar_url # ✅
         }
       end
-
-
-
-
-
-
-
-
     end
   end
 end

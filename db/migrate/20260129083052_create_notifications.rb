@@ -5,10 +5,10 @@ class CreateNotifications < ActiveRecord::Migration[7.0]
       t.string :type, null: false
       t.references :notifiable, polymorphic: true, index: true
       t.datetime :read_at
-      
+
       t.timestamps
     end
-    
+
     add_index :notifications, :read_at
   end
 end

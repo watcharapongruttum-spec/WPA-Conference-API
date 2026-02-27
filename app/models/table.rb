@@ -4,8 +4,4 @@ class Table < ApplicationRecord
   has_many :teams, dependent: :nullify
   has_many :schedules
   has_many :delegates
-
-
-
-  
 end

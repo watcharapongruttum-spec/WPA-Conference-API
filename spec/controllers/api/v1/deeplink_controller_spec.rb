@@ -1,8 +1,7 @@
 # spec/controllers/api/v1/deeplink_controller_spec.rb
-require 'rails_helper'
+require "rails_helper"
 
 RSpec.describe Api::V1::DeeplinkController, type: :controller do
-
   let(:delegate) { create(:delegate) }
 
   before do
@@ -13,7 +12,6 @@ RSpec.describe Api::V1::DeeplinkController, type: :controller do
   # บัค #9: XSS ใน error block
   # -------------------------------------------------------
   describe "POST #reset_password_submit — XSS prevention" do
-
     it "escapes HTML in error messages" do
       post :reset_password_submit, params: {
         token: delegate.reset_password_token,
@@ -35,14 +33,12 @@ RSpec.describe Api::V1::DeeplinkController, type: :controller do
 
       expect(response.body).not_to include('"><script>')
     end
-
   end
 
   # -------------------------------------------------------
   # บัค #7: expiry text ต้องบอก 30 นาที ไม่ใช่ 1 ชั่วโมง
   # -------------------------------------------------------
   describe "GET #reset_password — expired token" do
-
     it "shows 30 minutes expiry message (not 1 hour)" do
       # ทำให้ token หมดอายุ (> 30 นาที)
       delegate.update!(reset_password_sent_at: 31.minutes.ago)
@@ -52,11 +48,9 @@ RSpec.describe Api::V1::DeeplinkController, type: :controller do
       expect(response.body).to include("30 นาที")
       expect(response.body).not_to include("1 ชั่วโมง")
     end
-
   end
 
   describe "GET #reset_password — valid flow" do
-
     it "shows form for valid token" do
       get :reset_password, params: { token: delegate.reset_password_token }
       expect(response.body).to include("ตั้งรหัสผ่านใหม่")
@@ -71,11 +65,9 @@ RSpec.describe Api::V1::DeeplinkController, type: :controller do
       get :reset_password, params: { token: "wrongtoken123" }
       expect(response.body).to include("ลิงก์ไม่ถูกต้อง")
     end
-
   end
 
   describe "POST #reset_password_submit — success" do
-
     it "changes password and clears token" do
       post :reset_password_submit, params: {
         token: delegate.reset_password_token,
@@ -108,7 +100,5 @@ RSpec.describe Api::V1::DeeplinkController, type: :controller do
 
       expect(response.body).to include("8 characters")
     end
-
   end
-
 end

@@ -1,5 +1,5 @@
 class AuditLog < ApplicationRecord
-  belongs_to :delegate, optional: true  # ← แก้: optional เพื่อรองรับ login fail (delegate = nil)
+  belongs_to :delegate, optional: true # ← แก้: optional เพื่อรองรับ login fail (delegate = nil)
 
   # ===== SCOPES =====
   scope :by_action,    ->(action)      { where(action: action) }
@@ -44,15 +44,15 @@ class AuditLog < ApplicationRecord
     end
 
     create!(
-      delegate:       delegate,
-      action:         action,
+      delegate: delegate,
+      action: action,
       auditable_type: auditable.class.name,
-      auditable_id:   auditable&.id,
+      auditable_id: auditable&.id,
       record_changes: record_changes,
-      ip_address:     request&.remote_ip,
-      user_agent:     request&.user_agent
+      ip_address: request&.remote_ip,
+      user_agent: request&.user_agent
     )
-  rescue => e
+  rescue StandardError => e
     Rails.logger.error "[AuditLog] Failed to log: #{e.message}"
   end
 
@@ -63,14 +63,14 @@ class AuditLog < ApplicationRecord
     end
 
     create!(
-      delegate:       delegate,
-      action:         action,
+      delegate: delegate,
+      action: action,
       auditable_type: auditable_type,
-      auditable_id:   nil,
-      ip_address:     request&.remote_ip,
-      user_agent:     request&.user_agent
+      auditable_id: nil,
+      ip_address: request&.remote_ip,
+      user_agent: request&.user_agent
     )
-  rescue => e
+  rescue StandardError => e
     Rails.logger.error "[AuditLog] Failed to log bulk: #{e.message}"
   end
 end

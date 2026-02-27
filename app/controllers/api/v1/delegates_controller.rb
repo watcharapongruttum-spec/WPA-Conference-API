@@ -1,7 +1,6 @@
 module Api
   module V1
     class DelegatesController < ApplicationController
-
       # ---------------- INDEX ----------------
       # GET /api/v1/delegates
       # GET /api/v1/delegates?keyword=john
@@ -14,15 +13,13 @@ module Api
         me       = current_delegate
 
         scope = Delegate
-                  .includes(:company, :team)
-                  .left_joins(:company)
-                  .where.not(name: [nil, ''])
-                  .where.not(id: me.id)
+                .includes(:company, :team)
+                .left_joins(:company)
+                .where.not(name: [nil, ""])
+                .where.not(id: me.id)
 
         # filter เฉพาะเพื่อน
-        if params[:friends_only].to_s == 'true'
-          scope = scope.where(id: friend_ids_of(me))
-        end
+        scope = scope.where(id: friend_ids_of(me)) if params[:friends_only].to_s == "true"
 
         # ค้นหาด้วย keyword
         if keyword.present?
@@ -35,9 +32,9 @@ module Api
         total = scope.count
 
         delegates = scope
-                      .order(name: :asc)
-                      .page(page)
-                      .per(per_page)
+                    .order(name: :asc)
+                    .page(page)
+                    .per(per_page)
 
         render json: {
           meta: {
@@ -72,7 +69,7 @@ module Api
         @delegate = current_delegate
 
         if @delegate.nil?
-          render json: { error: 'Authentication required' }, status: :unauthorized
+          render json: { error: "Authentication required" }, status: :unauthorized
           return
         end
 
@@ -85,7 +82,7 @@ module Api
         @delegate = current_delegate
 
         if @delegate.nil?
-          render json: { error: 'Authentication required' }, status: :unauthorized
+          render json: { error: "Authentication required" }, status: :unauthorized
           return
         end
 
@@ -94,15 +91,15 @@ module Api
                  serializer: Api::V1::DelegateDetailSerializer
         else
           render json: {
-            error: 'Failed to update profile',
+            error: "Failed to update profile",
             errors: @delegate.errors.full_messages
           }, status: :unprocessable_entity
         end
       end
 
       # ---------------- QR CODE ----------------
-      require 'rqrcode'
-      require 'base64'
+      require "rqrcode"
+      require "base64"
 
       def qr_code
         delegate = Delegate.find(params[:id])
@@ -126,18 +123,17 @@ module Api
 
       def friend_ids_of(delegate)
         ConnectionRequest.accepted
-          .where(requester_id: delegate.id)
-          .or(ConnectionRequest.accepted.where(target_id: delegate.id))
-          .pluck(:requester_id, :target_id)
-          .flatten
-          .uniq
-          .reject { |id| id == delegate.id }
+                         .where(requester_id: delegate.id)
+                         .or(ConnectionRequest.accepted.where(target_id: delegate.id))
+                         .pluck(:requester_id, :target_id)
+                         .flatten
+                         .uniq
+                         .reject { |id| id == delegate.id }
       end
 
       def delegate_params
         params.permit(:name, :title, :phone, :avatar)
       end
-
     end
   end
 end

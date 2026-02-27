@@ -5,7 +5,7 @@ class ResetPasswordJob < ApplicationJob
     delegate = Delegate.find_by(id: delegate_id)
     return unless delegate
 
-    frontend      = ENV['FRONTEND_URL']
+    frontend      = ENV.fetch("FRONTEND_URL", nil)
     token         = delegate.reset_password_token
 
     # ปุ่ม 1: เปิดแอพโดยตรง (deeplink)

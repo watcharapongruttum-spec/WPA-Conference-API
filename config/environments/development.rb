@@ -1,4 +1,4 @@
-require "active_support/core_ext/integer/time"
+require 'active_support/core_ext/integer/time'
 
 Rails.application.configure do
   # Reload code on change
@@ -14,9 +14,8 @@ Rails.application.configure do
   # config.cache_store = :memory_store
   config.cache_store = :redis_cache_store, { url: ENV['REDIS_URL'] }
 
-
   # ActiveStorage URL host
-  Rails.application.routes.default_url_options[:host] = "localhost:3000"
+  Rails.application.routes.default_url_options[:host] = 'localhost:3000'
 
   # Active Storage
   config.active_storage.service = :local
@@ -38,15 +37,13 @@ Rails.application.configure do
   # }
 
   config.action_mailer.smtp_settings = {
-    address: "smtp-relay.brevo.com",
+    address: 'smtp-relay.brevo.com',
     port: 587,
-    user_name: ENV["BREVO_LOGIN"],
-    password: ENV["BREVO_PASS"],
-    authentication: "plain",
+    user_name: ENV['BREVO_LOGIN'],
+    password: ENV['BREVO_PASS'],
+    authentication: 'plain',
     enable_starttls_auto: true
   }
-
-
 
   # Deprecation
   config.active_support.deprecation = :log
@@ -60,11 +57,11 @@ Rails.application.configure do
   # ===============================
   # Action Cable
   # ===============================
-  config.action_cable.mount_path = "/cable"
+  config.action_cable.mount_path = '/cable'
 
   config.action_cable.url = ENV.fetch(
-    "ACTION_CABLE_URL",
-    "ws://localhost:3000/cable"
+    'ACTION_CABLE_URL',
+    'ws://localhost:3000/cable'
   )
 
   config.action_cable.disable_request_forgery_protection = true

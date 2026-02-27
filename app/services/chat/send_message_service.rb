@@ -42,10 +42,10 @@ module Chat
 
     def broadcast_new_message
       payload = {
-        type: 'new_message',
+        type: "new_message",
         message: Api::V1::ChatMessageSerializer
-                   .new(@message.reload)
-                   .serializable_hash
+                 .new(@message.reload)
+                 .serializable_hash
       }
 
       ChatChannel.broadcast_to(@recipient, payload)

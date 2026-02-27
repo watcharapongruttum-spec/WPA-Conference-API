@@ -1,35 +1,38 @@
 module Api
   module V1
     class RequestsController < ApplicationController
-
       # ============================
       # GET /api/v1/requests
       # ============================
       def index
         connections = ConnectionRequest
-                        .where(requester_id: current_delegate.id)
-                        .or(
-                          ConnectionRequest.where(target_id: current_delegate.id)
-                        )
-                        .includes(:requester, :target)
-                        .order(created_at: :desc)
+                      .where(requester_id: current_delegate.id)
+                      .or(
+                        ConnectionRequest.where(target_id: current_delegate.id)
+                      )
+                      .includes(:requester, :target)
+                      .order(created_at: :desc)
 
         render json: connections,
                each_serializer: Api::V1::ConnectionRequestSerializer
       end
 
-
       # ============================
       # POST /api/v1/requests
       # ============================
       def create
-        return render json: { error: 'Target ID is required' }, status: :unprocessable_entity unless params[:target_id].present?
+        unless params[:target_id].present?
+          return render json: { error: "Target ID is required" },
+                        status: :unprocessable_entity
+        end
 
         target = Delegate.find_by(id: params[:target_id])
-        return render json: { error: 'Target delegate not found' }, status: :not_found unless target
+        return render json: { error: "Target delegate not found" }, status: :not_found unless target
 
-        return render json: { error: 'Cannot send connection request to yourself' },
-                      status: :unprocessable_entity if target.id == current_delegate.id
+        if target.id == current_delegate.id
+          return render json: { error: "Cannot send connection request to yourself" },
+                        status: :unprocessable_entity
+        end
 
         existing = ConnectionRequest.find_by(
           requester_id: current_delegate.id,
@@ -38,7 +41,7 @@ module Api
 
         if existing&.pending? || existing&.accepted?
           return render json: {
-            error: 'Connection request already exists',
+            error: "Connection request already exists",
             status: existing.status
           }, status: :unprocessable_entity
         end
@@ -52,20 +55,19 @@ module Api
 
           notification = Notification.create!(
             delegate: target,
-            notification_type: 'connection_request',
+            notification_type: "connection_request",
             notifiable: @connection
           )
 
           AuditLogger.connection_request_created(@connection, request)
           Notification::BroadcastService.call(notification)
-          Rails.cache.delete("dashboard:#{target.id}:v1")        # ← เพิ่ม
+          Rails.cache.delete("dashboard:#{target.id}:v1") # ← เพิ่ม
         end
 
         render json: @connection,
-              serializer: Api::V1::ConnectionRequestSerializer,
-              status: :created
+               serializer: Api::V1::ConnectionRequestSerializer,
+               status: :created
       end
-
 
       # ============================
       # PATCH /api/v1/requests/:id/accept
@@ -84,19 +86,19 @@ module Api
 
           Connection.find_or_create_by!(
             requester_id: connection.requester_id,
-            target_id:    connection.target_id
+            target_id: connection.target_id
           ) { |c| c.status = "accepted" }
 
           # ✅ ส่งข้อความอัตโนมัติหาทั้งสองฝ่าย
           send_connected_message(
-            from: current_delegate,          # B (คนกด Accept)
-            to:   connection.requester       # A (คนส่ง Request)
+            from: current_delegate, # B (คนกด Accept)
+            to: connection.requester # A (คนส่ง Request)
           )
 
           notification = Notification.create!(
-            delegate:          connection.requester,
-            notification_type: 'connection_accepted',
-            notifiable:        connection
+            delegate: connection.requester,
+            notification_type: "connection_accepted",
+            notifiable: connection
           )
 
           AuditLogger.connection_accepted(connection, request)
@@ -105,9 +107,8 @@ module Api
         end
 
         render json: connection,
-              serializer: Api::V1::ConnectionRequestSerializer
+               serializer: Api::V1::ConnectionRequestSerializer
       end
-
 
       # ============================
       # PATCH /api/v1/requests/:id/reject
@@ -127,26 +128,25 @@ module Api
 
           notification = Notification.create!(
             delegate: connection.requester,
-            notification_type: 'connection_rejected',
+            notification_type: "connection_rejected",
             notifiable: connection
           )
 
           Notification::BroadcastService.call(notification)
-          Rails.cache.delete("dashboard:#{connection.requester_id}:v1")  # ← เพิ่ม
+          Rails.cache.delete("dashboard:#{connection.requester_id}:v1") # ← เพิ่ม
         end
 
         render json: connection,
-              serializer: Api::V1::ConnectionRequestSerializer
+               serializer: Api::V1::ConnectionRequestSerializer
       end
-
 
       # ============================
       # GET /api/v1/requests/my_received
       # ============================
       def my_received
         requests = ConnectionRequest
-                    .where(target_id: current_delegate.id, status: :pending)
-                    .includes(:requester)
+                   .where(target_id: current_delegate.id, status: :pending)
+                   .includes(:requester)
 
         render json: requests.map { |req|
           {
@@ -162,7 +162,6 @@ module Api
         }
       end
 
-
       # ============================
       # DELETE /api/v1/requests/:id/cancel
       # ============================
@@ -171,12 +170,11 @@ module Api
           requester_id: current_delegate.id,
           target_id: params[:id]
         )
-        return render json: { error: 'Not found' }, status: :not_found unless connection
+        return render json: { error: "Not found" }, status: :not_found unless connection
 
         connection.destroy
-        render json: { message: 'Cancelled' }, status: :ok
+        render json: { message: "Cancelled" }, status: :ok
       end
-
 
       private
 
@@ -186,16 +184,16 @@ module Api
       def send_connected_message(from:, to:)
         # ข้อความหา A (จาก B) — "เราเป็นเพื่อนกันแล้ว"
         msg_to_requester = ChatMessage.create!(
-          sender:    from,
+          sender: from,
           recipient: to,
-          content:   "🤝 คุณและ #{from.name} เป็นเพื่อนกันแล้ว!"
+          content: "🤝 คุณและ #{from.name} เป็นเพื่อนกันแล้ว!"
         )
 
         # ข้อความหา B (จาก A) — ให้ B เห็นในหน้าแชทของตัวเองด้วย
         msg_to_acceptor = ChatMessage.create!(
-          sender:    to,
+          sender: to,
           recipient: from,
-          content:   "🤝 คุณและ #{to.name} เป็นเพื่อนกันแล้ว!"
+          content: "🤝 คุณและ #{to.name} เป็นเพื่อนกันแล้ว!"
         )
 
         # Broadcast ผ่าน WS ทันที
@@ -205,10 +203,10 @@ module Api
 
       def broadcast_connected_message(message)
         payload = {
-          type:    'new_message',
+          type: "new_message",
           message: Api::V1::ChatMessageSerializer
-                    .new(message)
-                    .serializable_hash
+                   .new(message)
+                   .serializable_hash
         }
 
         ChatChannel.broadcast_to(message.recipient, payload)
@@ -217,10 +215,9 @@ module Api
 
       def render_not_found
         render json: {
-          error: 'Connection request not found or already processed'
+          error: "Connection request not found or already processed"
         }, status: :not_found
       end
-
     end
   end
 end

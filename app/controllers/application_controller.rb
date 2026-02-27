@@ -32,13 +32,13 @@ class ApplicationController < ActionController::API
   # ==============================
 
   def record_not_found(_exception = nil)
-    render json: { error: 'Record not found' }, status: :not_found
+    render json: { error: "Record not found" }, status: :not_found
   end
 
   def missing_params(exception)
     render json: {
       error: "Missing parameter: #{exception.param}"
-    }, status: :unprocessable_entity  # เปลี่ยนจาก :bad_request
+    }, status: :unprocessable_entity # เปลี่ยนจาก :bad_request
   end
 
   def record_invalid(exception)
@@ -49,7 +49,7 @@ class ApplicationController < ActionController::API
   end
 
   def invalid_token(_exception = nil)
-    render json: { error: 'Invalid or expired token' }, status: :unauthorized
+    render json: { error: "Invalid or expired token" }, status: :unauthorized
   end
 
   def handle_unexpected_error(exception)
@@ -58,7 +58,7 @@ class ApplicationController < ActionController::API
     Rails.logger.error exception.backtrace.first(10).join("\n")
 
     render json: {
-      error: 'An unexpected error occurred',
+      error: "An unexpected error occurred",
       message: Rails.env.development? ? exception.message : nil
     }, status: :internal_server_error
   end
@@ -69,53 +69,34 @@ class ApplicationController < ActionController::API
 
   def current_delegate
     return @current_delegate if defined?(@current_delegate)
+
     @current_delegate = authenticate_from_token
   end
 
   def authenticate_from_token
-    token = request.headers['Authorization']&.split(' ')&.last
+    token = request.headers["Authorization"]&.split&.last
     return nil if token.blank?
 
     payload = JwtDecoder.decode!(token)
-    Delegate.find(payload['delegate_id'])
-
+    Delegate.find(payload["delegate_id"])
   rescue JWT::DecodeError,
-        JWT::ExpiredSignature,
-        JWT::VerificationError,
-        JWT::InvalidIssuerError => e
+         JWT::ExpiredSignature,
+         JWT::VerificationError,
+         JWT::InvalidIssuerError => e
 
     Rails.logger.warn "JWT Error: #{e.class} - #{e.message}"
     nil
   end
 
-
-
   def authenticate_delegate!
-    unless current_delegate
-      render json: { error: 'Invalid or expired token' }, status: :unauthorized
-    end
+    return if current_delegate
+
+    render json: { error: "Invalid or expired token" }, status: :unauthorized
   end
-
-
-
-
-
-
-
-
-
-  private
 
   def set_active_storage_host
     ActiveStorage::Current.url_options = {
       host: request.base_url
     }
   end
-
-
-
-
-
-
-
 end

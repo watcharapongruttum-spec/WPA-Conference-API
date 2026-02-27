@@ -1,8 +1,7 @@
 # spec/services/chat/read_service_spec.rb
-require 'rails_helper'
+require "rails_helper"
 
 RSpec.describe Chat::ReadService do
-
   let(:me)    { create(:delegate) }
   let(:other) { create(:delegate) }
 
@@ -10,7 +9,6 @@ RSpec.describe Chat::ReadService do
   # บัค #5: read_all group chat ต้องใช้ MessageRead
   # -------------------------------------------------------
   describe ".read_all" do
-
     context "direct messages" do
       it "marks direct messages as read via read_at" do
         msg = create(:chat_message, sender: other, recipient: me, read_at: nil)
@@ -82,7 +80,5 @@ RSpec.describe Chat::ReadService do
         expect(MessageRead.where(chat_message_id: msg.id, delegate_id: me.id)).not_to exist
       end
     end
-
   end
-
 end

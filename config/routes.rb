@@ -2,29 +2,25 @@ Rails.application.routes.draw do
   root to: proc { [200, { 'Content-Type' => 'application/json' }, [{ status: 'ok' }.to_json]] }
   mount ActionCable.server => '/cable'
 
-  get  "/deeplink-reset-password",               to: "api/v1/deeplink#reset_password"
-  post "/api/v1/deeplink/reset_password_submit", to: "api/v1/deeplink#reset_password_submit"
+  get  '/deeplink-reset-password',               to: 'api/v1/deeplink#reset_password'
+  post '/api/v1/deeplink/reset_password_submit', to: 'api/v1/deeplink#reset_password_submit'
 
   namespace :api do
     namespace :v1 do
-
-    scope "/group_chat", controller: "group_chat" do
-      get    "/",                           action: :index,        as: :group_chat_rooms
-      post   "/",                           action: :create_room,  as: :group_chat_create_room
-      post   "/:id/join",                   action: :join,         as: :group_chat_join
-      delete "/:id/leave",                  action: :leave,        as: :group_chat_leave
-      delete "/:id",                        action: :destroy_room, as: :group_chat_destroy_room
-      get    "/:id/messages",               action: :messages,     as: :group_chat_messages
-      post   "/:id/messages",               action: :send_message, as: :group_chat_send_message
-      get    "/:id/messages/:message_id/readers", action: :readers, as: :group_chat_readers 
-    end
-
-
-
+      scope '/group_chat', controller: 'group_chat' do
+        get    '/',                           action: :index,        as: :group_chat_rooms
+        post   '/',                           action: :create_room,  as: :group_chat_create_room
+        post   '/:id/join',                   action: :join,         as: :group_chat_join
+        delete '/:id/leave',                  action: :leave,        as: :group_chat_leave
+        delete '/:id',                        action: :destroy_room, as: :group_chat_destroy_room
+        get    '/:id/messages',               action: :messages,     as: :group_chat_messages
+        post   '/:id/messages',               action: :send_message, as: :group_chat_send_message
+        get    '/:id/messages/:message_id/readers', action: :readers, as: :group_chat_readers
+      end
 
       namespace :admin do
-        get "clear_sidekiq", to: "maintenance#clear_sidekiq"
-        post "announcements", to: "announcements#create" 
+        get 'clear_sidekiq', to: 'maintenance#clear_sidekiq'
+        post 'announcements', to: 'announcements#create'
       end
 
       # Deeplink
@@ -32,7 +28,7 @@ Rails.application.routes.draw do
 
       # Authentication
       controller :sessions do
-        post :login,           action: :create
+        post :login, action: :create
         post :forgot_password
         post :reset_password
       end
@@ -52,7 +48,7 @@ Rails.application.routes.draw do
       get 'dashboard', to: 'dashboard#show'
 
       # Delegates
-      resources :delegates, only: [:index, :show] do
+      resources :delegates, only: %i[index show] do
         collection do
           get :profile
         end
@@ -62,7 +58,7 @@ Rails.application.routes.draw do
       end
 
       # Schedules
-      resources :schedules, only: [:index, :create] do
+      resources :schedules, only: %i[index create] do
         collection do
           get :my_schedule
           get :schedule_others
@@ -78,7 +74,7 @@ Rails.application.routes.draw do
       end
 
       # Messages
-      resources :messages, only: [:index, :create, :update, :destroy] do
+      resources :messages, only: %i[index create update destroy] do
         collection do
           get  'conversation/:delegate_id', to: 'messages#conversation'
           get  :rooms
@@ -102,7 +98,7 @@ Rails.application.routes.draw do
       end
 
       # Requests
-      resources :requests, only: [:index, :create] do
+      resources :requests, only: %i[index create] do
         collection do
           get :my_received
         end
@@ -114,7 +110,7 @@ Rails.application.routes.draw do
       end
 
       # Chat Rooms
-      resources :chat_rooms, only: [:index, :create, :destroy] do
+      resources :chat_rooms, only: %i[index create destroy] do
         member do
           post   :join
           delete :leave
@@ -135,7 +131,6 @@ Rails.application.routes.draw do
       # Leave Forms
       resources :leave_forms, only: [:create]
       resources :leave_types
-
     end
   end
 end

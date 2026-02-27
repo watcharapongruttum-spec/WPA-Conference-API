@@ -1,7 +1,6 @@
 module Api
   module V1
     class TablesController < BaseController
-
       FALLBACK_YEAR = -> { Date.today.year }
 
       # GET /api/v1/tables/grid_view
@@ -14,11 +13,11 @@ module Api
 
         render json: tables.map { |table|
           {
-            id:           table.id,
+            id: table.id,
             table_number: table.table_number,
-            status:       get_table_status(table.table_number),
-            occupancy:    get_table_occupancy(table.table_number),
-            capacity:     4
+            status: get_table_status(table.table_number),
+            occupancy: get_table_occupancy(table.table_number),
+            capacity: 4
           }
         }
       end
@@ -28,7 +27,7 @@ module Api
         table_number = params[:id]
 
         table = Table.find_by(table_number: table_number)
-        return render json: { error: 'Not found' }, status: :not_found unless table
+        return render json: { error: "Not found" }, status: :not_found unless table
 
         schedules = Schedule.where(table_number: table_number)
                             .includes(:booker, :table)
@@ -36,19 +35,19 @@ module Api
 
         render json: {
           table_number: table_number,
-          status:       get_table_status(table_number),
-          occupancy:    get_table_occupancy(table_number),
-          capacity:     4,
-          occupants:    schedules.filter_map(&:booker).uniq.map do |d|
+          status: get_table_status(table_number),
+          occupancy: get_table_occupancy(table_number),
+          capacity: 4,
+          occupants: schedules.filter_map(&:booker).uniq.map do |d|
             Api::V1::DelegateSerializer.new(d).serializable_hash
           end,
-          timeline:     schedules.map do |s|
+          timeline: schedules.map do |s|
             Api::V1::ScheduleSerializer.new(s, scope: current_delegate).serializable_hash
           end
         }
-      rescue => e
+      rescue StandardError => e
         Rails.logger.error "Tables#show error: #{e.message}"
-        render json: { error: 'Internal server error' }, status: :internal_server_error
+        render json: { error: "Internal server error" }, status: :internal_server_error
       end
 
       def time_view
@@ -65,15 +64,15 @@ module Api
         datetime = Time.zone.parse("#{target_year}-#{input_date.month}-#{input_date.day} #{input_time}")
 
         has_data_in_year = Schedule
-          .where("EXTRACT(YEAR FROM start_at) = ?", target_year)
-          .where("delegate_id IS NOT NULL OR booker_id IS NOT NULL")
-          .exists?
+                           .where("EXTRACT(YEAR FROM start_at) = ?", target_year)
+                           .where("delegate_id IS NOT NULL OR booker_id IS NOT NULL")
+                           .exists?
 
         unless has_data_in_year
           actual_year = Schedule
-            .where("delegate_id IS NOT NULL OR booker_id IS NOT NULL")
-            .order(:start_at)
-            .first&.start_at&.year
+                        .where("delegate_id IS NOT NULL OR booker_id IS NOT NULL")
+                        .order(:start_at)
+                        .first&.start_at&.year
 
           if actual_year
             target_year = actual_year
@@ -82,17 +81,17 @@ module Api
         end
 
         schedules = Schedule
-          .includes(:delegate, :booker, :table)
-          .where(start_at: datetime)
-          .where("delegate_id IS NOT NULL OR booker_id IS NOT NULL")
+                    .includes(:delegate, :booker, :table)
+                    .where(start_at: datetime)
+                    .where("delegate_id IS NOT NULL OR booker_id IS NOT NULL")
 
         if schedules.empty? && !user_selected_datetime
           first_time = Schedule
-            .where("EXTRACT(YEAR FROM start_at) = ?", target_year)
-            .where("EXTRACT(MONTH FROM start_at) = ?", input_date.month)
-            .where("EXTRACT(DAY FROM start_at) = ?", input_date.day)
-            .where("delegate_id IS NOT NULL OR booker_id IS NOT NULL")
-            .order(:start_at).first
+                       .where("EXTRACT(YEAR FROM start_at) = ?", target_year)
+                       .where("EXTRACT(MONTH FROM start_at) = ?", input_date.month)
+                       .where("EXTRACT(DAY FROM start_at) = ?", input_date.day)
+                       .where("delegate_id IS NOT NULL OR booker_id IS NOT NULL")
+                       .order(:start_at).first
 
           if first_time
             datetime  = first_time.start_at
@@ -104,9 +103,9 @@ module Api
 
         if schedules.empty? && !user_selected_datetime
           first_schedule = Schedule
-            .where("EXTRACT(YEAR FROM start_at) = ?", target_year)
-            .where("delegate_id IS NOT NULL OR booker_id IS NOT NULL")
-            .order(:start_at).first
+                           .where("EXTRACT(YEAR FROM start_at) = ?", target_year)
+                           .where("delegate_id IS NOT NULL OR booker_id IS NOT NULL")
+                           .order(:start_at).first
 
           if first_schedule
             datetime  = first_schedule.start_at
@@ -117,17 +116,17 @@ module Api
         end
 
         all_times_today = Schedule
-          .where("DATE(start_at) = ?", datetime.to_date)
-          .where("delegate_id IS NOT NULL OR booker_id IS NOT NULL")
-          .order(:start_at)
-          .pluck(:start_at)
-          .map { |t| t.utc.iso8601(3) }
-          .uniq
+                          .where("DATE(start_at) = ?", datetime.to_date)
+                          .where("delegate_id IS NOT NULL OR booker_id IS NOT NULL")
+                          .order(:start_at)
+                          .pluck(:start_at)
+                          .map { |t| t.utc.iso8601(3) }
+                          .uniq
 
         all_days = Schedule
-          .where("EXTRACT(YEAR FROM start_at) = ?", target_year)
-          .where("delegate_id IS NOT NULL OR booker_id IS NOT NULL")
-          .pluck("DATE(start_at)").uniq.sort
+                   .where("EXTRACT(YEAR FROM start_at) = ?", target_year)
+                   .where("delegate_id IS NOT NULL OR booker_id IS NOT NULL")
+                   .pluck("DATE(start_at)").uniq.sort
 
         my_schedule = current_delegate && schedules.find do |s|
           s.delegate_id == current_delegate.id || s.booker_id == current_delegate.id
@@ -144,7 +143,7 @@ module Api
             near     = YAML.safe_load(first_table.adjacent_tables || "--- []")
             vertical = near.map(&:to_i).find { |n| n > 1 && (n - 1) > 1 }
             columns  = vertical - 1 if vertical
-          rescue
+          rescue StandardError
             columns = 6
           end
         end
@@ -167,31 +166,35 @@ module Api
             people << s.delegate if s.delegate.present?
             people << s.booker   if s.booker.present?
             people
-          end.uniq { |d| d.id }.map do |d|
+          end.uniq(&:id).map do |d|
             {
-              delegate_id:   d.id,
+              delegate_id: d.id,
               delegate_name: d.name,
-              company:       d.company&.name || 'N/A',
-              avatar_url:    "https://ui-avatars.com/api/?name=#{CGI.escape(d.name)}",
-              title:         d.title
+              company: d.company&.name || "N/A",
+              avatar_url: "https://ui-avatars.com/api/?name=#{CGI.escape(d.name)}",
+              title: d.title
             }
           end
 
-          near_tables = YAML.safe_load(table.adjacent_tables || "--- []") rescue []
+          near_tables = begin
+            YAML.safe_load(table.adjacent_tables || "--- []")
+          rescue StandardError
+            []
+          end
 
           { table_id: table.id, table_number: table.table_number,
             near_tables: near_tables, delegates: delegates }
         end
 
         render json: {
-          year:        target_year,
-          date:        datetime.to_date,
-          time:        datetime.utc.iso8601(3),
-          my_table:    my_schedule&.table_number,
-          layout:      layout,
-          tables:      tables,
+          year: target_year,
+          date: datetime.to_date,
+          time: datetime.utc.iso8601(3),
+          my_table: my_schedule&.table_number,
+          layout: layout,
+          tables: tables,
           times_today: all_times_today,
-          days:        all_days
+          days: all_days
         }
       end
 
@@ -199,7 +202,11 @@ module Api
 
       def get_table_status(table_number)
         occupancy = get_table_occupancy(table_number)
-        occupancy == 0 ? 'empty' : occupancy >= 4 ? 'full' : 'partial'
+        if occupancy.zero?
+          "empty"
+        else
+          occupancy >= 4 ? "full" : "partial"
+        end
       end
 
       def get_table_occupancy(table_number)

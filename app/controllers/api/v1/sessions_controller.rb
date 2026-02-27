@@ -2,7 +2,7 @@ module Api
   module V1
     class SessionsController < ApplicationController
       skip_before_action :authenticate_delegate!,
-                         only: [:create, :forgot_password, :reset_password]
+                         only: %i[create forgot_password reset_password]
 
       # ============================================
       # POST /api/v1/login
@@ -12,22 +12,24 @@ module Api
         password = params[:password]
 
         if email.blank? || password.blank?
-          return render json: { error: 'Email and password are required' },
+          return render json: { error: "Email and password are required" },
                         status: :unprocessable_entity
         end
 
         @delegate = Delegate.find_by(email: email)
 
         unless @delegate&.authenticate(password)
-          AuditLogger.login(
-            email: email,
-            delegate: nil,
-            request: request,
-            metadata: request_metadata,
-            success: false
-          ) if defined?(AuditLogger)
+          if defined?(AuditLogger)
+            AuditLogger.login(
+              email: email,
+              delegate: nil,
+              request: request,
+              metadata: request_metadata,
+              success: false
+            )
+          end
 
-          return render json: { error: 'Invalid credentials' },
+          return render json: { error: "Invalid credentials" },
                         status: :unauthorized
         end
 
@@ -39,24 +41,26 @@ module Api
 
           SecurityLog.create!(
             delegate: @delegate,
-            event: 'login',
+            event: "login",
             ip: request.remote_ip
           )
 
-          AuditLogger.login(
-            delegate: @delegate,
-            email: @delegate.email,
-            request: request,
-            metadata: request_metadata,
-            success: true
-          ) if defined?(AuditLogger)
+          if defined?(AuditLogger)
+            AuditLogger.login(
+              delegate: @delegate,
+              email: @delegate.email,
+              request: request,
+              metadata: request_metadata,
+              success: true
+            )
+          end
         end
 
         render json: {
           token: token,
           delegate: Api::V1::DelegateSerializer
-                      .new(@delegate)
-                      .serializable_hash,
+                    .new(@delegate)
+                    .serializable_hash,
           first_login: first_login
         }, status: :ok
       end
@@ -123,7 +127,7 @@ module Api
         email = params[:email]&.strip&.downcase
 
         if email.blank?
-          return render json: { error: 'Email is required' },
+          return render json: { error: "Email is required" },
                         status: :unprocessable_entity
         end
 
@@ -131,7 +135,7 @@ module Api
 
         if @delegate
           if @delegate.reset_password_sent_at&.> 1.minute.ago
-            return render json: { message: 'Please wait before retry' },
+            return render json: { message: "Please wait before retry" },
                           status: :ok
           end
 
@@ -140,21 +144,23 @@ module Api
 
             SecurityLog.create!(
               delegate: @delegate,
-              event: 'forgot_password',
+              event: "forgot_password",
               ip: request.remote_ip
             )
 
-            AuditLogger.password_reset_request(
-              delegate: @delegate,
-              request: request
-            ) if defined?(AuditLogger)
+            if defined?(AuditLogger)
+              AuditLogger.password_reset_request(
+                delegate: @delegate,
+                request: request
+              )
+            end
           end
 
           ResetPasswordJob.perform_later(@delegate.id)
         end
 
         render json: {
-          message: 'If the email exists, a password reset link will be sent'
+          message: "If the email exists, a password reset link will be sent"
         }, status: :ok
       end
 
@@ -167,7 +173,7 @@ module Api
         password_confirmation = params[:password_confirmation]
 
         if token.blank?
-          return render json: { error: 'Token required' },
+          return render json: { error: "Token required" },
                         status: :unprocessable_entity
         end
 
@@ -175,19 +181,19 @@ module Api
 
         unless @delegate
           log_reset_failure(nil)
-          return render json: { error: 'Invalid token' },
+          return render json: { error: "Invalid token" },
                         status: :unprocessable_entity
         end
 
         unless @delegate.reset_token_valid?
           log_reset_failure(@delegate)
-          return render json: { error: 'Token expired' },
+          return render json: { error: "Token expired" },
                         status: :unprocessable_entity
         end
 
         unless password == password_confirmation
           log_reset_failure(@delegate)
-          return render json: { error: 'Password mismatch' },
+          return render json: { error: "Password mismatch" },
                         status: :unprocessable_entity
         end
 
@@ -208,18 +214,20 @@ module Api
 
           SecurityLog.create!(
             delegate: @delegate,
-            event: 'reset_password_success',
+            event: "reset_password_success",
             ip: request.remote_ip
           )
 
-          AuditLogger.password_reset(
-            delegate: @delegate,
-            request: request,
-            success: true
-          ) if defined?(AuditLogger)
+          if defined?(AuditLogger)
+            AuditLogger.password_reset(
+              delegate: @delegate,
+              request: request,
+              success: true
+            )
+          end
         end
 
-        render json: { message: 'Password updated' }
+        render json: { message: "Password updated" }
       rescue ActiveRecord::RecordInvalid => e
         log_reset_failure(@delegate)
         render json: { error: e.message },
@@ -233,8 +241,9 @@ module Api
       # คืน error message ถ้า invalid, nil ถ้า valid
       # ============================================
       def validate_password_strength(password)
-        return 'Password must be at least 8 characters' if password.length < 8
-        return 'Password must contain at least one number' unless password.match?(/[0-9]/)
+        return "Password must be at least 8 characters" if password.length < 8
+        return "Password must contain at least one number" unless password.match?(/[0-9]/)
+
         nil
       end
 
