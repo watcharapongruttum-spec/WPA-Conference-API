@@ -2,23 +2,25 @@ module Api
   module V1
     class TablesController < BaseController
 
-      # ✅ FIX: ไม่ hardcode ปี — ใช้ปีปัจจุบันเป็น fallback แทน
       FALLBACK_YEAR = -> { Date.today.year }
 
       # GET /api/v1/tables/grid_view
       def grid_view
         conference = Conference.find_by(is_current: true) || Conference.first
-        @tables = conference&.tables || []
 
-        render json: @tables.map do |table|
+        # ✅ FIX: เดิมใช้ conference&.tables ซึ่ง return raw Table AR objects
+        # ไม่มี status/occupancy/capacity — ต้องดึงและ format เอง
+        tables = conference ? Table.where(conference_id: conference.id) : Table.none
+
+        render json: tables.map { |table|
           {
-            id: table.id,
+            id:           table.id,
             table_number: table.table_number,
-            status: get_table_status(table.table_number),
-            occupancy: get_table_occupancy(table.table_number),
-            capacity: 4
+            status:       get_table_status(table.table_number),
+            occupancy:    get_table_occupancy(table.table_number),
+            capacity:     4
           }
-        end
+        }
       end
 
       # GET /api/v1/tables/:id
@@ -34,13 +36,13 @@ module Api
 
         render json: {
           table_number: table_number,
-          status: get_table_status(table_number),
-          occupancy: get_table_occupancy(table_number),
-          capacity: 4,
-          occupants: schedules.filter_map(&:booker).uniq.map do |d|
+          status:       get_table_status(table_number),
+          occupancy:    get_table_occupancy(table_number),
+          capacity:     4,
+          occupants:    schedules.filter_map(&:booker).uniq.map do |d|
             Api::V1::DelegateSerializer.new(d).serializable_hash
           end,
-          timeline: schedules.map do |s|
+          timeline:     schedules.map do |s|
             Api::V1::ScheduleSerializer.new(s, scope: current_delegate).serializable_hash
           end
         }
@@ -50,12 +52,11 @@ module Api
       end
 
       def time_view
-        conference = Conference.find_by(is_current: true) || Conference.order(conference_year: :desc).first
-        # ✅ FIX: fallback เป็นปีปัจจุบันแทน hardcode 2025
+        conference  = Conference.find_by(is_current: true) || Conference.order(conference_year: :desc).first
         target_year = conference&.conference_year&.to_i || FALLBACK_YEAR.call
 
-        user_selected_date = params[:date].present?
-        user_selected_time = params[:time].present?
+        user_selected_date     = params[:date].present?
+        user_selected_time     = params[:time].present?
         user_selected_datetime = user_selected_date && user_selected_time
 
         input_date = params[:date]&.to_date || Date.today
@@ -63,20 +64,20 @@ module Api
 
         datetime = Time.zone.parse("#{target_year}-#{input_date.month}-#{input_date.day} #{input_time}")
 
-        has_data_in_year = Schedule.where("EXTRACT(YEAR FROM start_at) = ?", target_year)
-                                   .where("delegate_id IS NOT NULL OR booker_id IS NOT NULL")
-                                   .exists?
+        has_data_in_year = Schedule
+          .where("EXTRACT(YEAR FROM start_at) = ?", target_year)
+          .where("delegate_id IS NOT NULL OR booker_id IS NOT NULL")
+          .exists?
 
         unless has_data_in_year
-          actual_year = Schedule.where("delegate_id IS NOT NULL OR booker_id IS NOT NULL")
-                                .order(:start_at)
-                                .first
-                                &.start_at
-                                &.year
+          actual_year = Schedule
+            .where("delegate_id IS NOT NULL OR booker_id IS NOT NULL")
+            .order(:start_at)
+            .first&.start_at&.year
 
           if actual_year
             target_year = actual_year
-            datetime = Time.zone.parse("#{target_year}-#{input_date.month}-#{input_date.day} #{input_time}")
+            datetime    = Time.zone.parse("#{target_year}-#{input_date.month}-#{input_date.day} #{input_time}")
           end
         end
 
@@ -91,15 +92,13 @@ module Api
             .where("EXTRACT(MONTH FROM start_at) = ?", input_date.month)
             .where("EXTRACT(DAY FROM start_at) = ?", input_date.day)
             .where("delegate_id IS NOT NULL OR booker_id IS NOT NULL")
-            .order(:start_at)
-            .first
+            .order(:start_at).first
 
           if first_time
-            datetime = first_time.start_at
-            schedules = Schedule
-              .includes(:delegate, :booker, :table)
-              .where(start_at: datetime)
-              .where("delegate_id IS NOT NULL OR booker_id IS NOT NULL")
+            datetime  = first_time.start_at
+            schedules = Schedule.includes(:delegate, :booker, :table)
+                                .where(start_at: datetime)
+                                .where("delegate_id IS NOT NULL OR booker_id IS NOT NULL")
           end
         end
 
@@ -107,15 +106,13 @@ module Api
           first_schedule = Schedule
             .where("EXTRACT(YEAR FROM start_at) = ?", target_year)
             .where("delegate_id IS NOT NULL OR booker_id IS NOT NULL")
-            .order(:start_at)
-            .first
+            .order(:start_at).first
 
           if first_schedule
-            datetime = first_schedule.start_at
-            schedules = Schedule
-              .includes(:delegate, :booker, :table)
-              .where(start_at: datetime)
-              .where("delegate_id IS NOT NULL OR booker_id IS NOT NULL")
+            datetime  = first_schedule.start_at
+            schedules = Schedule.includes(:delegate, :booker, :table)
+                                .where(start_at: datetime)
+                                .where("delegate_id IS NOT NULL OR booker_id IS NOT NULL")
           end
         end
 
@@ -130,41 +127,31 @@ module Api
         all_days = Schedule
           .where("EXTRACT(YEAR FROM start_at) = ?", target_year)
           .where("delegate_id IS NOT NULL OR booker_id IS NOT NULL")
-          .pluck("DATE(start_at)")
-          .uniq
-          .sort
+          .pluck("DATE(start_at)").uniq.sort
 
-        my_schedule = if current_delegate
-          schedules.find do |s|
-            s.delegate_id == current_delegate.id || s.booker_id == current_delegate.id
-          end
+        my_schedule = current_delegate && schedules.find do |s|
+          s.delegate_id == current_delegate.id || s.booker_id == current_delegate.id
         end
 
         schedule_by_table = schedules.group_by { |s| s.table_number.to_s.strip }
 
         numeric_tables = Table.where("table_number ~ '^[0-9]+$'")
-        first_table = numeric_tables.find_by(table_number: "1")
-
-        columns = 6
+        first_table    = numeric_tables.find_by(table_number: "1")
+        columns        = 6
 
         if first_table.present?
           begin
-            near = YAML.safe_load(first_table.adjacent_tables || "--- []")
+            near     = YAML.safe_load(first_table.adjacent_tables || "--- []")
             vertical = near.map(&:to_i).find { |n| n > 1 && (n - 1) > 1 }
-            columns = vertical - 1 if vertical
+            columns  = vertical - 1 if vertical
           rescue
             columns = 6
           end
         end
 
         total_tables = numeric_tables.count
-        rows = (total_tables.to_f / columns).ceil
-
-        layout = {
-          type: "grid",
-          rows: rows,
-          columns: columns
-        }
+        rows         = (total_tables.to_f / columns).ceil
+        layout       = { type: "grid", rows: rows, columns: columns }
 
         all_tables = Table.all.sort_by do |t|
           num = t.table_number.to_s
@@ -172,38 +159,28 @@ module Api
         end
 
         tables = all_tables.map do |table|
-          key = table.table_number.to_s.strip
+          key             = table.table_number.to_s.strip
           table_schedules = schedule_by_table[key] || []
 
           delegates = table_schedules.flat_map do |s|
             people = []
             people << s.delegate if s.delegate.present?
-            people << s.booker if s.booker.present?
+            people << s.booker   if s.booker.present?
             people
-          end
-          .uniq { |d| d.id }
-          .map do |delegate|
+          end.uniq { |d| d.id }.map do |d|
             {
-              delegate_id:   delegate.id,
-              delegate_name: delegate.name,
-              company:       delegate.company&.name || 'N/A',
-              avatar_url:    "https://ui-avatars.com/api/?name=#{CGI.escape(delegate.name)}",
-              title:         delegate.title
+              delegate_id:   d.id,
+              delegate_name: d.name,
+              company:       d.company&.name || 'N/A',
+              avatar_url:    "https://ui-avatars.com/api/?name=#{CGI.escape(d.name)}",
+              title:         d.title
             }
           end
 
-          near_tables = begin
-            YAML.safe_load(table.adjacent_tables || "--- []")
-          rescue
-            []
-          end
+          near_tables = YAML.safe_load(table.adjacent_tables || "--- []") rescue []
 
-          {
-            table_id:     table.id,
-            table_number: table.table_number,
-            near_tables:  near_tables,
-            delegates:    delegates
-          }
+          { table_id: table.id, table_number: table.table_number,
+            near_tables: near_tables, delegates: delegates }
         end
 
         render json: {
@@ -222,20 +199,11 @@ module Api
 
       def get_table_status(table_number)
         occupancy = get_table_occupancy(table_number)
-        if occupancy == 0
-          'empty'
-        elsif occupancy >= 4
-          'full'
-        else
-          'partial'
-        end
+        occupancy == 0 ? 'empty' : occupancy >= 4 ? 'full' : 'partial'
       end
 
       def get_table_occupancy(table_number)
-        Schedule.where(table_number: table_number)
-                .select(:booker_id)
-                .distinct
-                .count
+        Schedule.where(table_number: table_number).select(:booker_id).distinct.count
       end
     end
   end
