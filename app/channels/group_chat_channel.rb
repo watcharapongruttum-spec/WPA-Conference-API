@@ -29,7 +29,6 @@ class GroupChatChannel < ApplicationCable::Channel
       content: content
     )
 
-    # sender ถือว่าอ่านแล้ว
     MessageRead.mark_for(delegate: current_delegate, message_ids: [msg.id])
 
     GroupChatChannel.broadcast_to(@room, {
@@ -92,7 +91,6 @@ class GroupChatChannel < ApplicationCable::Channel
   def enter_room(_data)
     REDIS.setex(room_active_key, 3600, "1")
 
-    # ดึง messages ที่ยังไม่อ่าน (ไม่ใช่ของตัวเอง)
     unread = @room.chat_messages
                   .where.not(sender_id: current_delegate.id)
                   .where(deleted_at: nil)
@@ -100,7 +98,6 @@ class GroupChatChannel < ApplicationCable::Channel
     unread_ids = unread.pluck(:id)
     return if unread_ids.empty?
 
-    # mark read ใน message_reads table (bulk upsert)
     newly_read_ids = MessageRead.mark_for(
       delegate:    current_delegate,
       message_ids: unread_ids
@@ -110,7 +107,6 @@ class GroupChatChannel < ApplicationCable::Channel
 
     now = Time.current
 
-    # broadcast แจ้งทุกคนในห้องว่า delegate นี้ได้อ่าน messages เหล่านี้แล้ว
     GroupChatChannel.broadcast_to(@room, {
       type:        "bulk_read",
       room_id:     @room.id,
@@ -181,7 +177,7 @@ class GroupChatChannel < ApplicationCable::Channel
         name:       current_delegate.name,
         avatar_url: current_delegate.avatar_url
       },
-      readers: readers   # ← ใหม่: รายชื่อคนที่อ่านแล้ว (ยกเว้น sender)
+      readers: readers
     }
   end
 
@@ -202,21 +198,24 @@ class GroupChatChannel < ApplicationCable::Channel
                          .pluck(:delegate_id)
 
     recipient_ids.each do |delegate_id|
-      next if REDIS.get("group_chat_open:#{@room.id}:#{delegate_id}") == "1"
+      # ✅ FIX: ใส่ begin/end ใน each เพื่อให้ loop ทำงานต่อแม้ error
+      begin
+        next if REDIS.get("group_chat_open:#{@room.id}:#{delegate_id}") == "1"
 
-      delegate = Delegate.find_by(id: delegate_id)
-      next unless delegate
+        delegate = Delegate.find_by(id: delegate_id)
+        next unless delegate
 
-      notification = ::Notification.create!(
-        delegate:          delegate,
-        notification_type: 'new_group_message',
-        notifiable:        msg
-      )
+        notification = ::Notification.create!(
+          delegate:          delegate,
+          notification_type: 'new_group_message',
+          notifiable:        msg
+        )
 
-      Rails.cache.delete("dashboard:#{delegate_id}:v1")
-      Notification::BroadcastService.call(notification)
-    rescue => e
-      Rails.logger.error "[GroupChatChannel] notify failed for delegate=#{delegate_id}: #{e.message}"
+        Rails.cache.delete("dashboard:#{delegate_id}:v1")
+        Notification::BroadcastService.call(notification)
+      rescue => e
+        Rails.logger.error "[GroupChatChannel] notify failed for delegate=#{delegate_id}: #{e.message}"
+      end
     end
   end
 

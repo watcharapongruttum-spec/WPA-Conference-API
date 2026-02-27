@@ -5,12 +5,13 @@ module Chat
     def self.read_all(delegate)
       now = Time.current
 
-      # แชท 1-1
+      # ✅ แชท 1-1 — ใช้ read_at บน chat_messages (ถูกต้อง)
       ChatMessage
-        .where(recipient_id: delegate.id, read_at: nil)
+        .where(recipient_id: delegate.id, read_at: nil, deleted_at: nil)
         .update_all(read_at: now)
 
-      # Group chat
+      # ✅ FIX: Group chat — mark ผ่าน MessageRead table
+      # เดิมใช้ update_all read_at บน chat_messages ซึ่งไม่มีผลต่อ unread count จริง
       group_room_ids = ChatRoomMember
                         .joins(:chat_room)
                         .where(delegate_id: delegate.id)
@@ -18,11 +19,28 @@ module Chat
                         .pluck(:chat_room_id)
 
       if group_room_ids.any?
-        ChatMessage
-          .where(chat_room_id: group_room_ids)
-          .where(read_at: nil, deleted_at: nil)
-          .where.not(sender_id: delegate.id)
-          .update_all(read_at: now)
+        unread_message_ids = ChatMessage
+                               .where(chat_room_id: group_room_ids)
+                               .where(deleted_at: nil)
+                               .where.not(sender_id: delegate.id)
+                               .where.not(
+                                 id: MessageRead.where(delegate_id: delegate.id).select(:chat_message_id)
+                               )
+                               .pluck(:id)
+
+        if unread_message_ids.any?
+          rows = unread_message_ids.map do |msg_id|
+            {
+              chat_message_id: msg_id,
+              delegate_id:     delegate.id,
+              read_at:         now,
+              created_at:      now,
+              updated_at:      now
+            }
+          end
+
+          MessageRead.upsert_all(rows, unique_by: [:chat_message_id, :delegate_id])
+        end
       end
 
       # ✅ Clear dashboard cache หลัง mark read
@@ -46,7 +64,7 @@ module Chat
       ChatChannel.broadcast_to(message.recipient, payload)
     end
 
-    # ================= MARK ROOM =================
+    # ================= MARK ROOM (direct chat) =================
     def self.mark_room(user_id, target_id)
       now = Time.current
 

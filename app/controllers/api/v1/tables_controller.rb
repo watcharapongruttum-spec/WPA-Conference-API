@@ -1,15 +1,15 @@
 module Api
   module V1
     class TablesController < BaseController
-      
-      # ย้าย FIX_YEAR มาไว้ที่นี่แทน
-      FIX_YEAR = 2025
-      
+
+      # ✅ FIX: ไม่ hardcode ปี — ใช้ปีปัจจุบันเป็น fallback แทน
+      FALLBACK_YEAR = -> { Date.today.year }
+
       # GET /api/v1/tables/grid_view
       def grid_view
         conference = Conference.find_by(is_current: true) || Conference.first
         @tables = conference&.tables || []
-        
+
         render json: @tables.map do |table|
           {
             id: table.id,
@@ -20,7 +20,7 @@ module Api
           }
         end
       end
-      
+
       # GET /api/v1/tables/:id
       def show
         table_number = params[:id]
@@ -49,15 +49,10 @@ module Api
         render json: { error: 'Internal server error' }, status: :internal_server_error
       end
 
-
-
-      
       def time_view
-        # -----------------------------
-        # YEAR LOGIC
-        # -----------------------------
         conference = Conference.find_by(is_current: true) || Conference.order(conference_year: :desc).first
-        target_year = conference&.conference_year&.to_i || FIX_YEAR
+        # ✅ FIX: fallback เป็นปีปัจจุบันแทน hardcode 2025
+        target_year = conference&.conference_year&.to_i || FALLBACK_YEAR.call
 
         user_selected_date = params[:date].present?
         user_selected_time = params[:time].present?
@@ -68,12 +63,9 @@ module Api
 
         datetime = Time.zone.parse("#{target_year}-#{input_date.month}-#{input_date.day} #{input_time}")
 
-        # -----------------------------
-        # YEAR FALLBACK
-        # -----------------------------
         has_data_in_year = Schedule.where("EXTRACT(YEAR FROM start_at) = ?", target_year)
-                                    .where("delegate_id IS NOT NULL OR booker_id IS NOT NULL")
-                                    .exists?
+                                   .where("delegate_id IS NOT NULL OR booker_id IS NOT NULL")
+                                   .exists?
 
         unless has_data_in_year
           actual_year = Schedule.where("delegate_id IS NOT NULL OR booker_id IS NOT NULL")
@@ -88,9 +80,6 @@ module Api
           end
         end
 
-        # -----------------------------
-        # SCHEDULE FIND
-        # -----------------------------
         schedules = Schedule
           .includes(:delegate, :booker, :table)
           .where(start_at: datetime)
@@ -130,9 +119,6 @@ module Api
           end
         end
 
-        # -----------------------------
-        # TIMES / DAYS
-        # -----------------------------
         all_times_today = Schedule
           .where("DATE(start_at) = ?", datetime.to_date)
           .where("delegate_id IS NOT NULL OR booker_id IS NOT NULL")
@@ -148,27 +134,18 @@ module Api
           .uniq
           .sort
 
-        # -----------------------------
-        # MY TABLE
-        # -----------------------------
         my_schedule = if current_delegate
           schedules.find do |s|
             s.delegate_id == current_delegate.id || s.booker_id == current_delegate.id
           end
         end
 
-        # -----------------------------
-        # GROUP BY TABLE
-        # -----------------------------
         schedule_by_table = schedules.group_by { |s| s.table_number.to_s.strip }
 
-        # -----------------------------
-        # LAYOUT CALC FROM ADJACENT
-        # -----------------------------
         numeric_tables = Table.where("table_number ~ '^[0-9]+$'")
         first_table = numeric_tables.find_by(table_number: "1")
 
-        columns = 6 # fallback
+        columns = 6
 
         if first_table.present?
           begin
@@ -189,9 +166,6 @@ module Api
           columns: columns
         }
 
-        # -----------------------------
-        # TABLE LIST
-        # -----------------------------
         all_tables = Table.all.sort_by do |t|
           num = t.table_number.to_s
           num =~ /^\d+$/ ? [0, num.to_i] : [1, num]
@@ -210,11 +184,11 @@ module Api
           .uniq { |d| d.id }
           .map do |delegate|
             {
-              delegate_id: delegate.id,
+              delegate_id:   delegate.id,
               delegate_name: delegate.name,
-              company: delegate.company&.name || 'N/A',
-              avatar_url: "https://ui-avatars.com/api/?name=#{CGI.escape(delegate.name)}",
-              title: delegate.title
+              company:       delegate.company&.name || 'N/A',
+              avatar_url:    "https://ui-avatars.com/api/?name=#{CGI.escape(delegate.name)}",
+              title:         delegate.title
             }
           end
 
@@ -225,34 +199,27 @@ module Api
           end
 
           {
-            table_id: table.id,
+            table_id:     table.id,
             table_number: table.table_number,
-            near_tables: near_tables,
-            delegates: delegates
+            near_tables:  near_tables,
+            delegates:    delegates
           }
         end
 
-        # -----------------------------
-        # RENDER
-        # -----------------------------
         render json: {
-          year: target_year,
-          date: datetime.to_date,
-          time: datetime.utc.iso8601(3),
-          my_table: my_schedule&.table_number,
-          layout: layout,
-          tables: tables,
+          year:        target_year,
+          date:        datetime.to_date,
+          time:        datetime.utc.iso8601(3),
+          my_table:    my_schedule&.table_number,
+          layout:      layout,
+          tables:      tables,
           times_today: all_times_today,
-          days: all_days
+          days:        all_days
         }
       end
 
-
-            
-
-
       private
-      
+
       def get_table_status(table_number)
         occupancy = get_table_occupancy(table_number)
         if occupancy == 0
@@ -263,7 +230,7 @@ module Api
           'partial'
         end
       end
-      
+
       def get_table_occupancy(table_number)
         Schedule.where(table_number: table_number)
                 .select(:booker_id)

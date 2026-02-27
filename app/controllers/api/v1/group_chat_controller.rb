@@ -85,7 +85,7 @@ module Api
 
         msgs = @room.chat_messages
                     .where(deleted_at: nil)
-                    .includes(:sender, :message_reads => :delegate)  # ← eager load readers
+                    .includes(:sender, message_reads: :delegate)
                     .order(created_at: :desc)
                     .page(page).per(per)
 
@@ -115,7 +115,6 @@ module Api
           content: content
         )
 
-        # sender อ่านแล้วเสมอ
         MessageRead.mark_for(delegate: current_delegate, message_ids: [msg.id])
 
         GroupChatChannel.broadcast_to(@room, {
@@ -135,7 +134,6 @@ module Api
       end
 
       # GET /api/v1/group_chat/:id/readers/:message_id
-      # endpoint แยก — ดู readers ของ message นั้นๆ
       def readers
         message = @room.chat_messages.find_by(id: params[:message_id])
         return render json: { error: "Message not found" }, status: :not_found unless message
@@ -156,7 +154,7 @@ module Api
         render json: {
           message_id:    message.id,
           total_members: @room.chat_room_members.count,
-          read_count:    readers.size + 1, # +1 รวม sender
+          read_count:    readers.size + 1,
           readers:       readers
         }
       end
@@ -183,11 +181,6 @@ module Api
           created_at:   room.created_at
         }
       end
-
-
-
-
-
 
       def serialize_message(msg)
         sender = msg.sender
@@ -241,33 +234,30 @@ module Api
         }
       end
 
-
-
-
-
-
-
       def notify_group_members(msg)
         recipient_ids = @room.chat_room_members
                              .where.not(delegate_id: current_delegate.id)
                              .pluck(:delegate_id)
 
         recipient_ids.each do |delegate_id|
-          next if REDIS.get("group_chat_open:#{@room.id}:#{delegate_id}") == "1"
+          # ✅ FIX: ใส่ begin/end ใน each เพื่อให้ loop ทำงานต่อแม้ error
+          begin
+            next if REDIS.get("group_chat_open:#{@room.id}:#{delegate_id}") == "1"
 
-          delegate = Delegate.find_by(id: delegate_id)
-          next unless delegate
+            delegate = Delegate.find_by(id: delegate_id)
+            next unless delegate
 
-          notification = ::Notification.create!(
-            delegate:          delegate,
-            notification_type: 'new_group_message',
-            notifiable:        msg
-          )
+            notification = ::Notification.create!(
+              delegate:          delegate,
+              notification_type: 'new_group_message',
+              notifiable:        msg
+            )
 
-          Rails.cache.delete("dashboard:#{delegate_id}:v1")
-          Notification::BroadcastService.call(notification)
-        rescue => e
-          Rails.logger.error "[GroupChat] notify failed for delegate=#{delegate_id}: #{e.message}"
+            Rails.cache.delete("dashboard:#{delegate_id}:v1")
+            Notification::BroadcastService.call(notification)
+          rescue => e
+            Rails.logger.error "[GroupChat] notify failed for delegate=#{delegate_id}: #{e.message}"
+          end
         end
       end
 

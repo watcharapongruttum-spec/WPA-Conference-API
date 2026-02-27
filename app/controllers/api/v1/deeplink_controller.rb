@@ -6,28 +6,23 @@ module Api
       def reset_password
         @token = params[:token]
 
-        # ไม่มี token — แสดงหน้า error
         if @token.blank?
           return render html: build_page(:invalid), layout: false
         end
 
         @delegate = Delegate.find_by(reset_password_token: @token)
 
-        # token ไม่มีในระบบ
         unless @delegate
           return render html: build_page(:invalid), layout: false
         end
 
-        # token หมดอายุ
         unless @delegate.reset_token_valid?
           return render html: build_page(:expired), layout: false
         end
 
-        # ✅ token ถูกต้อง — แสดงฟอร์ม
         render html: build_page(:form, token: @token), layout: false
       end
 
-      # POST /deeplink-reset-password (submit จากฟอร์มเว็บ)
       def reset_password_submit
         token    = params[:token]
         password = params[:password]
@@ -35,13 +30,11 @@ module Api
 
         delegate = Delegate.find_by(reset_password_token: token)
 
-        # validate
         error = validate(delegate, token, password, confirm)
         if error
           return render html: build_page(:form, token: token, error: error), layout: false
         end
 
-        # update password
         ActiveRecord::Base.transaction do
           delegate.update!(
             password: password,
@@ -64,9 +57,6 @@ module Api
 
       private
 
-      # ============================================
-      # VALIDATE
-      # ============================================
       def validate(delegate, token, password, confirm)
         return 'Invalid or expired token' unless delegate&.reset_token_valid?
         return 'Password is required' if password.blank?
@@ -76,9 +66,6 @@ module Api
         nil
       end
 
-      # ============================================
-      # PAGE BUILDER
-      # ============================================
       def build_page(state, token: nil, error: nil)
         content = case state
         when :form    then form_html(token, error)
@@ -90,9 +77,6 @@ module Api
         wrap_html(content).html_safe
       end
 
-      # ============================================
-      # HTML WRAPPER (shared style)
-      # ============================================
       def wrap_html(content)
         <<~HTML
           <!DOCTYPE html>
@@ -120,97 +104,33 @@ module Api
                 max-width: 420px;
                 box-shadow: 0 4px 24px rgba(0,0,0,0.08);
               }
-              .logo {
-                text-align: center;
-                font-size: 22px;
-                font-weight: 700;
-                color: #1a56db;
-                margin-bottom: 8px;
-              }
-              .subtitle {
-                text-align: center;
-                color: #6b7280;
-                font-size: 14px;
-                margin-bottom: 32px;
-              }
-              h2 {
-                font-size: 20px;
-                color: #111827;
-                margin-bottom: 24px;
-                text-align: center;
-              }
-              label {
-                display: block;
-                font-size: 14px;
-                font-weight: 500;
-                color: #374151;
-                margin-bottom: 6px;
-              }
+              .logo { text-align: center; font-size: 22px; font-weight: 700; color: #1a56db; margin-bottom: 8px; }
+              .subtitle { text-align: center; color: #6b7280; font-size: 14px; margin-bottom: 32px; }
+              h2 { font-size: 20px; color: #111827; margin-bottom: 24px; text-align: center; }
+              label { display: block; font-size: 14px; font-weight: 500; color: #374151; margin-bottom: 6px; }
               input[type="password"] {
-                width: 100%;
-                padding: 12px 16px;
-                border: 1.5px solid #d1d5db;
-                border-radius: 8px;
-                font-size: 15px;
-                outline: none;
-                transition: border-color 0.2s;
-                margin-bottom: 16px;
+                width: 100%; padding: 12px 16px; border: 1.5px solid #d1d5db;
+                border-radius: 8px; font-size: 15px; outline: none;
+                transition: border-color 0.2s; margin-bottom: 16px;
               }
-              input[type="password"]:focus {
-                border-color: #1a56db;
-              }
+              input[type="password"]:focus { border-color: #1a56db; }
               button[type="submit"] {
-                width: 100%;
-                padding: 13px;
-                background: #1a56db;
-                color: white;
-                border: none;
-                border-radius: 8px;
-                font-size: 16px;
-                font-weight: 600;
-                cursor: pointer;
-                transition: background 0.2s;
+                width: 100%; padding: 13px; background: #1a56db; color: white;
+                border: none; border-radius: 8px; font-size: 16px; font-weight: 600;
+                cursor: pointer; transition: background 0.2s;
               }
-              button[type="submit"]:hover {
-                background: #1648c0;
-              }
+              button[type="submit"]:hover { background: #1648c0; }
               .error-box {
-                background: #fef2f2;
-                border: 1px solid #fecaca;
-                color: #dc2626;
-                padding: 12px 16px;
-                border-radius: 8px;
-                font-size: 14px;
-                margin-bottom: 20px;
+                background: #fef2f2; border: 1px solid #fecaca; color: #dc2626;
+                padding: 12px 16px; border-radius: 8px; font-size: 14px; margin-bottom: 20px;
               }
-              .hint {
-                font-size: 12px;
-                color: #9ca3af;
-                margin-top: -10px;
-                margin-bottom: 16px;
-              }
-              .icon {
-                text-align: center;
-                font-size: 48px;
-                margin-bottom: 16px;
-              }
-              .message {
-                text-align: center;
-                color: #374151;
-                font-size: 15px;
-                line-height: 1.6;
-              }
+              .hint { font-size: 12px; color: #9ca3af; margin-top: -10px; margin-bottom: 16px; }
+              .icon { text-align: center; font-size: 48px; margin-bottom: 16px; }
+              .message { text-align: center; color: #374151; font-size: 15px; line-height: 1.6; }
               .open-app-btn {
-                display: block;
-                margin-top: 24px;
-                text-align: center;
-                padding: 12px;
-                background: #f3f4f6;
-                border-radius: 8px;
-                color: #1a56db;
-                font-weight: 600;
-                text-decoration: none;
-                font-size: 15px;
+                display: block; margin-top: 24px; text-align: center; padding: 12px;
+                background: #f3f4f6; border-radius: 8px; color: #1a56db;
+                font-weight: 600; text-decoration: none; font-size: 15px;
               }
             </style>
           </head>
@@ -225,17 +145,15 @@ module Api
         HTML
       end
 
-      # ============================================
-      # FORM STATE
-      # ============================================
       def form_html(token, error)
-        error_block = error ? "<div class='error-box'>#{error}</div>" : ""
+        # ✅ FIX: escape error เพื่อป้องกัน XSS
+        error_block = error ? "<div class='error-box'>#{CGI.escapeHTML(error.to_s)}</div>" : ""
 
         <<~HTML
           <h2>ตั้งรหัสผ่านใหม่</h2>
           #{error_block}
           <form method="POST" action="/api/v1/deeplink/reset_password_submit">
-            <input type="hidden" name="token" value="#{token}">
+            <input type="hidden" name="token" value="#{CGI.escapeHTML(token.to_s)}">
             <input type="hidden" name="authenticity_token" value="#{form_authenticity_token rescue ''}">
 
             <label>รหัสผ่านใหม่</label>
@@ -250,9 +168,6 @@ module Api
         HTML
       end
 
-      # ============================================
-      # SUCCESS STATE
-      # ============================================
       def success_html
         app_url = "wpa://reset-success"
 
@@ -261,33 +176,24 @@ module Api
           <h2>เปลี่ยนรหัสผ่านสำเร็จ</h2>
           <p class="message">รหัสผ่านของคุณถูกเปลี่ยนแล้ว<br>กลับไปเข้าสู่ระบบในแอพได้เลย</p>
           <a href="#{app_url}" class="open-app-btn">เปิดแอพ WPA</a>
-
           <script>
-            // พยายาม redirect กลับแอพอัตโนมัติ
-            setTimeout(function() {
-              window.location = "#{app_url}";
-            }, 1500);
+            setTimeout(function() { window.location = "#{app_url}"; }, 1500);
           </script>
         HTML
       end
 
-      # ============================================
-      # EXPIRED STATE
-      # ============================================
       def expired_html
+        # ✅ FIX: แก้ข้อความให้ตรงกับ delegate.rb ที่ expire จริงๆ 30 นาที
         <<~HTML
           <div class="icon">⏰</div>
           <h2>ลิงก์หมดอายุแล้ว</h2>
           <p class="message">
-            ลิงก์นี้ใช้งานได้ภายใน 1 ชั่วโมงหลังจากขอ<br>
+            ลิงก์นี้ใช้งานได้ภายใน 30 นาทีหลังจากขอ<br>
             กรุณาขอลิงก์ใหม่อีกครั้งในแอพ
           </p>
         HTML
       end
 
-      # ============================================
-      # INVALID STATE
-      # ============================================
       def invalid_html
         <<~HTML
           <div class="icon">❌</div>

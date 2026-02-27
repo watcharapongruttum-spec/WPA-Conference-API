@@ -2,7 +2,6 @@ class ChatRoomChannel < ApplicationCable::Channel
   def subscribed
     @room = ChatRoom.find(params[:room_id])
 
-    # 🔴 FIX 1: ต้อง return หลัง reject ไม่งั้น stream_for ยังทำงานอยู่
     unless @room.delegates.include?(current_delegate)
       reject
       return
@@ -11,41 +10,16 @@ class ChatRoomChannel < ApplicationCable::Channel
     stream_for @room
   end
 
-
-  # 🔴 FIX 2: class method ใช้ key รูปแบบเดียวกับ presence_key instance method
-  # (เดิมใช้ Redis.current โดยตรง และ key format ต่างกัน)
-  def self.auto_read_if_open(sender:, recipient:, message:)
-    key = "chat_open:#{recipient.id}:#{sender.id}"
-    return unless REDIS.get(key) == "1"
-
-    message.update!(read_at: Time.current)
-
-    broadcast_to(recipient, {
-      type: "message_read",
-      message_id: message.id,
-      read_at: message.read_at
-    })
-
-    broadcast_to(sender, {
-      type: "message_read",
-      message_id: message.id,
-      read_at: message.read_at
-    })
-  end
-
-
   # ================= SEND =================
   def send_message(data)
     data = parse(data)
     content = data["content"].to_s.strip
     return if content.blank?
 
-    # ใช้ begin/rescue เพื่อให้ broadcast ยังทำงานแม้ save ไม่ได้
     msg = begin
       @room.chat_messages.create!(
         sender: current_delegate,
         content: content
-        # ไม่ต้องส่ง recipient_id สำหรับ room message
       )
     rescue ActiveRecord::RecordInvalid => e
       Rails.logger.warn "[ChatRoomChannel] create! failed: #{e.message}"
@@ -64,7 +38,6 @@ class ChatRoomChannel < ApplicationCable::Channel
         }
       }
     else
-      # fallback ถ้า save ไม่ได้ — broadcast ด้วย in-memory payload
       {
         id: SecureRandom.uuid,
         content: content,
@@ -83,6 +56,7 @@ class ChatRoomChannel < ApplicationCable::Channel
       message: payload
     })
 
+    # ✅ เรียก instance method ถูกต้อง
     auto_read_if_open(msg) if msg
   end
 
@@ -92,9 +66,6 @@ class ChatRoomChannel < ApplicationCable::Channel
     return unless other
 
     redis.set(presence_key(current_delegate.id, other.id), 1)
-
-    # 🔴 FIX 3: ส่ง other.id แทน other (object) — เดิมส่ง Delegate object เข้าไป
-    # ทำให้ sender_id: <Delegate object> แทนที่จะเป็น integer
     mark_conversation_as_read(other.id)
   end
 
@@ -127,7 +98,6 @@ class ChatRoomChannel < ApplicationCable::Channel
     msg = @room.chat_messages.find_by(id: data["message_id"])
     return unless msg && msg.sender == current_delegate
 
-    # msg.update!(deleted_at: Time.current, is_deleted: true)
     msg.update!(deleted_at: Time.current)
 
     ChatRoomChannel.broadcast_to(@room, {
@@ -144,35 +114,26 @@ class ChatRoomChannel < ApplicationCable::Channel
     data.is_a?(String) ? JSON.parse(data) : data
   end
 
-  def serializer(msg)
-    Api::V1::ChatMessageSerializer
-      .new(msg)
-      .serializable_hash[:data]
-  end
-
   def redis
     REDIS
   end
 
-  # ===== USERS =====
   def other_user
     @room.delegates.where.not(id: current_delegate.id).first
   end
 
-  # ===== PRESENCE KEY =====
   def presence_key(viewer_id, target_id)
     "chat_open:#{viewer_id}:#{target_id}"
   end
 
-  # ===== CHECK IF OTHER OPEN =====
   def other_user_open?
     other = other_user
     return false unless other
-
     redis.get(presence_key(other.id, current_delegate.id)) == "1"
   end
 
-  # ===== AUTO READ WHEN MESSAGE ARRIVE =====
+  # ✅ instance method — ใช้กับ direct chat room (2 คน)
+  # อ่านผ่าน read_at บน chat_messages (ถูกต้องสำหรับ direct chat)
   def auto_read_if_open(msg)
     return unless other_user_open?
 
@@ -185,7 +146,6 @@ class ChatRoomChannel < ApplicationCable::Channel
     })
   end
 
-  # ===== MARK ALL READ =====
   def mark_conversation_as_read(target_id)
     now = Time.current
 
@@ -201,13 +161,10 @@ class ChatRoomChannel < ApplicationCable::Channel
 
     ChatMessage.where(id: ids).update_all(read_at: now)
 
-    # 🔴 FIX 4: broadcast ผ่าน ChatRoomChannel แทน ChatChannel
-    # (อยู่ใน ChatRoomChannel การ broadcast กลับผ่าน ChatChannel ผิด channel)
     ChatRoomChannel.broadcast_to(@room, {
       type: "bulk_read",
       message_ids: ids,
       read_at: now
     })
   end
-
 end
