@@ -1,216 +1,189 @@
 module Api
   module V1
     class TablesController < BaseController
-      FALLBACK_YEAR = -> { Date.today.year }
 
-      # GET /api/v1/tables/grid_view
-      def grid_view
-        conference = Conference.find_by(is_current: true) || Conference.first
+      TARGET_YEAR = 2025
+      BKK_ZONE    = 'Asia/Bangkok'
 
-        # ✅ FIX: เดิมใช้ conference&.tables ซึ่ง return raw Table AR objects
-        # ไม่มี status/occupancy/capacity — ต้องดึงและ format เอง
-        tables = conference ? Table.where(conference_id: conference.id) : Table.none
-
-        render json: tables.map { |table|
-          {
-            id: table.id,
-            table_number: table.table_number,
-            status: get_table_status(table.table_number),
-            occupancy: get_table_occupancy(table.table_number),
-            capacity: 4
-          }
-        }
-      end
-
-      # GET /api/v1/tables/:id
-      def show
-        table_number = params[:id]
-
-        table = Table.find_by(table_number: table_number)
-        return render json: { error: "Not found" }, status: :not_found unless table
-
-        schedules = Schedule.where(table_number: table_number)
-                            .includes(:booker, :table)
-                            .order(:start_at)
-
-        render json: {
-          table_number: table_number,
-          status: get_table_status(table_number),
-          occupancy: get_table_occupancy(table_number),
-          capacity: 4,
-          occupants: schedules.filter_map(&:booker).uniq.map do |d|
-            Api::V1::DelegateSerializer.new(d).serializable_hash
-          end,
-          timeline: schedules.map do |s|
-            Api::V1::ScheduleSerializer.new(s, scope: current_delegate).serializable_hash
-          end
-        }
-      rescue StandardError => e
-        Rails.logger.error "Tables#show error: #{e.message}"
-        render json: { error: "Internal server error" }, status: :internal_server_error
-      end
-
+      # ============================================================
+      # TIME VIEW
+      # ============================================================
       def time_view
-        conference  = Conference.find_by(is_current: true) || Conference.order(conference_year: :desc).first
-        target_year = conference&.conference_year&.to_i || FALLBACK_YEAR.call
+        bkk_now = Time.current.in_time_zone(BKK_ZONE)
 
-        user_selected_date     = params[:date].present?
-        user_selected_time     = params[:time].present?
-        user_selected_datetime = user_selected_date && user_selected_time
-
-        input_date = params[:date]&.to_date || Date.today
-        input_time = params[:time] || "00:00"
-
-        datetime = Time.zone.parse("#{target_year}-#{input_date.month}-#{input_date.day} #{input_time}")
-
-        has_data_in_year = Schedule
-                           .where("EXTRACT(YEAR FROM start_at) = ?", target_year)
-                           .where("delegate_id IS NOT NULL OR booker_id IS NOT NULL")
-                           .exists?
-
-        unless has_data_in_year
-          actual_year = Schedule
-                        .where("delegate_id IS NOT NULL OR booker_id IS NOT NULL")
-                        .order(:start_at)
-                        .first&.start_at&.year
-
-          if actual_year
-            target_year = actual_year
-            datetime    = Time.zone.parse("#{target_year}-#{input_date.month}-#{input_date.day} #{input_time}")
+        # ----------------------------
+        # Robust date parsing
+        # รองรับ 2025-10-1 และ 2025-10-01
+        # ----------------------------
+        input_date =
+          if params[:date].present?
+            begin
+              parts = params[:date].split("-").map(&:to_i)
+              Date.new(parts[0], parts[1], parts[2])
+            rescue
+              bkk_now.to_date
+            end
+          else
+            bkk_now.to_date
           end
+
+        input_time = params[:time] || bkk_now.strftime("%H:%M")
+
+        begin
+          hour, minute = input_time.split(":").map(&:to_i)
+
+          datetime = Time.find_zone!(BKK_ZONE).local(
+            TARGET_YEAR,
+            input_date.month,
+            input_date.day,
+            hour,
+            minute
+          )
+        rescue
+          datetime = bkk_now
         end
+
+        # ============================================================
+        # QUERY SCHEDULE (Timezone Safe + Year Locked)
+        # ============================================================
 
         schedules = Schedule
-                    .includes(:delegate, :booker, :table)
-                    .where(start_at: datetime)
-                    .where("delegate_id IS NOT NULL OR booker_id IS NOT NULL")
+          .includes(:delegate, :booker, :table,
+                    team: [:delegates, :company],
+                    booker: :company)
+          .where(start_at: datetime)
+          .where("EXTRACT(YEAR FROM start_at AT TIME ZONE ?) = ?", BKK_ZONE, TARGET_YEAR)
+          .where("delegate_id IS NOT NULL OR booker_id IS NOT NULL")
 
-        if schedules.empty? && !user_selected_datetime
-          first_time = Schedule
-                       .where("EXTRACT(YEAR FROM start_at) = ?", target_year)
-                       .where("EXTRACT(MONTH FROM start_at) = ?", input_date.month)
-                       .where("EXTRACT(DAY FROM start_at) = ?", input_date.day)
-                       .where("delegate_id IS NOT NULL OR booker_id IS NOT NULL")
-                       .order(:start_at).first
-
-          if first_time
-            datetime  = first_time.start_at
-            schedules = Schedule.includes(:delegate, :booker, :table)
-                                .where(start_at: datetime)
-                                .where("delegate_id IS NOT NULL OR booker_id IS NOT NULL")
-          end
-        end
-
-        if schedules.empty? && !user_selected_datetime
+        # ถ้าไม่ได้ระบุ exact datetime → ดึง slot แรกของปี 2025
+        if schedules.empty? && !(params[:date].present? && params[:time].present?)
           first_schedule = Schedule
-                           .where("EXTRACT(YEAR FROM start_at) = ?", target_year)
-                           .where("delegate_id IS NOT NULL OR booker_id IS NOT NULL")
-                           .order(:start_at).first
+            .where("EXTRACT(YEAR FROM start_at AT TIME ZONE ?) = ?", BKK_ZONE, TARGET_YEAR)
+            .where("delegate_id IS NOT NULL OR booker_id IS NOT NULL")
+            .order(:start_at)
+            .first
 
           if first_schedule
-            datetime  = first_schedule.start_at
-            schedules = Schedule.includes(:delegate, :booker, :table)
-                                .where(start_at: datetime)
-                                .where("delegate_id IS NOT NULL OR booker_id IS NOT NULL")
+            datetime = first_schedule.start_at
+            schedules = Schedule
+              .includes(:delegate, :booker, :table,
+                        team: [:delegates, :company],
+                        booker: :company)
+              .where(start_at: datetime)
+              .where("delegate_id IS NOT NULL OR booker_id IS NOT NULL")
           end
         end
 
+        # ============================================================
+        # ALL TIMES TODAY (Timezone Safe)
+        # ============================================================
+
         all_times_today = Schedule
-                          .where("DATE(start_at) = ?", datetime.to_date)
-                          .where("delegate_id IS NOT NULL OR booker_id IS NOT NULL")
-                          .order(:start_at)
-                          .pluck(:start_at)
-                          .map { |t| t.utc.iso8601(3) }
-                          .uniq
+          .where("DATE(start_at AT TIME ZONE ?) = ?",
+                 BKK_ZONE,
+                 datetime.in_time_zone(BKK_ZONE).to_date)
+          .where("EXTRACT(YEAR FROM start_at AT TIME ZONE ?) = ?", BKK_ZONE, TARGET_YEAR)
+          .where("delegate_id IS NOT NULL OR booker_id IS NOT NULL")
+          .order(:start_at)
+          .pluck(:start_at)
+          .map { |t| t.in_time_zone(BKK_ZONE).iso8601 }
+          .uniq
+
+        # ============================================================
+        # ALL DAYS IN YEAR
+        # ============================================================
 
         all_days = Schedule
-                   .where("EXTRACT(YEAR FROM start_at) = ?", target_year)
-                   .where("delegate_id IS NOT NULL OR booker_id IS NOT NULL")
-                   .pluck("DATE(start_at)").uniq.sort
+          .where("EXTRACT(YEAR FROM start_at AT TIME ZONE ?) = ?", BKK_ZONE, TARGET_YEAR)
+          .where("delegate_id IS NOT NULL OR booker_id IS NOT NULL")
+          .pluck(Arel.sql("DATE(start_at AT TIME ZONE '#{BKK_ZONE}')"))
+          .uniq
+          .sort
 
-        my_schedule = current_delegate && schedules.find do |s|
-          s.delegate_id == current_delegate.id || s.booker_id == current_delegate.id
-        end
+        # ============================================================
+        # TABLE FILTER (เฉพาะ conference ปี 2025)
+        # ============================================================
+
+        conference_2025 = Conference.find_by(conference_year: TARGET_YEAR)
+
+        tables_scope =
+          if conference_2025
+            Table.where(conference_id: conference_2025.id)
+          else
+            Table.none
+          end
 
         schedule_by_table = schedules.group_by { |s| s.table_number.to_s.strip }
 
-        numeric_tables = Table.where("table_number ~ '^[0-9]+$'")
-        first_table    = numeric_tables.find_by(table_number: "1")
-        columns        = 6
-
-        if first_table.present?
-          begin
-            near     = YAML.safe_load(first_table.adjacent_tables || "--- []")
-            vertical = near.map(&:to_i).find { |n| n > 1 && (n - 1) > 1 }
-            columns  = vertical - 1 if vertical
-          rescue StandardError
-            columns = 6
-          end
-        end
-
-        total_tables = numeric_tables.count
-        rows         = (total_tables.to_f / columns).ceil
-        layout       = { type: "grid", rows: rows, columns: columns }
-
-        all_tables = Table.all.sort_by do |t|
-          num = t.table_number.to_s
-          num =~ /^\d+$/ ? [0, num.to_i] : [1, num]
-        end
-
-        tables = all_tables.map do |table|
-          key             = table.table_number.to_s.strip
+        tables = tables_scope.order(:table_number).map do |table|
+          key = table.table_number.to_s.strip
           table_schedules = schedule_by_table[key] || []
 
-          delegates = table_schedules.flat_map do |s|
-            people = []
-            people << s.delegate if s.delegate.present?
-            people << s.booker   if s.booker.present?
-            people
-          end.uniq(&:id).map do |d|
-            {
-              delegate_id: d.id,
-              delegate_name: d.name,
-              company: d.company&.name || "N/A",
-              avatar_url: "https://ui-avatars.com/api/?name=#{CGI.escape(d.name)}",
-              title: d.title
-            }
-          end
-
-          near_tables = begin
-            YAML.safe_load(table.adjacent_tables || "--- []")
-          rescue StandardError
-            []
-          end
-
-          { table_id: table.id, table_number: table.table_number,
-            near_tables: near_tables, delegates: delegates }
+          {
+            table_id:     table.id,
+            table_number: table.table_number,
+            meetings:     table_schedules.map { |s| build_meeting_info(s) }
+          }
         end
 
         render json: {
-          year: target_year,
-          date: datetime.to_date,
-          time: datetime.utc.iso8601(3),
-          my_table: my_schedule&.table_number,
-          layout: layout,
+          year: TARGET_YEAR,
+          date: datetime.in_time_zone(BKK_ZONE).to_date,
+          time: datetime.in_time_zone(BKK_ZONE).iso8601,
           tables: tables,
           times_today: all_times_today,
           days: all_days
         }
       end
 
+      # ============================================================
+      # PRIVATE
+      # ============================================================
+
       private
 
-      def get_table_status(table_number)
-        occupancy = get_table_occupancy(table_number)
-        if occupancy.zero?
-          "empty"
-        else
-          occupancy >= 4 ? "full" : "partial"
-        end
-      end
+      def build_meeting_info(schedule)
+        booker = schedule.booker
+        team   = schedule.team
 
-      def get_table_occupancy(table_number)
-        Schedule.where(table_number: table_number).select(:booker_id).distinct.count
+        side_a = if booker
+          {
+            delegate_id: booker.id,
+            name:        booker.name,
+            title:       booker.title,
+            company_id:  booker.company_id,
+            company:     booker.company&.name,
+            avatar_url:  "https://ui-avatars.com/api/?name=#{CGI.escape(booker.name)}"
+          }
+        end
+
+        side_b = if team
+          members = team.delegates.map do |d|
+            {
+              id:         d.id,
+              name:       d.name,
+              title:      d.title,
+              avatar_url: "https://ui-avatars.com/api/?name=#{CGI.escape(d.name)}"
+            }
+          end
+
+          {
+            team_id:      team.id,
+            team_name:    team.name,
+            company:      team.company&.name,
+            country_code: team.country_code,
+            members:      members,
+            member_count: members.size
+          }
+        end
+
+        {
+          schedule_id: schedule.id,
+          start_at:    schedule.start_at&.in_time_zone(BKK_ZONE)&.iso8601,
+          end_at:      schedule.end_at&.in_time_zone(BKK_ZONE)&.iso8601,
+          side_a:      side_a,
+          side_b:      side_b
+        }
       end
     end
   end

@@ -2,26 +2,39 @@ module Api
   module V1
     class DelegatesController < ApplicationController
       # ---------------- INDEX ----------------
-      # GET /api/v1/delegates
-      # GET /api/v1/delegates?keyword=john
-      # GET /api/v1/delegates?friends_only=true
-      # GET /api/v1/delegates?keyword=john&friends_only=true&page=1&per_page=20
       def index
         page     = (params[:page] || 1).to_i
-        per_page = [(params[:per_page] || 40).to_i, 100].min
+        per_page = [(params[:per_page] || 15).to_i, 30].min
         keyword  = params[:keyword].to_s.strip.downcase
         me       = current_delegate
 
         scope = Delegate
-                .includes(:company, :team)
-                .left_joins(:company)
-                .where.not(name: [nil, ""])
-                .where.not(id: me.id)
+                  .joins(:company)
+                  .includes(:company, :team)
+                  .where.not(name: [nil, ""])
+                  .where.not(id: me.id)
 
-        # filter เฉพาะเพื่อน
-        scope = scope.where(id: friend_ids_of(me)) if params[:friends_only].to_s == "true"
+        # ✅ default ปี 2025
+        year = params[:year].presence || "2025"
 
-        # ค้นหาด้วย keyword
+        scope = scope.where(<<~SQL, year)
+          EXISTS (
+            SELECT 1
+            FROM schedules s
+            JOIN conference_dates cd ON cd.id = s.conference_date_id
+            JOIN conferences co ON co.id = cd.conference_id
+            WHERE co.conference_year = ?
+              AND (
+                    s.booker_id = delegates.id
+                OR s.delegate_id = delegates.id
+              )
+          )
+        SQL
+
+        if params[:friends_only].to_s == "true"
+          scope = scope.where(id: friend_ids_of(me))
+        end
+
         if keyword.present?
           scope = scope.where(
             "LOWER(delegates.name) LIKE :q OR LOWER(companies.name) LIKE :q",
@@ -29,21 +42,20 @@ module Api
           )
         end
 
-        total = scope.count
+        total       = scope.count
+        total_pages = (total.to_f / per_page).ceil
 
         delegates = scope
-                    .order(name: :asc)
-                    .page(page)
-                    .per(per_page)
+                      .order(name: :asc)
+                      .offset((page - 1) * per_page)
+                      .limit(per_page)
 
         render json: {
-          meta: {
-            total: total,
-            page: page,
-            per_page: per_page,
-            total_pages: (total.to_f / per_page).ceil
-          },
-          data: ActiveModelSerializers::SerializableResource.new(
+          total: total,
+          page: page,
+          per_page: per_page,
+          total_pages: total_pages,
+          delegates: ActiveModelSerializers::SerializableResource.new(
             delegates,
             each_serializer: Api::V1::DelegateSerializer,
             scope: me
