@@ -56,7 +56,7 @@ module Chat
       payload = {
         type: "message_read",
         message_id: message.id,
-        read_at: now
+        read_at: TimeFormatter.format(now)  # ✅ ISO8601 +07:00
       }
 
       ChatChannel.broadcast_to(message.sender,    payload)
@@ -80,7 +80,7 @@ module Chat
       payload = {
         type: "bulk_read",
         message_ids: ids,
-        read_at: now
+        read_at: TimeFormatter.format(now)  # ✅ ISO8601 +07:00
       }
 
       user   = Delegate.find(user_id)
@@ -113,7 +113,7 @@ module Chat
       payload = {
         type: "bulk_read",
         message_ids: ids,
-        read_at: now
+        read_at: TimeFormatter.format(now)  # ✅ ISO8601 +07:00
       }
 
       # preload delegates ทีเดียว

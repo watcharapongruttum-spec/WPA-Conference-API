@@ -17,16 +17,38 @@ module Api
       end
 
       # POST /api/v1/group_chat
+      # Params:
+      #   title       (string, required)
+      #   member_ids  (array of delegate IDs, required — ไม่รวม creator)
+      #
+      # ✅ Rule: รวม creator ต้องได้ >= 3 คน
       def create_room
-        room = ChatRoom.create!(
-          title: params[:title],
-          room_kind: :group
-        )
+        member_ids = Array(params[:member_ids]).map(&:to_i).uniq
+        member_ids -= [current_delegate.id]  # กัน creator ซ้ำ
 
-        room.chat_room_members.create!(
-          delegate_id: current_delegate.id,
-          role: :admin
-        )
+        total = member_ids.size + 1  # รวม creator
+        if total < 3
+          return render json: {
+            error: "Group chat requires at least 3 members (got #{total})"
+          }, status: :unprocessable_entity
+        end
+
+        title = params[:title].to_s.strip
+        if title.blank?
+          return render json: { error: "Title cannot be blank" },
+                        status: :unprocessable_entity
+        end
+
+        room = ChatRoom.create!(title: title, room_kind: :group)
+
+        # creator เป็น admin
+        room.chat_room_members.create!(delegate_id: current_delegate.id, role: :admin)
+
+        # เพิ่ม member ที่ส่งมา (validate ว่า delegate มีอยู่จริง)
+        valid_ids = Delegate.where(id: member_ids).pluck(:id)
+        valid_ids.each do |id|
+          room.chat_room_members.create!(delegate_id: id, role: :member)
+        end
 
         render json: serialize_room(room), status: :created
       rescue ActiveRecord::RecordInvalid => e
@@ -40,11 +62,7 @@ module Api
           return render json: { error: "Already a member" }, status: :unprocessable_entity
         end
 
-        @room.chat_room_members.create!(
-          delegate_id: current_delegate.id,
-          role: :member
-        )
-
+        @room.chat_room_members.create!(delegate_id: current_delegate.id, role: :member)
         render json: { success: true, room_id: @room.id }
       end
 
@@ -53,8 +71,7 @@ module Api
         member = @room.chat_room_members.find_by(delegate_id: current_delegate.id)
         return render json: { error: "Not a member" }, status: :unprocessable_entity unless member
 
-        if member.role == "admin" &&
-           @room.chat_room_members.where(role: :admin).one?
+        if member.role == "admin" && @room.chat_room_members.where(role: :admin).one?
           return render json: { error: "Last admin cannot leave" },
                         status: :unprocessable_entity
         end
@@ -87,10 +104,10 @@ module Api
                     .page(page).per(per)
 
         render json: {
-          data: msgs.map { |m| serialize_message(m) },
+          data: msgs.map { |m| GroupChat::MessageSerializer.call(message: m, sender: m.sender) },
           meta: {
-            page: page,
-            per: per,
+            page:        page,
+            per:         per,
             total_pages: msgs.total_pages,
             total_count: msgs.total_count
           }
@@ -111,23 +128,22 @@ module Api
                         status: :unprocessable_entity
         end
 
-        msg = @room.chat_messages.create!(
-          sender: current_delegate,
-          content: content
-        )
+        msg = @room.chat_messages.create!(sender: current_delegate, content: content)
 
         MessageRead.mark_for(delegate: current_delegate, message_ids: [msg.id])
 
+        serialized = GroupChat::MessageSerializer.call(message: msg, sender: current_delegate)
+
         GroupChatChannel.broadcast_to(@room, {
-                                        type: "group_message",
-                                        room_id: @room.id,
-                                        message: serialize_message(msg)
-                                      })
+          type:    "group_message",
+          room_id: @room.id,
+          message: serialized
+        })
 
-        notify_group_members(msg)
-        push_to_offline_members(msg)
+        GroupChat::NotifyMembersService.call(room: @room, message: msg, sender: current_delegate)
+        GroupChat::PushOfflineMembersService.call(room: @room, message: msg, sender: current_delegate)
 
-        render json: serialize_message(msg), status: :created
+        render json: serialized, status: :created
       rescue ActiveRecord::RecordInvalid => e
         render json: { error: e.record.errors.full_messages.join(", ") },
                status: :unprocessable_entity
@@ -143,19 +159,15 @@ module Api
                   .where(chat_message_id: message.id)
                   .where.not(delegate_id: message.sender_id)
                   .map do |mr|
-                    {
-                      id: mr.delegate.id,
-                      name: mr.delegate.name,
-                      avatar_url: mr.delegate.avatar_url,
-                      read_at: mr.read_at
-                    }
-                  end
+                    DelegatePresenter.minimal(mr.delegate)
+                      &.merge(read_at: TimeFormatter.format(mr.read_at))
+                  end.compact
 
         render json: {
-          message_id: message.id,
+          message_id:    message.id,
           total_members: @room.chat_room_members.count,
-          read_count: readers.size + 1,
-          readers: readers
+          read_count:    readers.size + 1,
+          readers:       readers
         }
       end
 
@@ -175,109 +187,15 @@ module Api
 
       def serialize_room(room)
         {
-          id: room.id,
-          title: room.title,
+          id:           room.id,
+          title:        room.title,
           member_count: room.chat_room_members.count,
-          created_at: room.created_at
+          created_at:   TimeFormatter.format(room.created_at),
+          members:      room.chat_room_members.includes(:delegate).map do |m|
+                          DelegatePresenter.minimal(m.delegate)
+                            &.merge(role: m.role)
+                        end.compact
         }
-      end
-
-      def serialize_message(msg)
-        sender = msg.sender
-
-        readers = if msg.association(:message_reads).loaded?
-                    msg.message_reads
-                       .reject { |mr| mr.delegate_id == msg.sender_id }
-                       .map do |mr|
-                         {
-                           id: mr.delegate.id,
-                           name: mr.delegate.name,
-                           avatar_url: mr.delegate.avatar_url.presence ||
-                             "https://ui-avatars.com/api/?name=#{CGI.escape(mr.delegate.name.presence || 'Unknown')}",
-                           read_at: mr.read_at
-                         }
-                       end
-                  else
-                    MessageRead
-                      .includes(:delegate)
-                      .where(chat_message_id: msg.id)
-                      .where.not(delegate_id: msg.sender_id)
-                      .map do |mr|
-                        {
-                          id: mr.delegate.id,
-                          name: mr.delegate.name,
-                          avatar_url: mr.delegate.avatar_url.presence ||
-                            "https://ui-avatars.com/api/?name=#{CGI.escape(mr.delegate.name.presence || 'Unknown')}",
-                          read_at: mr.read_at
-                        }
-                      end
-                  end
-
-        {
-          id: msg.id,
-          content: msg.deleted_at? ? nil : msg.content,
-          created_at: msg.created_at,
-          edited_at: msg.edited_at,
-          deleted_at: msg.deleted_at,
-          is_deleted: msg.deleted_at?,
-          is_edited: msg.edited_at?,
-          read_at: msg.read_at,
-          sender: {
-            id: sender&.id,
-            name: sender&.name,
-            title: sender&.title,
-            company_name: sender&.company&.name,
-            avatar_url: sender&.avatar_url.presence ||
-              "https://ui-avatars.com/api/?name=#{CGI.escape(sender&.name.presence || 'Unknown')}"
-          },
-          readers: readers
-        }
-      end
-
-      def notify_group_members(msg)
-        recipient_ids = @room.chat_room_members
-                             .where.not(delegate_id: current_delegate.id)
-                             .pluck(:delegate_id)
-        delegates = Delegate.where(id: recipient_ids).index_by(&:id)
-
-        recipient_ids.each do |delegate_id|
-          # ✅ FIX: ใส่ begin/end ใน each เพื่อให้ loop ทำงานต่อแม้ error
-
-          next if REDIS.get("group_chat_open:#{@room.id}:#{delegate_id}") == "1"
-
-          delegate = delegates[delegate_id]
-          next unless delegate
-
-          notification = ::Notification.create!(
-            delegate: delegate,
-            notification_type: "new_group_message",
-            notifiable: msg
-          )
-
-          Rails.cache.delete("dashboard:#{delegate_id}:v1")
-          Notification::BroadcastService.call(notification)
-        rescue StandardError => e
-          Rails.logger.error "[GroupChat] notify failed for delegate=#{delegate_id}: #{e.message}"
-        end
-      end
-
-      def push_to_offline_members(msg)
-        member_ids = @room.chat_room_members
-                          .where.not(delegate_id: current_delegate.id)
-                          .pluck(:delegate_id)
-
-        member_ids.each do |delegate_id|
-          next if REDIS.get("group_chat_open:#{@room.id}:#{delegate_id}") == "1"
-          next if Chat::PresenceService.online?(delegate_id)
-
-          GroupMessagePushJob.perform_later(
-            delegate_id: delegate_id,
-            room_id: @room.id,
-            room_title: @room.title,
-            sender_name: current_delegate.name,
-            content: msg.content
-          )
-        end
       end
     end
   end

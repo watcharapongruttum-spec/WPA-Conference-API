@@ -108,11 +108,7 @@ class GroupChatChannel < ApplicationCable::Channel
                                     type: "bulk_read",
                                     room_id: @room.id,
                                     message_ids: newly_read_ids,
-                                    reader: {
-                                      id: current_delegate.id,
-                                      name: current_delegate.name,
-                                      avatar_url: current_delegate.avatar_url
-                                    },
+                                    reader: DelegatePresenter.minimal(current_delegate),  # ✅
                                     read_at: TimeFormatter.format(now)
                                   })
   end
@@ -151,33 +147,10 @@ class GroupChatChannel < ApplicationCable::Channel
   end
 
   def serialize_message(msg)
-    readers = MessageRead
-              .includes(:delegate)
-              .where(chat_message_id: msg.id)
-              .where.not(delegate_id: msg.sender_id)
-              .map do |mr|
-                {
-                  id: mr.delegate.id,
-                  name: mr.delegate.name,
-                  avatar_url: mr.delegate.avatar_url,
-                  read_at: TimeFormatter.format(mr.read_at)
-                }
-              end
-
-    {
-      id: msg.id,
-      content: msg.content,
-      created_at: TimeFormatter.format(msg.created_at),
-      edited_at: TimeFormatter.format(msg.edited_at),
-      deleted_at: TimeFormatter.format(msg.deleted_at),
-      sender: {
-        id: current_delegate.id,
-        name: current_delegate.name,
-        avatar_url: current_delegate.avatar_url
-      },
-      readers: readers
-    }
+    GroupChat::MessageSerializer.call(message: msg, sender: msg.sender)  # ✅ DRY
   end
+
+
 
   def find_own_message(message_id)
     @room.chat_messages.find_by(
