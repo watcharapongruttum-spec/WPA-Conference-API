@@ -149,54 +149,93 @@ module Api
 
       # ================= CREATE =================
       def create
-        unless message_params[:recipient_id]
-          return render json: { error: "recipient_id required" },
-                        status: :unprocessable_entity
-        end
+        recipient_id = message_params[:recipient_id]
+        return render json: { error: "recipient_id required" }, status: :unprocessable_entity unless recipient_id
 
-        content = message_params[:content].to_s.strip
+        recipient = Delegate.find_by(id: recipient_id)
+        return render json: { error: "Recipient not found" }, status: :not_found unless recipient
 
-        if content.blank?
+        # ================= IMAGE =================
+        if params.dig(:message, :image).present?
+          message = nil
+
+          ActiveRecord::Base.transaction do
+            message = ChatMessage.create!(
+              sender:       current_delegate,
+              recipient_id: recipient_id,
+              content:      "",
+              message_type: "image"
+            )
+
+            Chat::ImageService.attach(
+              message:  message,
+              data_uri: params[:message][:image]
+            )
+          end
+
+        else
+          # ================= TEXT =================
+          content = message_params[:content].to_s.strip
+
           return render json: {
             error: "Validation failed",
             details: { content: ["cannot be blank"] }
-          }, status: :unprocessable_entity
-        end
+          }, status: :unprocessable_entity if content.blank?
 
-        if content.length > 2000
           return render json: {
             error: "Validation failed",
             details: { content: ["must be between 1 and 2000 characters"] }
-          }, status: :unprocessable_entity
-        end
+          }, status: :unprocessable_entity if content.length > 2000
 
-        message = nil
-
-        ActiveRecord::Base.transaction do
           message = Chat::SendMessageService.call(
-            sender: current_delegate,
-            recipient_id: message_params[:recipient_id],
-            content: content
+            sender:       current_delegate,
+            recipient_id: recipient_id,
+            content:      content
           )
         end
 
+        # ================= COMMON PART =================
         Notification::CreateService.call(message)
-
         AuditLogger.message_created(message, request) if defined?(AuditLogger)
 
         message = ChatMessage
-                  .includes(sender: :company, recipient: :company)
-                  .find(message.id)
+                    .includes(sender: :company, recipient: :company)
+                    .find(message.id)
+
+        payload = {
+          type: "new_message",
+          message: Api::V1::ChatMessageSerializer
+                    .new(message)
+                    .serializable_hash
+        }
+
+        ChatChannel.broadcast_to(message.recipient, payload)
+        ChatChannel.broadcast_to(message.sender,    payload)
 
         render json: message,
-               serializer: Api::V1::ChatMessageSerializer,
-               status: :created
+              serializer: Api::V1::ChatMessageSerializer,
+              status: :created
+
+      rescue ArgumentError => e
+        render json: { error: e.message }, status: :unprocessable_entity
+
       rescue ActiveRecord::RecordInvalid => e
         render json: {
           error: "Validation failed",
           details: e.record.errors.full_messages
         }, status: :unprocessable_entity
       end
+
+
+
+
+
+
+
+
+
+
+
 
       # ================= UPDATE =================
       def update
@@ -268,7 +307,7 @@ module Api
       end
 
       def message_params
-        params.require(:message).permit(:recipient_id, :content)
+        params.require(:message).permit(:recipient_id, :content, :image)  
       end
 
       def update_params

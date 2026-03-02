@@ -115,38 +115,57 @@ module Api
       end
 
       # POST /api/v1/group_chat/:id/messages
+      # ================= SEND MESSAGE (แก้รองรับรูปภาพ) =================
       def send_message
+        # ✅ ส่งรูปภาพ
+        if params[:image].present?
+          msg = @room.chat_messages.create!(
+            sender:       current_delegate,
+            content:      "",
+            message_type: "image"
+          )
+
+          Chat::ImageService.attach(message: msg, data_uri: params[:image])
+          MessageRead.mark_for(delegate: current_delegate, message_ids: [msg.id])
+
+          serialized = GroupChat::MessageSerializer.call(message: msg, sender: current_delegate)
+          GroupChatChannel.broadcast_to(@room, { type: "group_message", room_id: @room.id, message: serialized })
+
+          GroupChat::NotifyMembersService.call(room: @room, message: msg, sender: current_delegate)
+          GroupChat::PushOfflineMembersService.call(room: @room, message: msg, sender: current_delegate)
+
+          return render json: serialized, status: :created
+        end
+
+        # ✅ ส่งข้อความ (เดิม)
         content = params[:content].to_s.strip
 
         if content.blank?
-          return render json: { error: "Content cannot be blank" },
-                        status: :unprocessable_entity
+          return render json: { error: "Content cannot be blank" }, status: :unprocessable_entity
         end
 
         if content.length > 2000
-          return render json: { error: "Content too long (max 2000)" },
-                        status: :unprocessable_entity
+          return render json: { error: "Content too long (max 2000)" }, status: :unprocessable_entity
         end
 
-        msg = @room.chat_messages.create!(sender: current_delegate, content: content)
+        msg = @room.chat_messages.create!(
+          sender:       current_delegate,
+          content:      content,
+          message_type: "text"  # ✅
+        )
 
         MessageRead.mark_for(delegate: current_delegate, message_ids: [msg.id])
-
         serialized = GroupChat::MessageSerializer.call(message: msg, sender: current_delegate)
 
-        GroupChatChannel.broadcast_to(@room, {
-          type:    "group_message",
-          room_id: @room.id,
-          message: serialized
-        })
-
+        GroupChatChannel.broadcast_to(@room, { type: "group_message", room_id: @room.id, message: serialized })
         GroupChat::NotifyMembersService.call(room: @room, message: msg, sender: current_delegate)
         GroupChat::PushOfflineMembersService.call(room: @room, message: msg, sender: current_delegate)
 
         render json: serialized, status: :created
+      rescue ArgumentError => e
+        render json: { error: e.message }, status: :unprocessable_entity
       rescue ActiveRecord::RecordInvalid => e
-        render json: { error: e.record.errors.full_messages.join(", ") },
-               status: :unprocessable_entity
+        render json: { error: e.record.errors.full_messages.join(", ") }, status: :unprocessable_entity
       end
 
       # GET /api/v1/group_chat/:id/readers/:message_id

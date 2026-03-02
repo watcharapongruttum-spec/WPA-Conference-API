@@ -22,36 +22,37 @@ class ChatChannel < ApplicationCable::Channel
     REDIS.del("chat:active_room:#{current_delegate.id}")
   end
 
-
+  # ================= PING =================
   def ping(_data)
     Chat::PresenceService.refresh(current_delegate.id)
   end
 
-  # ✅ เพิ่ม: typing indicator
+  # ================= TYPING =================
   def typing_start(data)
-    payload = safe_json(data)
+    payload   = safe_json(data)
     recipient = Delegate.find_by(id: payload["recipient_id"])
     return unless recipient
 
     ChatChannel.broadcast_to(recipient, {
-                               type: "typing_start",
-                               sender_id: current_delegate.id
-                             })
+      type:      "typing_start",
+      sender_id: current_delegate.id
+    })
   end
 
   def typing_stop(data)
-    payload = safe_json(data)
+    payload   = safe_json(data)
     recipient = Delegate.find_by(id: payload["recipient_id"])
     return unless recipient
 
     ChatChannel.broadcast_to(recipient, {
-                               type: "typing_stop",
-                               sender_id: current_delegate.id
-                             })
+      type:      "typing_stop",
+      sender_id: current_delegate.id
+    })
   end
 
+  # ================= ROOM =================
   def enter_room(data)
-    payload = safe_json(data)
+    payload   = safe_json(data)
     target_id = payload["user_id"]
     REDIS.set("chat:room:#{current_delegate.id}:#{target_id}", "open")
     REDIS.set("chat:active_room:#{current_delegate.id}", target_id.to_s)
@@ -59,20 +60,39 @@ class ChatChannel < ApplicationCable::Channel
   end
 
   def leave_room(data)
-    payload = safe_json(data)
+    payload   = safe_json(data)
     target_id = payload["user_id"]
     REDIS.del("chat:room:#{current_delegate.id}:#{target_id}")
     REDIS.del("chat:active_room:#{current_delegate.id}")
   end
 
+  # ================= SEND TEXT =================
   def send_message(data)
     payload = safe_json(data)
     message = Chat::SendMessageService.call(
-      sender: current_delegate,
+      sender:       current_delegate,
       recipient_id: payload["recipient_id"],
-      content: payload["content"]
+      content:      payload["content"]
     )
     Notification::CreateService.call(message)
+  rescue StandardError => e
+    handle_error(e)
+  end
+
+  # ================= SEND IMAGE ✅ =================
+  def send_image(data)
+    payload  = safe_json(data)
+    data_uri = payload["image"]
+    return transmit(type: "error", message: "No image provided") if data_uri.blank?
+
+    message = Chat::SendImageService.call(
+      sender:       current_delegate,
+      recipient_id: payload["recipient_id"],
+      data_uri:     data_uri
+    )
+    Notification::CreateService.call(message)
+  rescue ArgumentError => e
+    handle_error(e)
   rescue StandardError => e
     handle_error(e)
   end
@@ -85,6 +105,6 @@ class ChatChannel < ApplicationCable::Channel
 
   def handle_error(error)
     Rails.logger.error "❌ ChatChannel error: #{error.class} - #{error.message}"
-    transmit(type: "error", message: error.message)
+    transmit({ type: "error", message: error.message })  # ✅ Hash ไม่ใช่ keyword args
   end
 end

@@ -7,6 +7,11 @@ class ChatMessage < ApplicationRecord
              optional: true
 
   # ==========================
+  # ACTIVE STORAGE
+  # ==========================
+  has_one_attached :image  # ✅
+
+  # ==========================
   # CALLBACKS
   # ==========================
   before_validation :normalize_content
@@ -14,12 +19,16 @@ class ChatMessage < ApplicationRecord
   # ==========================
   # VALIDATIONS
   # ==========================
-  validates :content, presence: { message: "cannot be blank" }
   validates :content,
-            length: {
-              maximum: 2000,
-              message: "must be between 1 and 2000 characters"
-            }
+            presence: { message: "cannot be blank" },
+            unless: :image?  # ✅ ไม่ required ถ้าส่งรูป
+
+  validates :content,
+            length: { maximum: 2000, message: "must be between 1 and 2000 characters" },
+            allow_blank: true  # ✅
+
+  validates :message_type,
+            inclusion: { in: %w[text image] }  # ✅
 
   validate :can_send_message
   validate :room_or_direct_present
@@ -51,6 +60,14 @@ class ChatMessage < ApplicationRecord
   # ==========================
   # HELPERS
   # ==========================
+  def image?
+    message_type == "image"
+  end
+
+  def text?
+    message_type == "text"
+  end
+
   def edited?
     edited_at.present?
   end
@@ -60,38 +77,32 @@ class ChatMessage < ApplicationRecord
   end
 
   def content_preview(length = 50)
+    return "📷 รูปภาพ" if image?
     content.to_s.truncate(length)
+  end
+
+  # ✅ คืน URL ของรูป (ถ้ามี)
+  def image_url
+    return nil unless image.attached?
+    Rails.application.routes.url_helpers.rails_blob_url(image, only_path: false)
   end
 
   private
 
-  # ==========================
-  # NORMALIZE
-  # ==========================
   def normalize_content
     return if content.nil?
-
     self.content = content.strip
   end
 
-  # ==========================
-  # VALIDATIONS
-  # ==========================
-
-
   def can_send_message
     return if chat_room.nil?
-
     return if chat_room.can_send_message?(sender)
-
     errors.add(:base, "Cannot send message to this room")
   end
 
   def room_or_direct_present
     errors.add(:base, "Message must belong to a room or have a recipient") if chat_room.nil? && recipient.nil?
-
     return unless chat_room.present? && recipient.present?
-
     errors.add(:base, "Message cannot have both room and recipient")
   end
 end
