@@ -131,8 +131,6 @@ module Api
           serialized = GroupChat::MessageSerializer.call(message: msg, sender: current_delegate)
           GroupChatChannel.broadcast_to(@room, { type: "group_message", room_id: @room.id, message: serialized })
 
-          GroupChat::NotifyMembersService.call(room: @room, message: msg, sender: current_delegate)
-          GroupChat::PushOfflineMembersService.call(room: @room, message: msg, sender: current_delegate)
 
           return render json: serialized, status: :created
         end
@@ -158,8 +156,6 @@ module Api
         serialized = GroupChat::MessageSerializer.call(message: msg, sender: current_delegate)
 
         GroupChatChannel.broadcast_to(@room, { type: "group_message", room_id: @room.id, message: serialized })
-        GroupChat::NotifyMembersService.call(room: @room, message: msg, sender: current_delegate)
-        GroupChat::PushOfflineMembersService.call(room: @room, message: msg, sender: current_delegate)
 
         render json: serialized, status: :created
       rescue ArgumentError => e
