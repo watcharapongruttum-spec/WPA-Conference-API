@@ -49,10 +49,11 @@ class ChatRoomChannel < ApplicationCable::Channel
     msg = @room.chat_messages.create!(
       sender:       current_delegate,
       content:      "",
-      message_type: "image"  # ✅
+      message_type: "image"
     )
 
     Chat::ImageService.attach(message: msg, data_uri: data_uri)
+    msg.reload  # ✅ โหลด image association ใหม่
     broadcast_message(msg)
     auto_read_if_open(msg)
   rescue ArgumentError => e

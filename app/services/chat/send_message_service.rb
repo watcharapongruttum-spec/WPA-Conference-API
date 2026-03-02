@@ -15,7 +15,7 @@ module Chat
     def call
       create_message
       auto_mark_if_recipient_connected
-      broadcast_new_message
+      # broadcast_new_message
       @message
     end
 
@@ -26,6 +26,7 @@ module Chat
         sender: @sender,
         recipient: @recipient,
         content: @content
+
       )
     end
 

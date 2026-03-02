@@ -56,10 +56,11 @@ class GroupChatChannel < ApplicationCable::Channel
     msg = @room.chat_messages.create!(
       sender:       current_delegate,
       content:      "",
-      message_type: "image"  # ✅
+      message_type: "image"
     )
 
     Chat::ImageService.attach(message: msg, data_uri: data_uri)
+    msg.reload  # ✅ โหลด image association ใหม่
     MessageRead.mark_for(delegate: current_delegate, message_ids: [msg.id])
     broadcast_message(msg)
     notify_group_members(msg)

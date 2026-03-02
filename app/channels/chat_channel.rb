@@ -75,11 +75,12 @@ class ChatChannel < ApplicationCable::Channel
       content:      payload["content"]
     )
     Notification::CreateService.call(message)
+    broadcast_message(message)  # ✅
   rescue StandardError => e
     handle_error(e)
   end
 
-  # ================= SEND IMAGE ✅ =================
+  # ================= SEND IMAGE =================
   def send_image(data)
     payload  = safe_json(data)
     data_uri = payload["image"]
@@ -91,6 +92,7 @@ class ChatChannel < ApplicationCable::Channel
       data_uri:     data_uri
     )
     Notification::CreateService.call(message)
+    broadcast_message(message)  # ✅
   rescue ArgumentError => e
     handle_error(e)
   rescue StandardError => e
@@ -99,12 +101,26 @@ class ChatChannel < ApplicationCable::Channel
 
   private
 
+  def broadcast_message(message)
+    message = ChatMessage
+                .includes(sender: :company, recipient: :company)
+                .find(message.id)
+
+    payload = {
+      type:    "new_message",
+      message: Api::V1::ChatMessageSerializer.new(message).serializable_hash
+    }
+
+    ChatChannel.broadcast_to(message.recipient, payload)
+    ChatChannel.broadcast_to(message.sender,    payload)
+  end
+
   def safe_json(data)
     data.is_a?(String) ? JSON.parse(data) : data
   end
 
   def handle_error(error)
     Rails.logger.error "❌ ChatChannel error: #{error.class} - #{error.message}"
-    transmit({ type: "error", message: error.message })  # ✅ Hash ไม่ใช่ keyword args
+    transmit({ type: "error", message: error.message })
   end
 end

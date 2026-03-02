@@ -15,7 +15,7 @@ module Chat
       create_message
       attach_image
       auto_mark_if_recipient_connected
-      broadcast_new_message
+    #   broadcast_new_message
       @message
     end
 
