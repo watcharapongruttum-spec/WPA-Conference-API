@@ -66,9 +66,9 @@ Rails.application.routes.draw do
       end
 
       # Tables
-      resources :tables, only: [:show] do
+      resources :tables, only: [] do
         collection do
-          get :grid_view
+          # get :grid_view
           get :time_view
         end
       end
