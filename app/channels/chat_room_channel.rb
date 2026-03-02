@@ -9,6 +9,16 @@ class ChatRoomChannel < ApplicationCable::Channel
     end
 
     stream_for @room
+    Chat::PresenceService.online(current_delegate.id)  # ✅
+  end
+
+  def unsubscribed
+    Chat::PresenceService.offline(current_delegate.id)  # ✅
+  end
+
+  # ================= PING =================
+  def ping(_data)
+    Chat::PresenceService.refresh(current_delegate.id)  # ✅
   end
 
   # ================= SEND =================
@@ -32,22 +42,14 @@ class ChatRoomChannel < ApplicationCable::Channel
                   id: msg.id,
                   content: msg.content,
                   created_at: TimeFormatter.format(msg.created_at),
-                  sender: {
-                    id: current_delegate.id,
-                    name: current_delegate.name,
-                    avatar_url: current_delegate.avatar_url
-                  }
+                  sender: DelegatePresenter.minimal(current_delegate)  # ✅
                 }
               else
                 {
                   id: SecureRandom.uuid,
                   content: content,
                   created_at: TimeFormatter.format(Time.current),
-                  sender: {
-                    id: current_delegate.id,
-                    name: current_delegate.name,
-                    avatar_url: current_delegate.avatar_url
-                  }
+                  sender: DelegatePresenter.minimal(current_delegate)  # ✅
                 }
               end
 
@@ -108,7 +110,6 @@ class ChatRoomChannel < ApplicationCable::Channel
 
   # =================================================
   private
-
   # =================================================
 
   def parse(data)
@@ -134,7 +135,6 @@ class ChatRoomChannel < ApplicationCable::Channel
     redis.get(presence_key(other.id, current_delegate.id)) == "1"
   end
 
-  # ✅ instance method — ใช้กับ direct chat room (2 คน)
   def auto_read_if_open(msg)
     return unless other_user_open?
 

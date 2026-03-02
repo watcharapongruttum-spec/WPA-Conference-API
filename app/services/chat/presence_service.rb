@@ -2,7 +2,8 @@
 module Chat
   class PresenceService
     CONN_PREFIX = "chat:connections".freeze
-    TTL = 30.seconds
+    # TTL = 30.seconds
+    TTL = 2.minutes  # เดิม 30.seconds
 
     # -------------------------
     # User connected
@@ -50,11 +51,9 @@ module Chat
     # -------------------------
     def self.refresh(user_id)
       key = conn_key(user_id)
-
-      return unless connection_count(user_id).positive?
-
+      # ถ้าไม่มี key ให้สร้างใหม่ด้วย count=1
+      REDIS.set(key, 1) unless connection_count(user_id).positive?
       REDIS.expire(key, TTL)
-      Rails.logger.debug "[Presence] user=#{user_id} refreshed"
     end
 
     # -------------------------

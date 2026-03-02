@@ -22,7 +22,7 @@ class ChatChannel < ApplicationCable::Channel
     REDIS.del("chat:active_room:#{current_delegate.id}")
   end
 
-  # ✅ เพิ่ม: heartbeat — ต่ออายุ online key
+
   def ping(_data)
     Chat::PresenceService.refresh(current_delegate.id)
   end

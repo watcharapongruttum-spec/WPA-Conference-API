@@ -9,11 +9,13 @@ class GroupChatChannel < ApplicationCable::Channel
     end
 
     stream_for @room
+    Chat::PresenceService.online(current_delegate.id)
     Rails.logger.info "✅ GroupChatChannel subscribed delegate=#{current_delegate.id} room=#{@room.id}"
   end
 
   def unsubscribed
     REDIS.del(room_active_key)
+    Chat::PresenceService.offline(current_delegate.id)
     Rails.logger.info "👋 GroupChatChannel unsubscribed delegate=#{current_delegate.id}"
   end
 
@@ -138,6 +140,14 @@ class GroupChatChannel < ApplicationCable::Channel
   end
 
   # =================================================
+
+
+  def ping(_data)
+    Chat::PresenceService.refresh(current_delegate.id)
+  end
+
+
+
   private
 
   # =================================================
