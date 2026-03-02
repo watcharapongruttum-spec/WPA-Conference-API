@@ -1,3 +1,4 @@
+# app/serializers/api/v1/schedule_serializer.rb
 class Api::V1::ScheduleSerializer < ActiveModel::Serializer
   attributes :id,
              :start_at,
@@ -12,13 +13,8 @@ class Api::V1::ScheduleSerializer < ActiveModel::Serializer
   # ===============================
   # TIME FORMAT
   # ===============================
-  def start_at
-    format_time(object.start_at)
-  end
-
-  def end_at
-    format_time(object.end_at)
-  end
+  def start_at = TimeFormatter.format(object.start_at)
+  def end_at   = TimeFormatter.format(object.end_at)
 
   # ===============================
   # DATE
@@ -76,16 +72,5 @@ class Api::V1::ScheduleSerializer < ActiveModel::Serializer
       explanation: lf.explanation,
       reported_at: lf.reported_at
     }
-  end
-
-  # ===============================
-  # PRIVATE
-  # ===============================
-  private
-
-  def format_time(time)
-    return nil unless time
-
-    time.in_time_zone('Asia/Bangkok').iso8601
   end
 end

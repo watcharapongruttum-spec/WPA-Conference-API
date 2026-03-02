@@ -62,7 +62,7 @@ class GroupChatChannel < ApplicationCable::Channel
                                     room_id: @room.id,
                                     message_id: msg.id,
                                     content: msg.content,
-                                    edited_at: msg.edited_at
+                                    edited_at: TimeFormatter.format(msg.edited_at)
                                   })
   rescue ActiveRecord::RecordInvalid => e
     transmit(type: "error", message: e.message)
@@ -113,7 +113,7 @@ class GroupChatChannel < ApplicationCable::Channel
                                       name: current_delegate.name,
                                       avatar_url: current_delegate.avatar_url
                                     },
-                                    read_at: now
+                                    read_at: TimeFormatter.format(now)
                                   })
   end
 
@@ -160,16 +160,16 @@ class GroupChatChannel < ApplicationCable::Channel
                   id: mr.delegate.id,
                   name: mr.delegate.name,
                   avatar_url: mr.delegate.avatar_url,
-                  read_at: mr.read_at
+                  read_at: TimeFormatter.format(mr.read_at)
                 }
               end
 
     {
       id: msg.id,
       content: msg.content,
-      created_at: msg.created_at,
-      edited_at: msg.edited_at,
-      deleted_at: msg.deleted_at,
+      created_at: TimeFormatter.format(msg.created_at),
+      edited_at: TimeFormatter.format(msg.edited_at),
+      deleted_at: TimeFormatter.format(msg.deleted_at),
       sender: {
         id: current_delegate.id,
         name: current_delegate.name,
@@ -197,8 +197,6 @@ class GroupChatChannel < ApplicationCable::Channel
     delegates = Delegate.where(id: recipient_ids).index_by(&:id)
 
     recipient_ids.each do |delegate_id|
-      # ✅ FIX: ใส่ begin/end ใน each เพื่อให้ loop ทำงานต่อแม้ error
-
       next if REDIS.get("group_chat_open:#{@room.id}:#{delegate_id}") == "1"
 
       delegate = delegates[delegate_id]

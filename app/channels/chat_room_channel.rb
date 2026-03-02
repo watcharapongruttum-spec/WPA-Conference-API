@@ -1,3 +1,4 @@
+# app/channels/chat_room_channel.rb
 class ChatRoomChannel < ApplicationCable::Channel
   def subscribed
     @room = ChatRoom.find(params[:room_id])
@@ -30,7 +31,7 @@ class ChatRoomChannel < ApplicationCable::Channel
                 {
                   id: msg.id,
                   content: msg.content,
-                  created_at: msg.created_at,
+                  created_at: TimeFormatter.format(msg.created_at),
                   sender: {
                     id: current_delegate.id,
                     name: current_delegate.name,
@@ -41,7 +42,7 @@ class ChatRoomChannel < ApplicationCable::Channel
                 {
                   id: SecureRandom.uuid,
                   content: content,
-                  created_at: Time.current,
+                  created_at: TimeFormatter.format(Time.current),
                   sender: {
                     id: current_delegate.id,
                     name: current_delegate.name,
@@ -56,7 +57,6 @@ class ChatRoomChannel < ApplicationCable::Channel
                                    message: payload
                                  })
 
-    # ✅ เรียก instance method ถูกต้อง
     auto_read_if_open(msg) if msg
   end
 
@@ -135,7 +135,6 @@ class ChatRoomChannel < ApplicationCable::Channel
   end
 
   # ✅ instance method — ใช้กับ direct chat room (2 คน)
-  # อ่านผ่าน read_at บน chat_messages (ถูกต้องสำหรับ direct chat)
   def auto_read_if_open(msg)
     return unless other_user_open?
 
@@ -144,7 +143,7 @@ class ChatRoomChannel < ApplicationCable::Channel
     ChatRoomChannel.broadcast_to(@room, {
                                    type: "message_read",
                                    message_id: msg.id,
-                                   read_at: msg.read_at
+                                   read_at: TimeFormatter.format(msg.read_at)
                                  })
   end
 
@@ -166,7 +165,7 @@ class ChatRoomChannel < ApplicationCable::Channel
     ChatRoomChannel.broadcast_to(@room, {
                                    type: "bulk_read",
                                    message_ids: ids,
-                                   read_at: now
+                                   read_at: TimeFormatter.format(now)
                                  })
   end
 end

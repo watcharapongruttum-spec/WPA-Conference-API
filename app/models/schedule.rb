@@ -1,3 +1,4 @@
+# app/models/schedule.rb
 class Schedule < ApplicationRecord
   # ===============================
   # RELATIONS
@@ -101,16 +102,14 @@ class Schedule < ApplicationRecord
   end
 
   # ===============================
-  # FORMAT TIME
+  # FORMAT TIME — delegate to central service
   # ===============================
   def self.format_time(time)
-    return nil unless time
-
-    time.in_time_zone('Asia/Bangkok').iso8601
+    TimeFormatter.format(time)
   end
 
   # =====================================================
-  # CENTRAL TIMELINE BUILDER (ใหม่)
+  # CENTRAL TIMELINE BUILDER
   # =====================================================
   def self.build_timeline_for(delegate:, params:)
     years = years_of(delegate.id)
@@ -180,14 +179,14 @@ class Schedule < ApplicationRecord
   end
 
   # ===============================
-  # MY SCHEDULE (แก้ให้เรียกกลาง)
+  # MY SCHEDULE
   # ===============================
   def self.build_my_schedule(delegate:, params:)
     build_timeline_for(delegate: delegate, params: params)
   end
 
   # ===============================
-  # SCHEDULE OTHERS (แก้ให้เรียกกลาง)
+  # SCHEDULE OTHERS
   # ===============================
   def self.build_schedule_others(viewer:, params:)
     target_delegate = Delegate.find_by(id: params[:delegate_id])
@@ -222,7 +221,7 @@ class Schedule < ApplicationRecord
   end
 
   # ===============================
-  # MERGE TIMELINE (ของเดิม)
+  # MERGE TIMELINE
   # ===============================
   def self.merge_timeline(personal:, global:)
     items = global.map do |g|
@@ -250,7 +249,7 @@ class Schedule < ApplicationRecord
   end
 
   # ===============================
-  # TEAM DELEGATES (ของเดิม)
+  # TEAM DELEGATES
   # ===============================
   def team_delegates
     return Delegate.none unless target_id
