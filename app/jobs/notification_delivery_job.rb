@@ -1,7 +1,9 @@
 class NotificationDeliveryJob < ApplicationJob
   queue_as :default
 
-  FCM_ALLOWED_TYPES = %w[new_message admin_announce].freeze
+  # ✅ FIX #3: เพิ่ม new_group_message ให้ตรงกับ BroadcastService
+  # เดิมขาด new_group_message ทำให้ group chat push ถูก skip ทุกครั้ง
+  FCM_ALLOWED_TYPES = %w[new_message new_group_message admin_announce].freeze
 
   BURST_WINDOW = 60.seconds
   SUMMARY_THRESHOLD = 5

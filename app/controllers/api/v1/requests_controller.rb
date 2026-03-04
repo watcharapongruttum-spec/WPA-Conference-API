@@ -165,10 +165,11 @@ module Api
       # ============================
       # DELETE /api/v1/requests/:id/cancel
       # ============================
+
       def cancel
         connection = ConnectionRequest.find_by(
-          requester_id: current_delegate.id,
-          target_id: params[:id]
+          id: params[:id],                      # ← ใช้ id ตรงๆ
+          requester_id: current_delegate.id     # ← ยืนยันว่าเป็นเจ้าของ
         )
         return render json: { error: "Not found" }, status: :not_found unless connection
 

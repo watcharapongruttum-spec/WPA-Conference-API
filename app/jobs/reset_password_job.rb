@@ -8,10 +8,7 @@ class ResetPasswordJob < ApplicationJob
     frontend      = ENV.fetch("FRONTEND_URL", nil)
     token         = delegate.reset_password_token
 
-    # ปุ่ม 1: เปิดแอพโดยตรง (deeplink)
     app_url       = "wpa://reset-password?token=#{token}"
-
-    # ปุ่ม 2: reset ผ่านเว็บ (fallback)
     web_url       = "#{frontend}/deeplink-reset-password?token=#{token}"
 
     Rails.logger.info "=============================="
@@ -166,8 +163,10 @@ class ResetPasswordJob < ApplicationJob
               <p class="greeting">สวัสดีคุณ #{delegate.name},</p>
               <p class="description">
                 เราได้รับคำขอรีเซ็ตรหัสผ่านสำหรับบัญชีของคุณ<br>
-                กรุณาเลือกวิธีที่ต้องการด้านล่าง ลิงก์นี้จะหมดอายุใน <strong>1 ชั่วโมง</strong>
+                กรุณาเลือกวิธีที่ต้องการด้านล่าง ลิงก์นี้จะหมดอายุใน <strong>30 นาที</strong>
               </p>
+              <!-- ✅ FIX #6: แก้จาก "1 ชั่วโมง" → "30 นาที"
+                   ให้ตรงกับ delegate.rb reset_token_valid? ที่เช็ค 30.minutes.ago -->
 
               <!-- ปุ่ม 1: เปิดแอพ -->
               <a href="#{app_url}" class="btn btn-primary">

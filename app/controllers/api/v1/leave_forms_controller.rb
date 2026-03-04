@@ -15,11 +15,13 @@ class Api::V1::LeaveFormsController < ApplicationController
   def leave_form_params
     params.require(:leave_form).permit(
       leaves: [
-        :schedule_id, # ← เพิ่มบรรทัดนี้
+        :schedule_id,
         :start_date,
         :end_date,
         :reason,
-        :leave_type_id
+        :leave_type_id,
+        :explanation  # ✅ FIX #5: เพิ่ม :explanation ที่ขาดหายไป
+                      # เดิม bulk_report! ได้รับ explanation = nil เสมอ
       ]
     )
   end

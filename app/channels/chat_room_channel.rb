@@ -3,7 +3,10 @@ class ChatRoomChannel < ApplicationCable::Channel
   def subscribed
     @room = ChatRoom.find(params[:room_id])
 
-    unless @room.delegates.include?(current_delegate)
+    # ✅ FIX #7: เปลี่ยนจาก @room.delegates.include?(current_delegate)
+    # เดิมโหลด delegates ทั้งหมดในห้องมา then Ruby .include? → N+1
+    # ใช้ exists? แทน → query เดียว เหมือน GroupChatChannel
+    unless @room.chat_room_members.exists?(delegate_id: current_delegate.id)
       reject
       return
     end
@@ -30,7 +33,7 @@ class ChatRoomChannel < ApplicationCable::Channel
     msg = @room.chat_messages.create!(
       sender:       current_delegate,
       content:      content,
-      message_type: "text"  # ✅
+      message_type: "text"
     )
 
     broadcast_message(msg)
@@ -40,7 +43,7 @@ class ChatRoomChannel < ApplicationCable::Channel
     transmit(type: "error", message: e.record.errors.full_messages.join(", "))
   end
 
-  # ================= SEND IMAGE ✅ =================
+  # ================= SEND IMAGE =================
   def send_image(data)
     data     = parse(data)
     data_uri = data["image"]
@@ -53,7 +56,7 @@ class ChatRoomChannel < ApplicationCable::Channel
     )
 
     Chat::ImageService.attach(message: msg, data_uri: data_uri)
-    msg.reload  # ✅ โหลด image association ใหม่
+    msg.reload
     broadcast_message(msg)
     auto_read_if_open(msg)
   rescue ArgumentError => e
@@ -85,7 +88,7 @@ class ChatRoomChannel < ApplicationCable::Channel
     data = parse(data)
     msg  = @room.chat_messages.find_by(id: data["message_id"])
     return unless msg && msg.sender == current_delegate
-    return transmit(type: "error", message: "Cannot edit image") if msg.image?  # ✅
+    return transmit(type: "error", message: "Cannot edit image") if msg.image?
 
     msg.update!(content: data["content"], edited_at: Time.current)
 
@@ -119,8 +122,8 @@ class ChatRoomChannel < ApplicationCable::Channel
       message: {
         id:           msg.id,
         content:      msg.content,
-        message_type: msg.message_type,  # ✅
-        image_url:    msg.image_url,     # ✅
+        message_type: msg.message_type,
+        image_url:    msg.image_url,
         created_at:   TimeFormatter.format(msg.created_at),
         sender:       DelegatePresenter.minimal(current_delegate)
       }

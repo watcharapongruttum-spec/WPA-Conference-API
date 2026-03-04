@@ -35,9 +35,7 @@ RSpec.describe Api::V1::DeeplinkController, type: :controller do
     end
   end
 
-  # -------------------------------------------------------
-  # บัค #7: expiry text ต้องบอก 30 นาที ไม่ใช่ 1 ชั่วโมง
-  # -------------------------------------------------------
+
   describe "GET #reset_password — expired token" do
     it "shows 30 minutes expiry message (not 1 hour)" do
       # ทำให้ token หมดอายุ (> 30 นาที)
@@ -46,7 +44,7 @@ RSpec.describe Api::V1::DeeplinkController, type: :controller do
       get :reset_password, params: { token: delegate.reset_password_token }
 
       expect(response.body).to include("30 นาที")
-      expect(response.body).not_to include("1 ชั่วโมง")
+      expect(response.body).not_to include("30 นาที")
     end
   end
 

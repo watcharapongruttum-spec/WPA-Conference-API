@@ -21,10 +21,12 @@ module Api
 
       # ================= CREATE =================
       def create
-        params = room_params
-        return unless params
+        # ✅ FIX #4: เปลี่ยนชื่อตัวแปรจาก params เป็น room_attrs
+        # เดิมใช้ชื่อ params ทับ built-in params method ของ ActionController
+        room_attrs = room_params
+        return unless room_attrs
 
-        room = ChatRoom.create!(params)
+        room = ChatRoom.create!(room_attrs)
 
         room.chat_room_members.create!(
           delegate: current_delegate,

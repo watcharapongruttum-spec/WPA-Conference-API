@@ -10,7 +10,7 @@ module Api
                       .not_deleted
                       .where("sender_id = :me OR recipient_id = :me", me: me)
                       .where.not(recipient_id: nil)
-                      .where(chat_room_id: nil) # ✅ FIX 1: direct messages เท่านั้น (chat_room_id IS NULL)
+                      .where(chat_room_id: nil)
                       .pluck(:sender_id, :recipient_id)
                       .flatten
                       .compact
@@ -27,7 +27,7 @@ module Api
         last_messages = ChatMessage
                         .not_deleted
                         .where.not(recipient_id: nil)
-                        .where(chat_room_id: nil) # ✅ FIX 1 (ต่อ): กัน group message ใน last_messages ด้วย
+                        .where(chat_room_id: nil)
                         .select(
                           Arel.sql(
                             "DISTINCT ON (LEAST(sender_id, recipient_id), GREATEST(sender_id, recipient_id)) " \
@@ -79,17 +79,17 @@ module Api
 
       # ================= MARK AS READ (single) =================
       def mark_as_read
-        message = ChatMessage.find(params[:id])
-
+        # ✅ FIX #8: ใช้ @message จาก before_action แทนการ query ซ้ำ
+        # เดิม: message = ChatMessage.find(params[:id]) → query ซ้ำซ้อน
         return render json: { error: "Forbidden" }, status: :forbidden \
-          unless message.recipient_id == current_delegate.id
+          unless @message.recipient_id == current_delegate.id
 
         return render json: { error: "Already read" }, status: :ok \
-          if message.read_at.present?
+          if @message.read_at.present?
 
-        message.update!(read_at: Time.current)
+        @message.update!(read_at: Time.current)
 
-        render json: { success: true, read_at: message.read_at }
+        render json: { success: true, read_at: @message.read_at }
       end
 
       # ================= INDEX =================
@@ -97,8 +97,8 @@ module Api
         @messages = ChatMessage
                     .not_deleted
                     .where("sender_id = :me OR recipient_id = :me", me: current_delegate.id)
-                    .where(chat_room_id: nil)      # ✅ FIX 2: กรอง group messages ออก
-                    .where.not(recipient_id: nil)  # ✅ FIX 2: เฉพาะ direct messages
+                    .where(chat_room_id: nil)
+                    .where.not(recipient_id: nil)
                     .includes(
                       sender: :company,
                       recipient: :company
@@ -129,7 +129,7 @@ module Api
                       sender: :company,
                       recipient: :company
                     )
-                    .reorder(created_at: :desc, id: :desc) # ✅ สำคัญมาก
+                    .reorder(created_at: :desc, id: :desc)
                     .page(page)
                     .per(per)
 
@@ -226,17 +226,6 @@ module Api
         }, status: :unprocessable_entity
       end
 
-
-
-
-
-
-
-
-
-
-
-
       # ================= UPDATE =================
       def update
         return render json: { error: "Forbidden" }, status: :forbidden unless @message.sender == current_delegate
@@ -288,7 +277,7 @@ module Api
                   sender_id: sender_id.to_i,
                   recipient_id: current_delegate.id,
                   read_at: nil,
-                  deleted_at: nil # ✅ FIX 3: ไม่นับ deleted messages
+                  deleted_at: nil
                 )
                 .count
 
@@ -307,7 +296,7 @@ module Api
       end
 
       def message_params
-        params.require(:message).permit(:recipient_id, :content, :image)  
+        params.require(:message).permit(:recipient_id, :content, :image)
       end
 
       def update_params

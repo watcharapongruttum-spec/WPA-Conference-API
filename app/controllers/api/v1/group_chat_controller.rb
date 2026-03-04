@@ -17,16 +17,11 @@ module Api
       end
 
       # POST /api/v1/group_chat
-      # Params:
-      #   title       (string, required)
-      #   member_ids  (array of delegate IDs, required — ไม่รวม creator)
-      #
-      # ✅ Rule: รวม creator ต้องได้ >= 3 คน
       def create_room
         member_ids = Array(params[:member_ids]).map(&:to_i).uniq
-        member_ids -= [current_delegate.id]  # กัน creator ซ้ำ
+        member_ids -= [current_delegate.id]
 
-        total = member_ids.size + 1  # รวม creator
+        total = member_ids.size + 1
         if total < 3
           return render json: {
             error: "Group chat requires at least 3 members (got #{total})"
@@ -41,10 +36,8 @@ module Api
 
         room = ChatRoom.create!(title: title, room_kind: :group)
 
-        # creator เป็น admin
         room.chat_room_members.create!(delegate_id: current_delegate.id, role: :admin)
 
-        # เพิ่ม member ที่ส่งมา (validate ว่า delegate มีอยู่จริง)
         valid_ids = Delegate.where(id: member_ids).pluck(:id)
         valid_ids.each do |id|
           room.chat_room_members.create!(delegate_id: id, role: :member)
@@ -115,7 +108,6 @@ module Api
       end
 
       # POST /api/v1/group_chat/:id/messages
-      # ================= SEND MESSAGE (แก้รองรับรูปภาพ) =================
       def send_message
         # ✅ ส่งรูปภาพ
         if params[:image].present?
@@ -126,16 +118,16 @@ module Api
           )
 
           Chat::ImageService.attach(message: msg, data_uri: params[:image])
+          msg.reload  # ✅ FIX #2: เพิ่ม reload เพื่อให้ image_url มีค่าใน response
           MessageRead.mark_for(delegate: current_delegate, message_ids: [msg.id])
 
           serialized = GroupChat::MessageSerializer.call(message: msg, sender: current_delegate)
           GroupChatChannel.broadcast_to(@room, { type: "group_message", room_id: @room.id, message: serialized })
 
-
           return render json: serialized, status: :created
         end
 
-        # ✅ ส่งข้อความ (เดิม)
+        # ✅ ส่งข้อความ
         content = params[:content].to_s.strip
 
         if content.blank?
@@ -149,7 +141,7 @@ module Api
         msg = @room.chat_messages.create!(
           sender:       current_delegate,
           content:      content,
-          message_type: "text"  # ✅
+          message_type: "text"
         )
 
         MessageRead.mark_for(delegate: current_delegate, message_ids: [msg.id])
