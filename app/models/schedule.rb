@@ -4,12 +4,10 @@ class Schedule < ApplicationRecord
   # RELATIONS
   # ===============================
   belongs_to :conference_date
-  belongs_to :booker, class_name: "Delegate", optional: true
-  belongs_to :target, class_name: "Delegate", optional: true
-
-  belongs_to :table, optional: true
+  belongs_to :booker,   class_name: "Delegate", foreign_key: :booker_id, optional: true
+  belongs_to :table,    optional: true
   belongs_to :delegate, optional: true
-  belongs_to :team, foreign_key: :target_id, optional: true
+  belongs_to :team,     foreign_key: :target_id, optional: true
 
   has_many :leave_forms
 
@@ -25,8 +23,7 @@ class Schedule < ApplicationRecord
       :conference_date,
       latest_leave_form: :leave_type,
       team: :delegates,
-      booker: :company,
-      target: :company
+      booker: :company
     )
   }
 
@@ -34,11 +31,24 @@ class Schedule < ApplicationRecord
   # BASIC SCOPES
   # ===============================
   scope :mine, lambda { |delegate_id|
-    where("schedules.booker_id = :id OR schedules.target_id = :id", id: delegate_id)
+    delegate = Delegate.find_by(id: delegate_id)
+    team_id  = delegate&.team_id
+    team_id ? where("booker_id = :did OR target_id = :tid", did: delegate_id, tid: team_id)
+            : where(booker_id: delegate_id)
   }
 
   scope :not_mine, lambda { |delegate_id|
-    where.not("schedules.booker_id = :id OR schedules.target_id = :id", id: delegate_id)
+    delegate = Delegate.find_by(id: delegate_id)
+    team_id  = delegate&.team_id
+    if team_id
+      where.not(
+        "schedules.booker_id = :did OR schedules.target_id = :tid",
+        did: delegate_id,
+        tid: team_id
+      )
+    else
+      where.not(booker_id: delegate_id)
+    end
   }
 
   scope :by_date, lambda { |conference_date_id|
@@ -56,8 +66,8 @@ class Schedule < ApplicationRecord
   # SEARCH NAME
   # ===============================
   scope :search_name, lambda { |keyword|
-    left_joins(:booker, :target).where(
-      "bookers_delegates.name ILIKE :k OR targets_delegates.name ILIKE :k",
+    left_joins(:booker).where(
+      "bookers_delegates.name ILIKE :k",
       k: "%#{keyword}%"
     )
   }
@@ -102,7 +112,7 @@ class Schedule < ApplicationRecord
   end
 
   # ===============================
-  # FORMAT TIME — delegate to central service
+  # FORMAT TIME
   # ===============================
   def self.format_time(time)
     TimeFormatter.format(time)
@@ -126,11 +136,22 @@ class Schedule < ApplicationRecord
     return { error: :date_not_found } unless conference_date
 
     # PERSONAL MEETINGS
-    personal = with_full_data
-               .mine(delegate.id)
-               .by_date(conference_date.id)
-               .sorted
-               .to_a
+    # dedup: ถ้า time slot เดียวกันมีทั้ง booker meeting และ target meeting
+    # → แสดงแค่อันที่ user เป็น booker (เขาไปพบได้ทีละที่)
+    all_personal = with_full_data
+                   .mine(delegate.id)
+                   .by_date(conference_date.id)
+                   .sorted
+                   .to_a
+
+    booker_slots = all_personal
+                   .select { |s| s.booker_id == delegate.id }
+                   .map(&:start_at)
+                   .to_set
+
+    personal = all_personal.reject do |s|
+      s.booker_id != delegate.id && booker_slots.include?(s.start_at)
+    end
 
     # GLOBAL EVENTS
     global = ConferenceSchedule
@@ -139,7 +160,6 @@ class Schedule < ApplicationRecord
              .sorted
              .to_a
 
-    # EVENTS
     merged = global.map do |g|
       {
         type: "event",
@@ -154,7 +174,6 @@ class Schedule < ApplicationRecord
       }
     end
 
-    # MEETINGS
     personal.each do |s|
       merged << {
         type: "meeting",
@@ -165,7 +184,26 @@ class Schedule < ApplicationRecord
       }
     end
 
-    # SORT
+    # NOMEETING: หา all time slots ของวันนั้น แล้ว fill slot ที่ไม่มี meeting
+    all_slots = Schedule
+                .where(conference_date_id: conference_date.id)
+                .where("delegate_id IS NOT NULL OR booker_id IS NOT NULL")
+                .pluck(:start_at, :end_at)
+                .uniq
+    personal_times = personal.map(&:start_at).to_set
+    event_times    = global.map(&:start_at).to_set
+    all_slots.each do |start_at, end_at|
+      next if personal_times.include?(start_at)
+      next if event_times.include?(start_at)
+      merged << {
+        type:         "nomeeting",
+        start_at:     format_time(start_at),
+        end_at:       format_time(end_at),
+        raw_start:    start_at,
+        table_number: nil,
+        country:      nil
+      }
+    end
     merged.sort_by! { |x| x[:raw_start] }
     merged.each { |x| x.delete(:raw_start) }
 

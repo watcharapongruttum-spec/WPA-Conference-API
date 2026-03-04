@@ -108,7 +108,7 @@ module Api
       # ===============================
       def render_timeline(result, scope_user, include_user: false)
         timeline = result[:schedules].map do |item|
-          if item[:type] == "event"
+          if item[:type] == "event" || item[:type] == "nomeeting"
             item
           else
             schedule = item[:serializer]

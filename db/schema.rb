@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.0].define(version: 2026_03_02_080000) do
+ActiveRecord::Schema[7.0].define(version: 2026_03_04_041526) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -1361,5 +1361,6 @@ ActiveRecord::Schema[7.0].define(version: 2026_03_02_080000) do
   add_foreign_key "room_members", "delegates"
   add_foreign_key "schedules", "delegates"
   add_foreign_key "schedules", "tables"
+  add_foreign_key "schedules", "teams", column: "target_id", on_delete: :nullify
   add_foreign_key "security_logs", "delegates"
 end

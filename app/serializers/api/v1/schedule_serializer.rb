@@ -32,7 +32,7 @@ class Api::V1::ScheduleSerializer < ActiveModel::Serializer
 
     d =
       if object.booker_id == current_delegate.id
-        object.target
+        object.team&.delegates&.first
       else
         object.booker
       end

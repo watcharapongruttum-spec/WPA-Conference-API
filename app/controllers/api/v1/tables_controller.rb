@@ -132,9 +132,12 @@ module Api
                    .uniq
                    .sort
 
-        my_schedule = current_delegate && schedules.find do |s|
-          s.delegate_id == current_delegate.id || s.booker_id == current_delegate.id
-        end
+        my_schedule = current_delegate && (
+          schedules.find { |s| (s.booker_id == current_delegate.id || s.delegate_id == current_delegate.id) && s.table_number.present? } ||
+          schedules.find { |s| current_delegate.team_id.present? && s.target_id == current_delegate.team_id && s.table_number.present? } ||
+          schedules.find { |s| s.booker_id == current_delegate.id || s.delegate_id == current_delegate.id } ||
+          schedules.find { |s| current_delegate.team_id.present? && s.target_id == current_delegate.team_id }
+        )
 
         schedule_by_table = schedules.group_by { |s| s.table_number.to_s.strip }
 
@@ -213,15 +216,26 @@ module Api
 
       # includes ครอบคลุมทั้ง booker และ delegate พร้อม company
       def load_schedules_at(datetime)
-        Schedule
-          .includes(
-            :table,
-            booker:   :company,
-            delegate: :company,
-            team:     [:delegates, :company]
-          )
-          .where(start_at: datetime)
-          .where("delegate_id IS NOT NULL OR booker_id IS NOT NULL")
+        # ถ้ามี schedule ที่ start_at ตรงเป๊ะ → ใช้เลย (fast path)
+        # ถ้าไม่มี → หา slot ที่ครอบคลุมเวลานั้น (start_at <= datetime < end_at)
+        base = Schedule.includes(
+          :table,
+          booker:   :company,
+          delegate: :company,
+          team:     [:delegates, :company]
+        ).where("delegate_id IS NOT NULL OR booker_id IS NOT NULL")
+
+        exact = base.where(start_at: datetime)
+        return exact if exact.exists?
+
+        # หา start_at ของ slot ที่ครอบคลุม datetime
+        slot = Schedule
+               .where("start_at <= ? AND end_at > ?", datetime, datetime)
+               .where("delegate_id IS NOT NULL OR booker_id IS NOT NULL")
+               .order(:start_at)
+               .first
+
+        slot ? base.where(start_at: slot.start_at) : base.none
       end
 
       def detect_columns(numeric_tables)
