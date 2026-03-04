@@ -16,11 +16,30 @@ FactoryBot.define do
     password { "Password1" }
     password_confirmation { "Password1" }
     has_logged_in { false }
+      # เพิ่มบรรทัดนี้
+    trait :with_fcm_token do
+      fcm_token { "fcm_token_#{SecureRandom.hex(8)}" }
+    end
+
+
+
+
   end
 
   factory :chat_room do
     sequence(:title) { |n| "Room #{n}" }
     room_kind { :group }
+
+
+    
+    trait :group do
+      room_kind { :group }
+    end
+
+    trait :direct do
+      room_kind { :direct }
+    end
+
   end
 
   factory :chat_message do
