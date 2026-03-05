@@ -26,7 +26,6 @@ module Api
       end
 
       # ---------------- AVATAR ----------------
-      # ✅ แก้แล้ว — เรียก model method
       def avatar_url
         object.avatar_url
       end
@@ -41,14 +40,12 @@ module Api
         me = scope
         return false if me.nil?
         return false if me.id == object.id
-
         connected_ids_for(me).include?(object.id)
       end
 
       def connection_status
         object.connection_status_with(scope)
       end
-    end
 
       private
 
@@ -65,6 +62,6 @@ module Api
           ids
         end
       end
-
+    end
   end
 end

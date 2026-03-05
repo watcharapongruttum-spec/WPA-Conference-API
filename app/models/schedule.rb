@@ -253,7 +253,18 @@ class Schedule < ApplicationRecord
   # ===============================
   # MY SCHEDULE
   # ===============================
-  def self.build_my_schedule(delegate:, params:)
+  def self.build_index(delegate:, params:)
+    page     = (params[:page] || 1).to_i
+    per_page = (params[:per_page] || 20).to_i
+    scope    = with_full_data.order(start_at: :asc)
+    scope    = scope.where(delegate_id: params[:delegate_id]) if params[:delegate_id].present?
+    scope    = scope.where(team_id: params[:team_id]) if params[:team_id].present?
+    total    = scope.count
+    records  = scope.offset((page - 1) * per_page).limit(per_page)
+    { page: page, per_page: per_page, total: total, schedules: records }
+  end
+
+    def self.build_my_schedule(delegate:, params:)
     build_timeline_for(delegate: delegate, params: params)
   end
 
