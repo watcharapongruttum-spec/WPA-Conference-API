@@ -50,7 +50,7 @@ module Api
         else
           render json: {
             error: "Failed to mark notification as read",
-            errors: @notification.errors.full_messages
+            messages: @notification.errors.full_messages
           }, status: :unprocessable_entity
         end
       end

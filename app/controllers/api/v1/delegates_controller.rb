@@ -76,39 +76,6 @@ module Api
                scope: current_delegate
       end
 
-      # ---------------- PROFILE ----------------
-      def profile
-        @delegate = current_delegate
-
-        if @delegate.nil?
-          render json: { error: "Authentication required" }, status: :unauthorized
-          return
-        end
-
-        render json: @delegate,
-               serializer: Api::V1::DelegateDetailSerializer
-      end
-
-      # ---------------- UPDATE PROFILE ----------------
-      def update_profile
-        @delegate = current_delegate
-
-        if @delegate.nil?
-          render json: { error: "Authentication required" }, status: :unauthorized
-          return
-        end
-
-        if @delegate.update(delegate_params)
-          render json: @delegate,
-                 serializer: Api::V1::DelegateDetailSerializer
-        else
-          render json: {
-            error: "Failed to update profile",
-            errors: @delegate.errors.full_messages
-          }, status: :unprocessable_entity
-        end
-      end
-
       # ---------------- QR CODE ----------------
       require "rqrcode"
       require "base64"

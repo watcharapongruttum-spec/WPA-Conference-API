@@ -49,9 +49,6 @@ Rails.application.routes.draw do
 
       # Delegates
       resources :delegates, only: %i[index show] do
-        collection do
-          get :profile
-        end
         member do
           get :qr_code
         end

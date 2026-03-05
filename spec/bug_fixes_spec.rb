@@ -343,7 +343,7 @@ RSpec.describe "Bug #7: ChatRoomChannel N+1 query fix", type: :model do
 
   it "channel source ใช้ exists? ไม่ใช่ include?" do
     source = File.read(
-      Rails.root.join('app/channels/chat_room_channel.rb')
+      Rails.root.join('app/channels/group_chat_channel.rb')
     )
     # หลังแก้: ใช้ exists? แทน include?
     expect(source).to include('exists?')

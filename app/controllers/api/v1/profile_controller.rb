@@ -1,7 +1,7 @@
 # app/controllers/api/v1/profile_controller.rb
 module Api
   module V1
-    class ProfileController < BaseController
+    class ProfileController < ApplicationController
       # ==================
       # GET /api/v1/profile
       # GET /api/v1/profile/:id
@@ -23,7 +23,7 @@ module Api
         else
           render json: {
             success: false,
-            errors: current_delegate.errors.full_messages
+            messages: current_delegate.errors.full_messages
           }, status: :unprocessable_entity
         end
       end

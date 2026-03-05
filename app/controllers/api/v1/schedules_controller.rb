@@ -31,7 +31,7 @@ module Api
         if schedule.save
           render json: schedule, status: :created
         else
-          render json: { errors: schedule.errors.full_messages }, status: :unprocessable_entity
+          render json: { error: "Validation failed", messages: schedule.errors.full_messages }, status: :unprocessable_entity
         end
       end
 

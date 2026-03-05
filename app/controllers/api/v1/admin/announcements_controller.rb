@@ -1,5 +1,5 @@
 # app/controllers/api/v1/admin/announcements_controller.rb
-class Api::V1::Admin::AnnouncementsController < Api::V1::BaseController
+class Api::V1::Admin::AnnouncementsController < ApplicationController
   def create
     message = params[:message] || params.dig(:notification, :message)
 

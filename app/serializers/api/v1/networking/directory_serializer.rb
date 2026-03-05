@@ -21,15 +21,25 @@ module Api
         end
 
         def is_connected
-          # ✅ FIX: เช็ค connection จริงๆ ผ่าน scope (current_delegate)
           return false unless scope
 
-          ConnectionRequest.where(status: :accepted).exists?(
-            [
-              "(requester_id = :me AND target_id = :other) OR (requester_id = :other AND target_id = :me)",
-              { me: scope.id, other: object.id }
-            ]
-          )
+          connected_ids_for(scope).include?(object.id)
+        end
+
+        private
+
+        def connected_ids_for(delegate)
+          delegate.instance_variable_get(:@_connected_ids) || begin
+            ids = Connection
+                    .where(status: "accepted")
+                    .where("requester_id = :id OR target_id = :id", id: delegate.id)
+                    .pluck(:requester_id, :target_id)
+                    .flatten
+                    .reject { |id| id == delegate.id }
+                    .to_set
+            delegate.instance_variable_set(:@_connected_ids, ids)
+            ids
+          end
         end
       end
     end

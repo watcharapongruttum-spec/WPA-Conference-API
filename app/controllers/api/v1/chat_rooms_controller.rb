@@ -56,7 +56,7 @@ module Api
 
         @room.update!(deleted_at: Time.current)
 
-        ChatRoomChannel.broadcast_to(
+        GroupChatChannel.broadcast_to(
           @room,
           type: "room_deleted",
           room_id: @room.id
@@ -81,7 +81,7 @@ module Api
         member.save!
 
         if is_new_member
-          ChatRoomChannel.broadcast_to(
+          GroupChatChannel.broadcast_to(
             @room,
             type: "member_joined",
             delegate: {
@@ -108,7 +108,7 @@ module Api
 
         member.destroy
 
-        ChatRoomChannel.broadcast_to(
+        GroupChatChannel.broadcast_to(
           @room,
           type: "member_left",
           delegate_id: current_delegate.id

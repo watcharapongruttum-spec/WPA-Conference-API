@@ -1,7 +1,7 @@
 # app/controllers/api/v1/tables_controller.rb
 module Api
   module V1
-    class TablesController < BaseController
+    class TablesController < ApplicationController
 
       # GET /api/v1/tables/time_view
       def time_view

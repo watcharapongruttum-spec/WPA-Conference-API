@@ -42,18 +42,29 @@ module Api
         return false if me.nil?
         return false if me.id == object.id
 
-        Connection.where(
-          "(requester_id = :me AND target_id = :other)
-      OR
-      (requester_id = :other AND target_id = :me)",
-          me: me.id,
-          other: object.id
-        ).where(status: "accepted").exists? # ← เพิ่ม .where(status: 'accepted')
+        connected_ids_for(me).include?(object.id)
       end
 
       def connection_status
         object.connection_status_with(scope)
       end
     end
+
+      private
+
+      def connected_ids_for(delegate)
+        delegate.instance_variable_get(:@_connected_ids) || begin
+          ids = Connection
+                  .where(status: "accepted")
+                  .where("requester_id = :id OR target_id = :id", id: delegate.id)
+                  .pluck(:requester_id, :target_id)
+                  .flatten
+                  .reject { |id| id == delegate.id }
+                  .to_set
+          delegate.instance_variable_set(:@_connected_ids, ids)
+          ids
+        end
+      end
+
   end
 end
