@@ -44,7 +44,6 @@ RSpec.describe Api::V1::DeeplinkController, type: :controller do
       get :reset_password, params: { token: delegate.reset_password_token }
 
       expect(response.body).to include("30 นาที")
-      expect(response.body).not_to include("30 นาที")
     end
   end
 

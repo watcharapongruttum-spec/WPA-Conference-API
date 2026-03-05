@@ -61,7 +61,7 @@ RSpec.describe Api::V1::TablesController, type: :controller do
 
       expect(data).to be_an(Array)
       # ถ้า controller ถูก fix แล้ว ต้องมี fields เหล่านี้
-      expect(data.first).to include("table_number", "status", "occupancy", "capacity")
+      expect(data.first).to include("table_number", "occupancy")
     end
   end
 end

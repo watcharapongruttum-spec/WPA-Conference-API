@@ -115,7 +115,7 @@ class TableTimeViewService
   def resolve_conference_date
     bkk_date        = @datetime.in_time_zone(TIMEZONE).to_date
     @bkk_date       = bkk_date
-    @conference_date = @conference.conference_dates.find_by(on_date: bkk_date)
+    @conference_date = @conference&.conference_dates&.find_by(on_date: bkk_date)
     @conference_date ||= @schedules.first&.conference_date
   end
 
@@ -201,6 +201,7 @@ class TableTimeViewService
   end
 
   def conference_days
+    return [] unless @conference
     @conference
       .conference_dates
       .joins(:schedules)
