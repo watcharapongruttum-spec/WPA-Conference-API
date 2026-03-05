@@ -138,11 +138,11 @@ class TableTimeViewService
       table_schedules = schedule_by_table[key] || []
 
       {
-        table_id:     table.id,
-        table_number: table.table_number,
-        near_tables:  adjacent_by_id[table.id],
-        meetings:     table_schedules.map { |s| build_meeting_info(s) },
-        delegates:    flat_delegates_for(table_schedules)
+        table_id:        table.id,
+        table_number:    table.table_number,
+        adjacent_tables: adjacent_by_id[table.id],
+        meetings:        table_schedules.map { |s| build_meeting_info(s) },
+        delegates:       participants_for(table_schedules)   # booker + target members ทั้งคู่
       }
     end
 
@@ -247,18 +247,21 @@ class TableTimeViewService
       @schedules.find { |s| tid.present? && s.target_id == tid }
   end
 
-  def flat_delegates_for(table_schedules)
-    table_schedules
-      .flat_map { |s| [s.booker, s.delegate].compact }
+  def participants_for(table_schedules)
+    # รวมทั้ง booker (side_a) และ target members (side_b) ของทุก meeting ที่โต๊ะนี้
+    bookers = table_schedules.flat_map { |s| [s.booker, s.delegate].compact }
+    targets = table_schedules.flat_map { |s| s.team&.delegates.to_a }
+
+    (bookers + targets)
       .uniq(&:id)
       .sort_by(&:id)
       .map do |d|
         {
-          delegate_id:   d.id,
-          delegate_name: d.name,
-          company:       d.company&.name || "N/A",
-          avatar_url:    "https://ui-avatars.com/api/?name=#{CGI.escape(d.name)}",
-          title:         d.title
+          id:         d.id,
+          name:       d.name,
+          title:      d.title&.strip,
+          company:    d.company&.name || "N/A",
+          avatar_url: "https://ui-avatars.com/api/?name=#{CGI.escape(d.name)}"
         }
       end
   end
@@ -267,23 +270,23 @@ class TableTimeViewService
     person_a = schedule.booker || schedule.delegate
     team     = schedule.team
 
-    side_a = if person_a
+    booker = if person_a
       {
-        delegate_id: person_a.id,
-        name:        person_a.name,
-        title:       person_a.title,
-        company_id:  person_a.company_id,
-        company:     person_a.company&.name || "N/A",
-        avatar_url:  "https://ui-avatars.com/api/?name=#{CGI.escape(person_a.name)}"
+        id:         person_a.id,
+        name:       person_a.name,
+        title:      person_a.title&.strip,
+        company_id: person_a.company_id,
+        company:    person_a.company&.name || "N/A",
+        avatar_url: "https://ui-avatars.com/api/?name=#{CGI.escape(person_a.name)}"
       }
     end
 
-    side_b = if team
+    target_team = if team
       members = team.delegates.map do |d|
         {
           id:         d.id,
           name:       d.name,
-          title:      d.title,
+          title:      d.title&.strip,
           avatar_url: "https://ui-avatars.com/api/?name=#{CGI.escape(d.name)}"
         }
       end
@@ -301,8 +304,8 @@ class TableTimeViewService
       schedule_id: schedule.id,
       start_at:    schedule.start_at&.in_time_zone(TIMEZONE)&.iso8601,
       end_at:      schedule.end_at&.in_time_zone(TIMEZONE)&.iso8601,
-      side_a:      side_a,
-      side_b:      side_b
+      booker:      booker,       # คนจอง (นั่งที่โต๊ะนี้)
+      target_team: target_team   # ทีมที่ถูกจอง (นั่งโต๊ะของตัวเอง)
     }
   end
 
@@ -329,5 +332,4 @@ class TableTimeViewService
     fallback
   end
 end
-
 
