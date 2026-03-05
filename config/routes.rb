@@ -109,6 +109,13 @@ Rails.application.routes.draw do
       # Chat Rooms
 
       # Notifications
+      resources :chat_rooms, only: %i[index create destroy] do
+        member do
+          post   :join
+          delete :leave
+        end
+      end
+
       resources :notifications, only: [:index] do
         collection do
           get   :unread_count
