@@ -180,13 +180,13 @@ end
 # ============================================================
 # 🟡 BUG #4 - ChatRoomsController#create variable shadowing
 # ============================================================
-RSpec.describe "Bug #4: ChatRoomsController#create variable shadowing", type: :request do
+RSpec.describe "Bug #4: GroupChatController#create_room (migrated from ChatRoomsController)", type: :request do
   let(:delegate) { create(:delegate) }
   let(:headers)  { json_headers(delegate) }
 
   it "สร้าง chat room สำเร็จและ params ไม่ถูก shadow" do
-    post "/api/v1/chat_rooms",
-         params:  { chat_room: { title: "Test Room", room_kind: "group" } }.to_json,
+    post "/api/v1/group_chat",
+         params:  { title: "Test Room", member_ids: create_list(:delegate, 2).map(&:id) }.to_json,
          headers: headers
 
     expect(response).to have_http_status(:created)
@@ -195,8 +195,8 @@ RSpec.describe "Bug #4: ChatRoomsController#create variable shadowing", type: :r
   end
 
   it "แสดง validation error เมื่อข้อมูลไม่ครบ" do
-    post "/api/v1/chat_rooms",
-         params:  { chat_room: { title: "" } }.to_json,
+    post "/api/v1/group_chat",
+         params:  { title: "", member_ids: [] }.to_json,
          headers: headers
 
     expect(response).to have_http_status(:unprocessable_entity)
@@ -205,8 +205,9 @@ RSpec.describe "Bug #4: ChatRoomsController#create variable shadowing", type: :r
   it "สร้างห้องได้หลายครั้งโดยไม่ติด params ของครั้งก่อน" do
     expect {
       2.times do |i|
-        post "/api/v1/chat_rooms",
-             params:  { chat_room: { title: "Room #{i}", room_kind: "group" } }.to_json,
+        others = create_list(:delegate, 2)
+        post "/api/v1/group_chat",
+             params:  { title: "Room #{i}", member_ids: others.map(&:id) }.to_json,
              headers: headers
         expect(response).to have_http_status(:created)
       end

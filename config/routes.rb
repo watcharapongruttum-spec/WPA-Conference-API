@@ -107,12 +107,6 @@ Rails.application.routes.draw do
       end
 
       # Chat Rooms
-      resources :chat_rooms, only: %i[index create destroy] do
-        member do
-          post   :join
-          delete :leave
-        end
-      end
 
       # Notifications
       resources :notifications, only: [:index] do
