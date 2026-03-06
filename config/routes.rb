@@ -25,6 +25,7 @@ Rails.application.routes.draw do
 
       # Deeplink
       get '/reset-password', to: 'deeplink#reset_password'
+      get '/api/v1/deeplink/open_app', to: 'api/v1/deeplink#open_app'
 
       # Authentication
       controller :sessions do

@@ -17,6 +17,9 @@ module Api
         render html: build_page(:form, token: @token), layout: false
       end
 
+
+
+
       def reset_password_submit
         token    = params[:token]
         password = params[:password]
@@ -45,6 +48,17 @@ module Api
       rescue ActiveRecord::RecordInvalid => e
         render html: build_page(:form, token: token, error: e.message), layout: false
       end
+
+
+
+
+
+
+
+
+
+
+
 
       private
 
@@ -200,6 +214,115 @@ module Api
           </p>
         HTML
       end
+
+
+
+
+
+
+
+def open_app
+    token   = params[:token]
+  app_url = "wpa://reset-password?token=#{token}"
+  web_url = "#{ENV.fetch('FRONTEND_URL')}/deeplink-reset-password?token=#{token}"
+
+  render html: <<~HTML.html_safe
+    <!DOCTYPE html>
+    <html lang="th">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>เปิดแอพ WPA</title>
+      <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+          background: #f0f4f8;
+          min-height: 100vh;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 20px;
+        }
+        .card {
+          background: white;
+          border-radius: 16px;
+          padding: 40px;
+          width: 100%;
+          max-width: 420px;
+          box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+          text-align: center;
+        }
+        .logo { font-size: 22px; font-weight: 700; color: #1a56db; margin-bottom: 8px; }
+        .subtitle { color: #6b7280; font-size: 14px; margin-bottom: 32px; }
+        .icon { font-size: 48px; margin-bottom: 16px; }
+        .title { font-size: 20px; font-weight: 700; color: #111827; margin-bottom: 8px; }
+        .desc { font-size: 14px; color: #6b7280; margin-bottom: 32px; line-height: 1.6; }
+        .btn {
+          display: block; width: 100%; padding: 14px;
+          border-radius: 10px; text-align: center;
+          text-decoration: none; font-size: 15px; font-weight: 600;
+          margin-bottom: 12px;
+        }
+        .btn-primary { background: #1a56db; color: white !important; }
+        .btn-secondary { background: #f3f4f6; color: #374151 !important; border: 1px solid #e5e7eb; }
+        .no-app {
+          display: none;
+          margin-top: 16px;
+          padding: 12px 16px;
+          background: #fef2f2;
+          border: 1px solid #fecaca;
+          border-radius: 8px;
+          font-size: 14px;
+          color: #dc2626;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="card">
+        <div class="logo">WPA Conference</div>
+        <div class="subtitle">World Packaging Association</div>
+        <div class="icon">📱</div>
+        <div class="title">เปิดในแอพ WPA</div>
+        <div class="desc">กำลังเปิดแอพ WPA...<br>ถ้าแอพไม่เปิด แสดงว่ายังไม่ได้ติดตั้ง</div>
+
+        <a href="#{app_url}" class="btn btn-primary" id="open-app-btn">
+          📱 &nbsp;เปิดแอพ WPA
+        </a>
+
+        <div class="no-app" id="no-app-msg">
+          ❌ ไม่พบแอพ WPA ในเครื่อง<br>
+          กรุณารีเซ็ตรหัสผ่านผ่านเว็บแทน
+        </div>
+
+        <a href="#{web_url}" class="btn btn-secondary">
+          🌐 &nbsp;รีเซ็ตรหัสผ่านผ่านเว็บแทน
+        </a>
+      </div>
+
+      <script>
+        // ลองเปิดแอป
+        window.location = "#{app_url}";
+
+        // ถ้า 2 วินาทีแล้วยังอยู่หน้านี้ = ไม่มีแอป
+        setTimeout(function() {
+          document.getElementById('no-app-msg').style.display = 'block';
+          document.getElementById('open-app-btn').style.display = 'none';
+        }, 2000);
+      </script>
+    </body>
+    </html>
+  HTML, layout: false
+
+end
+
+
+
+
+
+
+
+
     end
   end
 end

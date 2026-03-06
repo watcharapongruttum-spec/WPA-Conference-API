@@ -9,8 +9,6 @@ class FcmService
     return false if token.blank?
 
     debug_id = SecureRandom.hex(4)
-    Time.current
-
     Rails.logger.warn "🚀 [FCM-#{debug_id}] START token=#{token.last(10)} title=#{title}"
 
     access_token = fetch_access_token
@@ -21,12 +19,12 @@ class FcmService
         token: token,
         notification: {
           title: title,
-          body: body
+          body:  body
         },
         android: {
           priority: "high",
           notification: {
-            sound: "default",
+            sound:        "default",
             click_action: "FLUTTER_NOTIFICATION_CLICK"
           }
         },
@@ -44,14 +42,14 @@ class FcmService
 
     Rails.logger.warn "📦 [FCM-#{debug_id}] PAYLOAD=#{payload_hash}"
 
-    uri = URI(fcm_endpoint)
+    uri  = URI(fcm_endpoint)
     http = Net::HTTP.new(uri.host, uri.port)
     http.use_ssl = true
 
-    request = Net::HTTP::Post.new(uri)
+    request                  = Net::HTTP::Post.new(uri)
     request["Authorization"] = "Bearer #{access_token}"
-    request["Content-Type"] = "application/json"
-    request.body = payload_hash.to_json
+    request["Content-Type"]  = "application/json"
+    request.body             = payload_hash.to_json
 
     duration = Benchmark.realtime do
       @response = http.request(request)
@@ -76,9 +74,10 @@ class FcmService
     "https://fcm.googleapis.com/v1/projects/#{ENV.fetch('FIREBASE_PROJECT_ID')}/messages:send"
   end
 
-  # ✅ รองรับทั้ง Production (ENV JSON) และ Local (ไฟล์)
+  # ✅ FIX: เพิ่ม race_condition_ttl เพื่อป้องกัน Sidekiq workers หลายตัว
+  # fetch token พร้อมกันตอน cache expire
   def self.fetch_access_token
-    Rails.cache.fetch("fcm_access_token", expires_in: 50.minutes) do
+    Rails.cache.fetch("fcm_access_token", expires_in: 50.minutes, race_condition_ttl: 10.seconds) do
       json_io =
         if ENV["FIREBASE_CREDENTIALS_JSON"].present?
           StringIO.new(ENV["FIREBASE_CREDENTIALS_JSON"])
@@ -88,7 +87,7 @@ class FcmService
 
       credentials = Google::Auth::ServiceAccountCredentials.make_creds(
         json_key_io: json_io,
-        scope: SCOPE
+        scope:       SCOPE
       )
 
       credentials.fetch_access_token!["access_token"]
@@ -98,9 +97,9 @@ class FcmService
     nil
   end
 
-  # ลบ token ที่ invalid
+  # ✅ FIX: เพิ่ม log delegate_id ที่ถูกลบ token เพื่อ debug ได้ง่ายขึ้น
   def self.handle_invalid_token(token, body)
-    parsed = JSON.parse(body)
+    parsed     = JSON.parse(body)
     error_code = parsed.dig("error", "details")
                        &.find { |d| d["errorCode"].present? }
                        &.dig("errorCode")
@@ -113,8 +112,11 @@ class FcmService
 
     return unless invalid
 
-    count = Delegate.where(device_token: token).update_all(device_token: nil)
-    Rails.logger.warn "🗑 Removed invalid FCM token from #{count} delegate(s)"
+    # ✅ FIX: log delegate_ids ที่ถูกลบ token ก่อน update
+    affected_ids = Delegate.where(device_token: token).pluck(:id)
+    Delegate.where(device_token: token).update_all(device_token: nil)
+
+    Rails.logger.warn "🗑 Removed invalid FCM token — affected delegate_ids=#{affected_ids}"
   rescue JSON::ParserError
     Rails.logger.error "❌ FCM: Could not parse error body"
   end

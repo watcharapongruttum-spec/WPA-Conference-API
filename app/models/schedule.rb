@@ -3,10 +3,10 @@ class Schedule < ApplicationRecord
   # RELATIONS
   # ===============================
   belongs_to :conference_date
-  belongs_to :booker,   class_name: "Delegate", foreign_key: :booker_id, optional: true
-  belongs_to :table,    optional: true
+  belongs_to :booker, class_name: "Delegate", foreign_key: :booker_id, optional: true
+  belongs_to :table, optional: true
   belongs_to :delegate, optional: true
-  belongs_to :team,     foreign_key: :target_id, optional: true
+  belongs_to :team, foreign_key: :target_id, optional: true
 
   has_many :leave_forms
 
@@ -31,15 +31,18 @@ class Schedule < ApplicationRecord
   # ===============================
   scope :mine, lambda { |delegate_id|
     delegate = Delegate.find_by(id: delegate_id)
-    team_id  = delegate&.team_id
+    team_id = delegate&.team_id
 
-    team_id ? where("booker_id = :did OR target_id = :tid", did: delegate_id, tid: team_id)
-            : where(booker_id: delegate_id)
+    if team_id
+      where("booker_id = :did OR target_id = :tid", did: delegate_id, tid: team_id)
+    else
+      where(booker_id: delegate_id)
+    end
   }
 
   scope :not_mine, lambda { |delegate_id|
     delegate = Delegate.find_by(id: delegate_id)
-    team_id  = delegate&.team_id
+    team_id = delegate&.team_id
 
     if team_id
       where.not(
@@ -106,7 +109,7 @@ class Schedule < ApplicationRecord
   end
 
   # =====================================================
-  # 🔥 SLOT RESOLVER (เหมือน /tables/time_view)
+  # SLOT RESOLVER
   # =====================================================
   def self.resolve_time_slot(conference_date_id:, date:, time:)
     return nil unless time.present?
@@ -138,14 +141,14 @@ class Schedule < ApplicationRecord
     return { error: :conference_not_found, years: years } unless conference
 
     available_dates = available_dates_of(conference)
-    selected_date   = resolve_date(params[:date], delegate.id, conference, available_dates)
+    selected_date = resolve_date(params[:date], delegate.id, conference, available_dates)
     return { error: :no_dates } unless selected_date
 
     conference_date = conference.conference_dates.find_by(on_date: selected_date)
     return { error: :date_not_found } unless conference_date
 
     # ===============================
-    # 🔥 TIME SLOT SNAP
+    # TIME SLOT SNAP
     # ===============================
     slot = resolve_time_slot(
       conference_date_id: conference_date.id,
@@ -164,14 +167,17 @@ class Schedule < ApplicationRecord
 
     all_personal = personal_scope.sorted.to_a
 
-    booker_slots = all_personal
-                   .select { |s| s.booker_id == delegate.id }
-                   .map(&:start_at)
-                   .to_set
+    # 🔥 FIX MEETING DUPLICATE SLOT
+    personal =
+      all_personal
+      .group_by(&:start_at)
+      .map do |_time, meetings|
 
-    personal = all_personal.reject do |s|
-      s.booker_id != delegate.id && booker_slots.include?(s.start_at)
-    end
+        meetings.find { |m| m.booker_id == delegate.id } ||
+        meetings.find { |m| m.table_number.present? } ||
+        meetings.first
+
+      end
 
     # ===============================
     # GLOBAL EVENTS
@@ -211,7 +217,7 @@ class Schedule < ApplicationRecord
     end
 
     # ===============================
-    # NOMEETING (ตรงกับ slot เดียวกัน)
+    # NOMEETING
     # ===============================
     if slot
       all_slots = [[slot.start_at, slot.end_at]]
@@ -219,21 +225,21 @@ class Schedule < ApplicationRecord
       all_slots = Schedule
                     .where(conference_date_id: conference_date.id)
                     .where("delegate_id IS NOT NULL OR booker_id IS NOT NULL")
+                    .distinct
                     .pluck(:start_at, :end_at)
-                    .uniq
     end
 
     personal_times = personal.map(&:start_at).to_set
-    event_times    = global.map(&:start_at).to_set
+    event_times = global.map(&:start_at).to_set
 
     all_slots.each do |start_at, end_at|
       next if personal_times.include?(start_at)
       next if event_times.include?(start_at)
 
       merged << {
-        type:      "nomeeting",
-        start_at:  format_time(start_at),
-        end_at:    format_time(end_at),
+        type: "nomeeting",
+        start_at: format_time(start_at),
+        end_at: format_time(end_at),
         raw_start: start_at
       }
     end
@@ -253,18 +259,7 @@ class Schedule < ApplicationRecord
   # ===============================
   # MY SCHEDULE
   # ===============================
-  def self.build_index(delegate:, params:)
-    page     = (params[:page] || 1).to_i
-    per_page = (params[:per_page] || 20).to_i
-    scope    = with_full_data.order(start_at: :asc)
-    scope    = scope.where(delegate_id: params[:delegate_id]) if params[:delegate_id].present?
-    scope    = scope.where(team_id: params[:team_id]) if params[:team_id].present?
-    total    = scope.count
-    records  = scope.offset((page - 1) * per_page).limit(per_page)
-    { page: page, per_page: per_page, total: total, schedules: records }
-  end
-
-    def self.build_my_schedule(delegate:, params:)
+  def self.build_my_schedule(delegate:, params:)
     build_timeline_for(delegate: delegate, params: params)
   end
 
@@ -280,7 +275,7 @@ class Schedule < ApplicationRecord
   end
 
   # ===============================
-  # TEAM DELEGATES (FIX N+1)
+  # TEAM DELEGATES
   # ===============================
   def team_delegates
     return [] unless team

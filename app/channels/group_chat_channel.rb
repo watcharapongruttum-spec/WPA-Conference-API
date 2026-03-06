@@ -33,13 +33,15 @@ class GroupChatChannel < ApplicationCable::Channel
     msg = @room.chat_messages.create!(
       sender:       current_delegate,
       content:      content,
-      message_type: "text"  # ✅
+      message_type: "text"
     )
 
     MessageRead.mark_for(delegate: current_delegate, message_ids: [msg.id])
     broadcast_message(msg)
     notify_group_members(msg)
-    push_to_offline_members(msg)
+    # ✅ FIX: ลบ push_to_offline_members ออก
+    # notify_group_members → BroadcastService → NotificationDeliveryJob ส่ง FCM ให้อยู่แล้ว
+    # การเรียก push_to_offline_members ซ้อนทำให้ offline members ได้รับ push 2 ครั้ง
   rescue ActiveRecord::RecordInvalid => e
     transmit(type: "error", message: e.message)
   rescue StandardError => e
@@ -47,11 +49,12 @@ class GroupChatChannel < ApplicationCable::Channel
     transmit(type: "error", message: "Failed to send message")
   end
 
-  # ================= SEND IMAGE ✅ =================
+  # ================= SEND IMAGE =================
   def send_image(data)
     data     = parse(data)
     data_uri = data["image"]
-    return transmit(type: "error", message: "No image provided") if data_uri.blank?
+    # return transmit(type: "error", message: "No image provided") if data_uri.blank?
+    return transmit({ "type" => "error", "message" => "No image provided" }) if data_uri.blank?
 
     msg = @room.chat_messages.create!(
       sender:       current_delegate,
@@ -60,14 +63,15 @@ class GroupChatChannel < ApplicationCable::Channel
     )
 
     Chat::ImageService.attach(message: msg, data_uri: data_uri)
-    msg.reload  # ✅ โหลด image association ใหม่
+    msg.reload
     MessageRead.mark_for(delegate: current_delegate, message_ids: [msg.id])
     broadcast_message(msg)
     notify_group_members(msg)
-    push_to_offline_members(msg)
+    # ✅ FIX: ลบ push_to_offline_members ออกเหมือนกัน
   rescue ArgumentError => e
     msg&.destroy
-    transmit(type: "error", message: e.message)
+    # transmit(type: "error", message: e.message)
+    transmit({ "type" => "error", "message" => e.message })
   rescue ActiveRecord::RecordInvalid => e
     transmit(type: "error", message: e.record.errors.full_messages.join(", "))
   end
@@ -78,7 +82,7 @@ class GroupChatChannel < ApplicationCable::Channel
     msg  = find_own_message(data["message_id"])
     return transmit(type: "error", message: "Message not found") unless msg
     return transmit(type: "error", message: "Message deleted") if msg.deleted?
-    return transmit(type: "error", message: "Cannot edit image") if msg.image?  # ✅
+    return transmit(type: "error", message: "Cannot edit image") if msg.image?
 
     msg.update!(content: data["content"].to_s.strip, edited_at: Time.current)
 
@@ -210,24 +214,7 @@ class GroupChatChannel < ApplicationCable::Channel
     end
   end
 
-  def push_to_offline_members(msg)
-    member_ids = @room.chat_room_members
-                      .where.not(delegate_id: current_delegate.id)
-                      .pluck(:delegate_id)
-
-    member_ids.each do |delegate_id|
-      next if REDIS.get("group_chat_open:#{@room.id}:#{delegate_id}") == "1"
-      next if Chat::PresenceService.online?(delegate_id)
-
-      content_preview = msg.image? ? "📷 รูปภาพ" : msg.content  # ✅
-
-      GroupMessagePushJob.perform_later(
-        delegate_id: delegate_id,
-        room_id:     @room.id,
-        room_title:  @room.title,
-        sender_name: current_delegate.name,
-        content:     content_preview
-      )
-    end
-  end
+  # ✅ FIX: ลบ push_to_offline_members method ออกทั้งหมด
+  # เพราะ notify_group_members → BroadcastService → NotificationDeliveryJob
+  # จัดการ FCM ให้อยู่แล้ว รวมถึงเช็ค online/offline ด้วย
 end
