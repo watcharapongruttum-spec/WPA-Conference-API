@@ -11,9 +11,6 @@ class ResetPasswordJob < ApplicationJob
     app_url       = "wpa://reset-password?token=#{token}"
     web_url       = "#{frontend}/deeplink-reset-password?token=#{token}"
 
-    # เพิ่ม intermediate URL
-    open_app_url = "https://#{ENV.fetch('APP_HOST')}/api/v1/deeplink/open_app?token=#{token}"
-
     Rails.logger.info "=============================="
     Rails.logger.info "FRONTEND_URL=#{frontend}"
     Rails.logger.info "APP_URL=#{app_url}"
@@ -172,7 +169,7 @@ class ResetPasswordJob < ApplicationJob
                    ให้ตรงกับ delegate.rb reset_token_valid? ที่เช็ค 30.minutes.ago -->
 
               <!-- ปุ่ม 1: เปิดแอพ -->
-              <a href="#{open_app_url}" class="btn btn-primary">
+              <a href="#{app_url}" class="btn btn-primary">
                 📱 &nbsp;เปิดในแอพ WPA
               </a>
 
