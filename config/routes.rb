@@ -4,6 +4,7 @@ Rails.application.routes.draw do
 
   get  '/deeplink-reset-password',               to: 'api/v1/deeplink#reset_password'
   post '/api/v1/deeplink/reset_password_submit', to: 'api/v1/deeplink#reset_password_submit'
+  get '/api/v1/deeplink/open_app', to: 'api/v1/deeplink#open_app'
 
   namespace :api do
     namespace :v1 do
@@ -25,7 +26,7 @@ Rails.application.routes.draw do
 
       # Deeplink
       get '/reset-password', to: 'deeplink#reset_password'
-      get '/api/v1/deeplink/open_app', to: 'api/v1/deeplink#open_app'
+
 
       # Authentication
       controller :sessions do
