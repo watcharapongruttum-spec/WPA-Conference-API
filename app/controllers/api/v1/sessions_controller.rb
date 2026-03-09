@@ -16,7 +16,7 @@ module Api
                         status: :unprocessable_entity
         end
 
-        @delegate = Delegate.find_by(email: email)
+        @delegate = Delegate.where("LOWER(email) = ?", email).first
 
         unless @delegate&.authenticate(password)
           if defined?(AuditLogger)
@@ -131,7 +131,7 @@ module Api
                         status: :unprocessable_entity
         end
 
-        @delegate = Delegate.find_by(email: email)
+        @delegate = Delegate.where("LOWER(email) = ?", email).first
 
         if @delegate
           if @delegate.reset_password_sent_at&.> 1.minute.ago
