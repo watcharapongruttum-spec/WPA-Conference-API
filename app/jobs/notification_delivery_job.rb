@@ -1,7 +1,8 @@
 class NotificationDeliveryJob < ApplicationJob
   queue_as :default
 
-  FCM_ALLOWED_TYPES = %w[new_message new_group_message admin_announce].freeze
+  # FCM_ALLOWED_TYPES = %w[new_message new_group_message admin_announce].freeze
+  FCM_ALLOWED_TYPES = %w[new_message new_group_message admin_announce leave_reported].freeze
 
   BURST_WINDOW      = 60.seconds
   SUMMARY_THRESHOLD = 5
@@ -61,14 +62,24 @@ class NotificationDeliveryJob < ApplicationJob
 
   private
 
-  def send_single(notification, debug_id)
-    msg         = notification.notifiable
-    sender_name = msg&.sender&.name || "Someone"
 
-    # ✅ FIX: แยก title/body ตาม notification type
+
+
+
+
+  def send_single(notification, debug_id)
+    msg = notification.notifiable
+
+    # LeaveForm ใช้ reported_by, ChatMessage ใช้ sender
+    sender_name = if msg.respond_to?(:sender)
+                    msg&.sender&.name
+                  elsif msg.respond_to?(:reported_by)
+                    msg&.reported_by&.name
+                  end || "Someone"
+
     title, body = build_title_body(notification, msg, sender_name)
 
-    Rails.logger.warn "🚀 [NDJ-#{debug_id}] CALL FCM single message_id=#{notification.notifiable_id}"
+    Rails.logger.warn "🚀 [NDJ-#{debug_id}] CALL FCM single notifiable_id=#{notification.notifiable_id}"
 
     FcmService.send_push(
       token: notification.delegate.device_token,
@@ -77,6 +88,45 @@ class NotificationDeliveryJob < ApplicationJob
       data:  base_data(notification)
     )
   end
+
+
+
+
+  def build_title_body(notification, msg, sender_name)
+    case notification.notification_type
+    when "new_group_message"
+      room_title = msg&.chat_room&.title || "Group Chat"
+      content    = msg&.image? ? "📷 รูปภาพ" : msg&.content&.truncate(80)
+      [room_title, "#{sender_name}: #{content}"]
+    when "new_message"
+      content = msg&.image? ? "📷 รูปภาพ" : msg&.content&.truncate(80)
+      ["New Message", "#{sender_name}: #{content}"]
+    when "leave_reported"                                          # ✅ เพิ่ม
+      ["แจ้งลาการนัดหมาย", "#{sender_name} ขอยกเลิกการนัดหมาย"]
+    else
+      ["Notification", msg.try(:content)&.truncate(80).to_s]
+    end
+  end
+
+  def send_summary(notification, count, debug_id)
+    Rails.logger.warn "🚀 [NDJ-#{debug_id}] CALL FCM summary count=#{count}"
+
+    title = case notification.notification_type
+            when "new_group_message" then notification.notifiable&.chat_room&.title || "Group Chat"
+            when "leave_reported"    then "แจ้งลาการนัดหมาย"   # ✅ เพิ่ม
+            else "New Messages"
+            end
+
+    FcmService.send_push(
+      token: notification.delegate.device_token,
+      title: title,
+      body:  "You have #{count} unread notifications",
+      data:  base_data(notification)
+    )
+  end
+
+
+
 
   def send_summary(notification, count, debug_id)
     Rails.logger.warn "🚀 [NDJ-#{debug_id}] CALL FCM summary count=#{count}"

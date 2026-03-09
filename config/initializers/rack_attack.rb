@@ -5,9 +5,10 @@ class Rack::Attack
   Rack::Attack.cache.store = Rails.cache
 
   # Safelist localhost สำหรับ development/test
-  safelist("allow-localhost") do |req|
-    req.ip == "127.0.0.1" || req.ip == "::1"
-  end
+  
+  # safelist("allow-localhost") do |req|
+  #   req.ip == "127.0.0.1" || req.ip == "::1"
+  # end
 
   # ==========================================
   # EXTEND REQUEST (JWT SAFE)

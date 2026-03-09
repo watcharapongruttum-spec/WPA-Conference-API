@@ -38,7 +38,28 @@ module Api
       # ===============================
       # MY SCHEDULE
       # ===============================
+      # def my_schedule
+      #   result = Schedule.build_my_schedule(
+      #     delegate: current_delegate,
+      #     params: timeline_params
+      #   )
+
+      #   return render json: { error: result[:error] }, status: :not_found if result[:error]
+
+      #   render_timeline(result, current_delegate)
+      # end
+
       def my_schedule
+        # 🔒 SCH-009: ตรวจ date format ก่อนเลย — ถ้าผิดคืน 422 ทันที
+        if params[:date].present?
+          begin
+            Date.parse(params[:date].to_s)
+          rescue ArgumentError, TypeError
+            return render json: { error: "Invalid date format. Use YYYY-MM-DD." },
+                          status: :unprocessable_entity
+          end
+        end
+
         result = Schedule.build_my_schedule(
           delegate: current_delegate,
           params: timeline_params

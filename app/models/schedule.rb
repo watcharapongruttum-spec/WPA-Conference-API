@@ -274,6 +274,49 @@ class Schedule < ApplicationRecord
     result.merge(user: target_delegate)
   end
 
+
+
+  
+  def self.build_index(delegate:, params:)
+    page     = (params[:page] || 1).to_i
+    per_page = [(params[:per_page] || 15).to_i, 100].min
+
+    scope = with_full_data
+
+    if params[:delegate_id].present?
+      scope = scope.mine(params[:delegate_id])
+    else
+      scope = scope.mine(delegate.id)
+    end
+
+    if params[:year].present?
+      scope = scope.joins(conference_date: :conference)
+                  .where("conferences.conference_year = ?", params[:year])
+    end
+
+    if params[:date].present?
+      begin
+        date  = Date.parse(params[:date].to_s)
+        scope = scope.joins(:conference_date)
+                    .where(conference_dates: { on_date: date })
+      rescue ArgumentError
+        # invalid date — ignore
+      end
+    end
+
+    total     = scope.count
+    schedules = scope.sorted
+                    .offset((page - 1) * per_page)
+                    .limit(per_page)
+
+    {
+      page:      page,
+      per_page:  per_page,
+      total:     total,
+      schedules: schedules
+    }
+  end
+
   # ===============================
   # TEAM DELEGATES
   # ===============================

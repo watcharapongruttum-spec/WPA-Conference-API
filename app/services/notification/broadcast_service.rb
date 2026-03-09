@@ -1,6 +1,7 @@
 class Notification::BroadcastService
   # ✅ FCM เฉพาะ message และ admin เท่านั้น
-  FCM_ALLOWED_TYPES = %w[new_message new_group_message admin_announce].freeze
+  # FCM_ALLOWED_TYPES = %w[new_message new_group_message admin_announce].freeze
+  FCM_ALLOWED_TYPES = %w[new_message new_group_message admin_announce leave_reported].freeze
 
   def self.call(notification)
     serialized = Api::V1::NotificationSerializer

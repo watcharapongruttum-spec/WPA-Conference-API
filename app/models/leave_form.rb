@@ -31,6 +31,12 @@ class LeaveForm < ApplicationRecord
         reported_at: Time.current
       )
       created_ids << lf.id
+
+
+
+
+      Notification::LeaveService.call(lf)
+
     rescue StandardError => e
       errors << {
         schedule_id: leave[:schedule_id],

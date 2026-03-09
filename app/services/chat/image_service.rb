@@ -1,7 +1,8 @@
 # app/services/chat/image_service.rb
 module Chat
   class ImageService
-    ALLOWED_TYPES = %w[image/jpeg image/png image/gif image/webp].freeze
+    # ALLOWED_TYPES = %w[image/jpeg image/png image/gif image/webp].freeze
+    ALLOWED_TYPES = %w[image/jpeg image/png image/webp].freeze
     MAX_SIZE = 5.megabytes
 
     # ==========================

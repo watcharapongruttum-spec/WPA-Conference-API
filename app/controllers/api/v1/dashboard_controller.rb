@@ -1,6 +1,12 @@
 module Api
   module V1
     class DashboardController < ApplicationController
+
+      before_action :authenticate_delegate!
+
+
+
+
       def show
         me = current_delegate
 

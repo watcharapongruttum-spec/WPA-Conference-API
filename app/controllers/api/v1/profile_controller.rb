@@ -17,7 +17,23 @@ module Api
       # PATCH /api/v1/profile
       # อัพเดท text fields (name, title, phone, ...)
       # ==================
+      # def update
+      #   if current_delegate.update(profile_params)
+      #     render json: build_profile_json(current_delegate)
+      #   else
+      #     render json: {
+      #       success: false,
+      #       messages: current_delegate.errors.full_messages
+      #     }, status: :unprocessable_entity
+      #   end
+      # end
+
       def update
+        # 🔒 PROF-009: ป้องกัน IDOR — ถ้ามี :id ใน URL ต้องเป็นของตัวเองเท่านั้น
+        if params[:id].present? && params[:id].to_i != current_delegate.id
+          return render json: { error: "Forbidden" }, status: :forbidden
+        end
+
         if current_delegate.update(profile_params)
           render json: build_profile_json(current_delegate)
         else
@@ -100,7 +116,9 @@ module Api
 
         # เช็ค size (ถ้ามี — multipart เช็คจาก .size, base64 ส่ง size มาเอง)
         file_size = size || (io.respond_to?(:size) ? io.size : 0)
-        return { success: false, error: "Image must be less than 5MB" } if file_size > 5.megabytes
+        # return { success: false, error: "Image must be less than 5MB" } if file_size > 5.megabytes
+        # return { success: false, error: "Image must be less than 4MB" } if file_size > 4.megabytes
+        return { success: false, error: "Image must be less than 4MB" } if file_size >= 4.megabytes
 
         # ลบรูปเก่าก่อน
         current_delegate.avatar.purge if current_delegate.avatar.attached?

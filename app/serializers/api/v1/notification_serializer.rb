@@ -22,10 +22,22 @@ module Api
         when "connection_request", "connection_accepted", "connection_rejected"
           connection_json(item)
         when "admin_announce"    then announce_json(item)
+        when "leave_reported"    then leave_form_json(item)
         end
       end
 
       private
+
+      def leave_form_json(leave_form)
+        {
+          type:        "leave_reported",
+          id:          leave_form.id,
+          schedule_id: leave_form.schedule_id,
+          reporter:    DelegatePresenter.minimal(leave_form.reported_by),
+          leave_type:  leave_form.leave_type&.name,
+          explanation: leave_form.explanation
+        }
+      end
 
       def message_json(message)
         {
