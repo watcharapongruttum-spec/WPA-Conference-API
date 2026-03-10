@@ -70,6 +70,8 @@ module Api
         end
 
         member.destroy
+        GroupChatChannel.broadcast_to(@room, type: "member_left", delegate_id: current_delegate.id)
+        AuditLogger.room_left(@room, current_delegate, request)
         render json: { success: true }
       end
 
@@ -80,6 +82,8 @@ module Api
         end
 
         @room.update!(deleted_at: Time.current)
+        GroupChatChannel.broadcast_to(@room, type: "room_deleted", room_id: @room.id)
+        AuditLogger.room_deleted(@room, current_delegate, request)
         render json: { success: true }
       end
 
@@ -118,7 +122,7 @@ module Api
           )
 
           Chat::ImageService.attach(message: msg, data_uri: params[:image])
-          msg.reload  # ✅ FIX #2: เพิ่ม reload เพื่อให้ image_url มีค่าใน response
+          msg.reload
           MessageRead.mark_for(delegate: current_delegate, message_ids: [msg.id])
 
           serialized = GroupChat::MessageSerializer.call(message: msg, sender: current_delegate)

@@ -31,7 +31,7 @@ module Api
                         .select(
                           Arel.sql(
                             "DISTINCT ON (LEAST(sender_id, recipient_id), GREATEST(sender_id, recipient_id)) " \
-                            "id, content, created_at, sender_id, recipient_id"
+                            "id, content, message_type, created_at, sender_id, recipient_id"
                           )
                         )
                         .where(
@@ -65,7 +65,8 @@ module Api
               title: partner.title,
               avatar_url: partner.avatar_url
             },
-            last_message: last_msg&.content,
+            last_message:      last_msg&.content_preview,   # ✅ FIX: แสดง "📷 รูปภาพ" ถ้าเป็น image
+            last_message_type: last_msg&.message_type,       # ✅ FIX: เพิ่ม type ให้ client รู้
             last_message_at: last_msg&.created_at,
             unread_count: unread_counts[partner_id] || 0
           }
@@ -79,8 +80,6 @@ module Api
 
       # ================= MARK AS READ (single) =================
       def mark_as_read
-        # ✅ FIX #8: ใช้ @message จาก before_action แทนการ query ซ้ำ
-        # เดิม: message = ChatMessage.find(params[:id]) → query ซ้ำซ้อน
         return render json: { error: "Forbidden" }, status: :forbidden \
           unless @message.recipient_id == current_delegate.id
 
@@ -289,11 +288,6 @@ module Api
         render json: { online: online }
       end
 
-
-
-
-
-
       # DELETE /api/v1/messages/conversation/:delegate_id
       def clear_conversation
         other_id = params[:delegate_id].to_i
@@ -321,13 +315,6 @@ module Api
           deleted_count: updated
         }
       end
-
-
-
-
-
-
-
 
       private
 

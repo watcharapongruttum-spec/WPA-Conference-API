@@ -9,7 +9,7 @@ class ChatMessage < ApplicationRecord
   # ==========================
   # ACTIVE STORAGE
   # ==========================
-  has_one_attached :image  # ✅
+  has_one_attached :image
 
   # ==========================
   # CALLBACKS
@@ -21,14 +21,14 @@ class ChatMessage < ApplicationRecord
   # ==========================
   validates :content,
             presence: { message: "cannot be blank" },
-            unless: :image?  # ✅ ไม่ required ถ้าส่งรูป
+            unless: :image?
 
   validates :content,
             length: { maximum: 2000, message: "must be between 1 and 2000 characters" },
-            allow_blank: true  # ✅
+            allow_blank: true
 
   validates :message_type,
-            inclusion: { in: %w[text image] }  # ✅
+            inclusion: { in: %w[text image] }
 
   validate :can_send_message
   validate :room_or_direct_present
@@ -81,10 +81,16 @@ class ChatMessage < ApplicationRecord
     content.to_s.truncate(length)
   end
 
-  # ✅ คืน URL ของรูป (ถ้ามี)
+  # ✅ FIX: ใช้ rails_blob_path + ENV host แบบเดียวกับ Delegate#avatar_url
+  # แทน rails_blob_url ที่ต้องการ default_url_options[:host] ซึ่งอาจไม่ถูก set ใน ActionCable context
   def image_url
     return nil unless image.attached?
-    Rails.application.routes.url_helpers.rails_blob_url(image, only_path: false)
+
+    path     = Rails.application.routes.url_helpers.rails_blob_path(image, only_path: true)
+    host     = ENV.fetch("APP_HOST", "localhost:3000")
+    protocol = host.include?("localhost") ? "http" : "https"
+
+    "#{protocol}://#{host}#{path}"
   end
 
   private
