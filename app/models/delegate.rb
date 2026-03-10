@@ -3,6 +3,7 @@ class Delegate < ApplicationRecord
 
   # validates :password, length: { minimum: 6 }, allow_nil: true
   validates :password, length: { minimum: 8 }, allow_nil: true
+  before_save :sanitize_fields
 
   validates :device_token,
             length: { minimum: 20, maximum: 255 },
@@ -218,4 +219,26 @@ class Delegate < ApplicationRecord
       "none"
     end
   end
+
+
+
+
+
+  private
+
+def sanitize_fields
+  self.name  = strip_tags(name.to_s)
+  self.title = strip_tags(title.to_s)
+  self.phone = strip_tags(phone.to_s)
+end
+
+def strip_tags(str)
+  ActionController::Base.helpers.sanitize(str, tags: [])
+end
+
+
+
+
+
+
 end

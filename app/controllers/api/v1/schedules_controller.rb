@@ -142,32 +142,46 @@ module Api
 
             meeting_type = schedule.table_number.nil? ? "nomeeting" : "meeting"
 
-            data.merge(
-              type: meeting_type,
-              # team_delegates: (schedule.team&.delegates || []).map do |d|
-              team_delegates: schedule.team_delegates.map do |d|
-                {
-                  id: d.id,
-                  name: d.name,
-                  company: d.company&.name
-                }
+            # ✅ แก้ตรงนี้
+            who_to_meet = if schedule.target_id == scope_user.team_id
+              # เราเป็น target → คนที่มาพบเราคือ booker
+              [schedule.booker].compact.map do |d|
+                { id: d.id, name: d.name, company: d.company&.name }
               end
-            )
+            else
+              # เราเป็น booker → คนที่เราจะไปพบคือ target team
+              schedule.team_delegates.map do |d|
+                { id: d.id, name: d.name, company: d.company&.name }
+              end
+            end
+
+            data.merge(type: meeting_type, team_delegates: who_to_meet)
           end
         end
 
         response = {
-          available_years: result[:years] || [],
-          year: result[:year],
-          available_dates: result[:available_dates] || [],
-          date: result[:selected_date],
-          schedules: timeline
+          available_years:  result[:years] || [],
+          year:             result[:year],
+          available_dates:  result[:available_dates] || [],
+          date:             result[:selected_date],
+          schedules:        timeline
         }
 
         response[:user] = Api::V1::DelegateSerializer.new(result[:user]) if include_user
 
         render json: response
       end
+
+
+
+
+
+
+
+
+
+
+
     end
   end
 end
