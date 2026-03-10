@@ -140,7 +140,8 @@ module Api
               scope: scope_user
             ).as_json.except(:delegate)
 
-            meeting_type = schedule.table_number.nil? ? "nomeeting" : "meeting"
+            # meeting_type = schedule.table_number.nil? ? "nomeeting" : "meeting"
+            meeting_type = schedule.table_number.present? ? "meeting" : "nomeeting"
 
             # ✅ แก้ตรงนี้
             who_to_meet = if schedule.target_id == scope_user.team_id

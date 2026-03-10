@@ -289,6 +289,46 @@ module Api
         render json: { online: online }
       end
 
+
+
+
+
+
+      # DELETE /api/v1/messages/conversation/:delegate_id
+      def clear_conversation
+        other_id = params[:delegate_id].to_i
+        me       = current_delegate.id
+
+        return render json: { error: "Cannot clear conversation with yourself" },
+                      status: :unprocessable_entity if other_id == me
+
+        return render json: { error: "Delegate not found" },
+                      status: :not_found unless Delegate.exists?(other_id)
+
+        now = Time.current
+
+        updated = ChatMessage
+          .where(deleted_at: nil)
+          .where(
+            "(sender_id = :me AND recipient_id = :other) OR
+            (sender_id = :other AND recipient_id = :me)",
+            me: me, other: other_id
+          )
+          .update_all(deleted_at: now)
+
+        render json: {
+          success: true,
+          deleted_count: updated
+        }
+      end
+
+
+
+
+
+
+
+
       private
 
       def set_message

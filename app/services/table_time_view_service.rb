@@ -133,7 +133,9 @@ class TableTimeViewService
 
     schedule_by_table = @schedules.group_by { |s| s.table_number.to_s.strip }
 
-    tables_json = all_tables.map do |table|
+    tables_json = all_tables
+  .select { |t| schedule_by_table[t.table_number.to_s.strip]&.any? }
+  .map do |table|
       key             = table.table_number.to_s.strip
       table_schedules = schedule_by_table[key] || []
 
@@ -176,6 +178,7 @@ class TableTimeViewService
       delegate: :company,
       team:     [:delegates, :company]
     ).where("booker_id IS NOT NULL")
+    .where("table_number IS NOT NULL AND table_number != ''")
 
     slot_start = Schedule
       .where("start_at <= ? AND end_at > ?", datetime, datetime)
