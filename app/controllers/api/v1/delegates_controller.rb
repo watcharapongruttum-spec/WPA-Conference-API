@@ -17,19 +17,34 @@ module Api
         # ✅ default ปี 2025
         year = params[:year].presence || "2025"
 
+        # scope = scope.where(<<~SQL, year)
+        #   EXISTS (
+        #     SELECT 1
+        #     FROM schedules s
+        #     JOIN conference_dates cd ON cd.id = s.conference_date_id
+        #     JOIN conferences co ON co.id = cd.conference_id
+        #     WHERE co.conference_year = ?
+        #       AND (
+        #             s.booker_id = delegates.id
+        #         OR s.delegate_id = delegates.id
+        #       )
+        #   )
+        # SQL
+
         scope = scope.where(<<~SQL, year)
-          EXISTS (
-            SELECT 1
-            FROM schedules s
-            JOIN conference_dates cd ON cd.id = s.conference_date_id
-            JOIN conferences co ON co.id = cd.conference_id
-            WHERE co.conference_year = ?
-              AND (
-                    s.booker_id = delegates.id
-                OR s.delegate_id = delegates.id
-              )
-          )
-        SQL
+        EXISTS (
+          SELECT 1
+          FROM schedules s
+          JOIN conference_dates cd ON cd.id = s.conference_date_id
+          JOIN conferences co ON co.id = cd.conference_id
+          WHERE co.conference_year = ?
+            AND (
+              s.booker_id  = delegates.id
+              OR s.delegate_id = delegates.id
+              OR s.target_id   = delegates.team_id
+            )
+        )
+      SQL
 
         if params[:friends_only].to_s == "true"
           scope = scope.where(id: friend_ids_of(me))
@@ -63,6 +78,24 @@ module Api
         }
       end
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+      
       # ---------------- SHOW ----------------
       def show
         @delegate = Delegate.find(params[:id])
