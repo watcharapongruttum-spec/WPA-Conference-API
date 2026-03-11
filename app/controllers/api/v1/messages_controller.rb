@@ -7,8 +7,11 @@ module Api
         me = current_delegate.id
 
         partner_ids = ChatMessage
-                      .not_deleted
-                      .where("sender_id = :me OR recipient_id = :me", me: me)
+                      .where(
+                        "(sender_id = :me AND deleted_for_sender_at IS NULL) OR " \
+                        "(recipient_id = :me AND deleted_for_recipient_at IS NULL)",
+                        me: me
+                      )
                       .where.not(recipient_id: nil)
                       .where(chat_room_id: nil)
                       .pluck(:sender_id, :recipient_id)
@@ -25,7 +28,11 @@ module Api
                     .index_by(&:id)
 
         last_messages = ChatMessage
-                        .not_deleted
+                        .where(
+                          "(sender_id = :me    AND deleted_for_sender_at    IS NULL) OR " \
+                          "(recipient_id = :me AND deleted_for_recipient_at IS NULL)",
+                          me: me
+                        )
                         .where.not(recipient_id: nil)
                         .where(chat_room_id: nil)
                         .select(
@@ -44,8 +51,8 @@ module Api
                         .index_by { |m| m.sender_id == me ? m.recipient_id : m.sender_id }
 
         unread_counts = ChatMessage
-                        .not_deleted
-                        .where(recipient_id: me, read_at: nil)
+                        .where(recipient_id: me, read_at: nil, deleted_at: nil)
+                        .where(deleted_for_recipient_at: nil)
                         .where(sender_id: partner_ids)
                         .group(:sender_id)
                         .count
@@ -65,10 +72,10 @@ module Api
               title: partner.title,
               avatar_url: partner.avatar_url
             },
-            last_message:      last_msg&.content_preview,   # ✅ FIX: แสดง "📷 รูปภาพ" ถ้าเป็น image
-            last_message_type: last_msg&.message_type,       # ✅ FIX: เพิ่ม type ให้ client รู้
-            last_message_at: last_msg&.created_at,
-            unread_count: unread_counts[partner_id] || 0
+            last_message:      last_msg&.content_preview,
+            last_message_type: last_msg&.message_type,
+            last_message_at:   last_msg&.created_at,
+            unread_count:      unread_counts[partner_id] || 0
           }
         end.compact
 
@@ -94,8 +101,7 @@ module Api
       # ================= INDEX =================
       def index
         @messages = ChatMessage
-                    .not_deleted
-                    .where("sender_id = :me OR recipient_id = :me", me: current_delegate.id)
+                    .visible_to(current_delegate.id)
                     .where(chat_room_id: nil)
                     .where.not(recipient_id: nil)
                     .includes(
@@ -116,14 +122,14 @@ module Api
         per  = [(params[:per] || 50).to_i, 100].min
 
         @messages = ChatMessage
-                    .not_deleted
                     .where(
-                      "(sender_id = :me AND recipient_id = :other)
-                        OR
-                        (sender_id = :other AND recipient_id = :me)",
+                      "(sender_id = :me AND recipient_id = :other) OR
+                       (sender_id = :other AND recipient_id = :me)",
                       me: current_delegate.id,
                       other: other_id
                     )
+                    .visible_to(current_delegate.id)   # ← per-user filter
+                    .where(chat_room_id: nil)
                     .includes(
                       sender: :company,
                       recipient: :company
@@ -276,7 +282,8 @@ module Api
                   sender_id: sender_id.to_i,
                   recipient_id: current_delegate.id,
                   read_at: nil,
-                  deleted_at: nil
+                  deleted_at: nil,
+                  deleted_for_recipient_at: nil   # ← ไม่นับที่ลบแล้ว
                 )
                 .count
 
@@ -288,7 +295,7 @@ module Api
         render json: { online: online }
       end
 
-      # DELETE /api/v1/messages/conversation/:delegate_id
+      # ================= CLEAR CONVERSATION (per-user) =================
       def clear_conversation
         other_id = params[:delegate_id].to_i
         me       = current_delegate.id
@@ -301,18 +308,21 @@ module Api
 
         now = Time.current
 
-        updated = ChatMessage
-          .where(deleted_at: nil)
-          .where(
-            "(sender_id = :me AND recipient_id = :other) OR
-            (sender_id = :other AND recipient_id = :me)",
-            me: me, other: other_id
-          )
-          .update_all(deleted_at: now)
+        # Messages ที่เราเป็น sender → set deleted_for_sender_at
+        count_as_sender = ChatMessage
+          .where(sender_id: me, recipient_id: other_id)
+          .where(deleted_for_sender_at: nil)
+          .update_all(deleted_for_sender_at: now)
+
+        # Messages ที่เราเป็น recipient → set deleted_for_recipient_at
+        count_as_recipient = ChatMessage
+          .where(sender_id: other_id, recipient_id: me)
+          .where(deleted_for_recipient_at: nil)
+          .update_all(deleted_for_recipient_at: now)
 
         render json: {
           success: true,
-          deleted_count: updated
+          deleted_count: count_as_sender + count_as_recipient
         }
       end
 

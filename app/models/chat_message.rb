@@ -40,6 +40,15 @@ class ChatMessage < ApplicationRecord
   # ==========================
   scope :not_deleted, -> { where(deleted_at: nil) }
 
+  # Per-user soft delete — ใช้แทน not_deleted สำหรับ direct chat
+  scope :visible_to, lambda { |delegate_id|
+    where(
+      "(sender_id = :id    AND (deleted_for_sender_at    IS NULL)) OR " \
+      "(recipient_id = :id AND (deleted_for_recipient_at IS NULL))",
+      id: delegate_id
+    )
+  }
+
   scope :unread_between, lambda { |sender_id, recipient_id|
     where(
       sender_id: sender_id,
@@ -76,13 +85,21 @@ class ChatMessage < ApplicationRecord
     deleted_at.present?
   end
 
+  def deleted_for?(delegate)
+    if delegate.id == sender_id
+      deleted_for_sender_at.present?
+    elsif delegate.id == recipient_id
+      deleted_for_recipient_at.present?
+    else
+      false
+    end
+  end
+
   def content_preview(length = 50)
     return "📷 รูปภาพ" if image?
     content.to_s.truncate(length)
   end
 
-  # ✅ FIX: ใช้ rails_blob_path + ENV host แบบเดียวกับ Delegate#avatar_url
-  # แทน rails_blob_url ที่ต้องการ default_url_options[:host] ซึ่งอาจไม่ถูก set ใน ActionCable context
   def image_url
     return nil unless image.attached?
 

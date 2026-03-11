@@ -153,8 +153,12 @@ ActiveRecord::Schema[7.0].define(version: 202107270010001) do
     t.datetime "deleted_at"
     t.datetime "delivered_at"
     t.string "message_type", default: "text", null: false
+    t.datetime "deleted_for_sender_at"
+    t.datetime "deleted_for_recipient_at"
     t.index ["chat_room_id", "created_at"], name: "idx_chat_messages_room_timeline"
     t.index ["chat_room_id"], name: "index_chat_messages_on_chat_room_id"
+    t.index ["deleted_for_recipient_at"], name: "index_chat_messages_on_deleted_for_recipient_at"
+    t.index ["deleted_for_sender_at"], name: "index_chat_messages_on_deleted_for_sender_at"
     t.index ["delivered_at", "deleted_at"], name: "idx_chat_messages_undelivered"
     t.index ["delivered_at"], name: "index_chat_messages_on_delivered_at"
     t.index ["read_at"], name: "index_chat_messages_on_read_at"

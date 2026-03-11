@@ -5,8 +5,6 @@ Rails.application.routes.draw do
   get  '/deeplink-reset-password',               to: 'api/v1/deeplink#reset_password'
   post '/api/v1/deeplink/reset_password_submit', to: 'api/v1/deeplink#reset_password_submit'
 
-  # ✅ FIX: ลบ route นี้ออก — เดิมอยู่นอก namespace ทำให้ชี้ไปที่ MessagesController ผิด
-  # delete "messages/conversation/:delegate_id", to: "messages#clear_conversation"
 
   namespace :api do
     namespace :v1 do
@@ -77,7 +75,7 @@ Rails.application.routes.draw do
       resources :messages, only: %i[index create update destroy] do
         collection do
           get    'conversation/:delegate_id', to: 'messages#conversation'
-          delete 'conversation/:delegate_id', to: 'messages#clear_conversation' # ✅ FIX: ย้ายเข้า namespace
+          delete 'conversation/:delegate_id', to: 'messages#clear_conversation'
           get    :rooms
           patch  :read_all
           get    :unread_count
