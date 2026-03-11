@@ -90,12 +90,15 @@ module Api
         return render json: { error: "Forbidden" }, status: :forbidden \
           unless @message.recipient_id == current_delegate.id
 
-        return render json: { error: "Already read" }, status: :ok \
+        return render json: { success: true, read_at: TimeFormatter.format(@message.read_at) }, status: :ok \
           if @message.read_at.present?
 
-        @message.update!(read_at: Time.current)
+        # ✅ ใช้ ReadService — sync ทั้ง read_at และ MessageRead และ broadcast WS
+        Chat::ReadService.mark_one(@message)
 
-        render json: { success: true, read_at: @message.read_at }
+        Rails.cache.delete("dashboard:#{current_delegate.id}:v1")
+
+        render json: { success: true, read_at: TimeFormatter.format(@message.reload.read_at) }
       end
 
       # ================= INDEX =================

@@ -6,16 +6,16 @@ module Chat
     end
 
     def initialize(sender, recipient_id, data_uri)
-      @sender     = sender
-      @recipient  = Delegate.find(recipient_id)
-      @data_uri   = data_uri
+      @sender    = sender
+      @recipient = Delegate.find(recipient_id)
+      @data_uri  = data_uri
     end
 
     def call
       create_message
       attach_image
+      mark_sender_read          # ✅
       auto_mark_if_recipient_connected
-    #   broadcast_new_message
       @message
     end
 
@@ -26,7 +26,7 @@ module Chat
         sender:       @sender,
         recipient:    @recipient,
         content:      "",
-        message_type: "image"  # ✅
+        message_type: "image"
       )
     end
 
@@ -34,25 +34,43 @@ module Chat
       Chat::ImageService.attach(message: @message, data_uri: @data_uri)
     end
 
+    # ✅ sender ส่งแล้วถือว่าอ่านแล้วเสมอ
+    def mark_sender_read
+      now = Time.current
+      MessageRead.upsert(
+        {
+          chat_message_id: @message.id,
+          delegate_id:     @sender.id,
+          read_at:         now,
+          created_at:      now,
+          updated_at:      now
+        },
+        unique_by: %i[chat_message_id delegate_id]
+      )
+    rescue => e
+      Rails.logger.warn "[SendImageService] mark_sender_read failed: #{e.message}"
+    end
+
     def auto_mark_if_recipient_connected
       active_room = REDIS.get("chat:active_room:#{@recipient.id}")
       return unless active_room == @sender.id.to_s
 
-      @message.update_columns(
-        read_at:      Time.current,
-        delivered_at: Time.current
-      )
-    end
+      now = Time.current
+      @message.update_columns(read_at: now, delivered_at: now)
 
-    def broadcast_new_message
-      payload = {
-        type:    "new_message",
-        message: Api::V1::ChatMessageSerializer
-                   .new(@message.reload)
-                   .serializable_hash
-      }
-      ChatChannel.broadcast_to(@recipient, payload)
-      ChatChannel.broadcast_to(@sender, payload)
+      # ✅ insert MessageRead สำหรับ recipient ด้วย
+      MessageRead.upsert(
+        {
+          chat_message_id: @message.id,
+          delegate_id:     @recipient.id,
+          read_at:         now,
+          created_at:      now,
+          updated_at:      now
+        },
+        unique_by: %i[chat_message_id delegate_id]
+      )
+    rescue => e
+      Rails.logger.warn "[SendImageService] auto_mark failed: #{e.message}"
     end
   end
 end

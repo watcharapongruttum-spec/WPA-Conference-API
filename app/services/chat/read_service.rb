@@ -1,16 +1,23 @@
+# app/services/chat/read_service.rb
 module Chat
   class ReadService
     # ================= READ ALL (API) =================
     def self.read_all(delegate)
       now = Time.current
 
-      # ✅ แชท 1-1 — ใช้ read_at บน chat_messages (ถูกต้อง)
-      ChatMessage
+      # ✅ Direct chat — mark ทั้ง read_at (backward compat) และ MessageRead
+      direct_messages = ChatMessage
         .where(recipient_id: delegate.id, read_at: nil, deleted_at: nil)
-        .update_all(read_at: now)
+        .where(chat_room_id: nil)
 
-      # ✅ FIX: Group chat — mark ผ่าน MessageRead table
-      # เดิมใช้ update_all read_at บน chat_messages ซึ่งไม่มีผลต่อ unread count จริง
+      direct_ids = direct_messages.pluck(:id)
+
+      if direct_ids.any?
+        direct_messages.update_all(read_at: now)
+        _insert_message_reads(direct_ids, delegate.id, now)
+      end
+
+      # ✅ Group chat — mark ผ่าน MessageRead table
       group_room_ids = ChatRoomMember
                        .joins(:chat_room)
                        .where(delegate_id: delegate.id)
@@ -18,45 +25,35 @@ module Chat
                        .pluck(:chat_room_id)
 
       if group_room_ids.any?
-        unread_message_ids = ChatMessage
-                             .where(chat_room_id: group_room_ids)
-                             .where(deleted_at: nil)
-                             .where.not(sender_id: delegate.id)
-                             .where.not(
-                               id: MessageRead.where(delegate_id: delegate.id).select(:chat_message_id)
-                             )
-                             .pluck(:id)
+        group_ids = ChatMessage
+                    .where(chat_room_id: group_room_ids)
+                    .where(deleted_at: nil)
+                    .where.not(sender_id: delegate.id)
+                    .where.not(
+                      id: MessageRead.where(delegate_id: delegate.id).select(:chat_message_id)
+                    )
+                    .pluck(:id)
 
-        if unread_message_ids.any?
-          rows = unread_message_ids.map do |msg_id|
-            {
-              chat_message_id: msg_id,
-              delegate_id: delegate.id,
-              read_at: now,
-              created_at: now,
-              updated_at: now
-            }
-          end
-
-          MessageRead.upsert_all(rows, unique_by: %i[chat_message_id delegate_id])
-        end
+        _insert_message_reads(group_ids, delegate.id, now) if group_ids.any?
       end
 
-      # ✅ Clear dashboard cache หลัง mark read
       Rails.cache.delete("dashboard:#{delegate.id}:v1")
     end
 
-    # ================= MARK ONE =================
+    # ================= MARK ONE (direct chat) =================
     def self.mark_one(message)
       return if message.read_at.present?
 
       now = Time.current
+
+      # ✅ sync ทั้ง read_at และ MessageRead
       message.update_column(:read_at, now)
+      _insert_message_reads([message.id], message.recipient_id, now)
 
       payload = {
-        type: "message_read",
+        type:       "message_read",
         message_id: message.id,
-        read_at: TimeFormatter.format(now)  # ✅ ISO8601 +07:00
+        read_at:    TimeFormatter.format(now)
       }
 
       ChatChannel.broadcast_to(message.sender,    payload)
@@ -64,62 +61,84 @@ module Chat
     end
 
     # ================= MARK ROOM (direct chat) =================
+    # เรียกจาก ChatChannel#enter_room และ RoomStateService
     def self.mark_room(user_id, target_id)
       now = Time.current
 
       scope = ChatMessage
               .where(sender_id: target_id,
                      recipient_id: user_id,
-                     read_at: nil)
+                     read_at: nil,
+                     chat_room_id: nil)
 
       ids = scope.pluck(:id)
-      scope.update_all(read_at: now)
-
       return if ids.empty?
 
+      # ✅ sync ทั้ง read_at (backward compat) และ MessageRead
+      scope.update_all(read_at: now)
+      _insert_message_reads(ids, user_id, now)
+
+      Rails.cache.delete("dashboard:#{user_id}:v1")
+
       payload = {
-        type: "bulk_read",
+        type:        "bulk_read",
         message_ids: ids,
-        read_at: TimeFormatter.format(now)  # ✅ ISO8601 +07:00
+        read_at:     TimeFormatter.format(now)
       }
 
-      user   = Delegate.find(user_id)
-      target = Delegate.find(target_id)
+      user   = Delegate.find_by(id: user_id)
+      target = Delegate.find_by(id: target_id)
 
-      ChatChannel.broadcast_to(user,   payload)
-      ChatChannel.broadcast_to(target, payload)
+      ChatChannel.broadcast_to(user,   payload) if user
+      ChatChannel.broadcast_to(target, payload) if target
     end
 
-    # ================= AUTO ON SUBSCRIBE =================
+    # ================= AUTO ON SUBSCRIBE (legacy) =================
     def self.mark_all_for_user(user_id)
       now = Time.current
 
-      # ดึง unread messages ของ user
       unread_messages = ChatMessage
-                        .where(recipient_id: user_id, read_at: nil)
+                        .where(recipient_id: user_id, read_at: nil, chat_room_id: nil)
 
       ids = unread_messages.pluck(:id)
       return if ids.empty?
 
-      # update ทีเดียว
       unread_messages.update_all(read_at: now)
+      _insert_message_reads(ids, user_id, now)
 
-      # หา sender ทั้งหมดทีเดียว (ไม่ query ซ้ำ)
       sender_ids = ChatMessage
                    .where(id: ids)
                    .distinct
                    .pluck(:sender_id)
 
       payload = {
-        type: "bulk_read",
+        type:        "bulk_read",
         message_ids: ids,
-        read_at: TimeFormatter.format(now)  # ✅ ISO8601 +07:00
+        read_at:     TimeFormatter.format(now)
       }
 
-      # preload delegates ทีเดียว
       Delegate.where(id: sender_ids).find_each do |delegate|
         ChatChannel.broadcast_to(delegate, payload)
       end
+    end
+
+    # ================= PRIVATE =================
+    private_class_method def self._insert_message_reads(message_ids, delegate_id, now)
+      return if message_ids.blank?
+
+      rows = message_ids.map do |msg_id|
+        {
+          chat_message_id: msg_id,
+          delegate_id:     delegate_id,
+          read_at:         now,
+          created_at:      now,
+          updated_at:      now
+        }
+      end
+
+      MessageRead.upsert_all(rows, unique_by: %i[chat_message_id delegate_id])
+    rescue => e
+      Rails.logger.error "[ReadService] upsert_all failed: #{e.message}"
     end
   end
 end
