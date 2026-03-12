@@ -35,13 +35,10 @@ module Api
         end
 
         room = ChatRoom.create!(title: title, room_kind: :group)
-
         room.chat_room_members.create!(delegate_id: current_delegate.id, role: :admin)
 
         valid_ids = Delegate.where(id: member_ids).pluck(:id)
-        valid_ids.each do |id|
-          room.chat_room_members.create!(delegate_id: id, role: :member)
-        end
+        valid_ids.each { |id| room.chat_room_members.create!(delegate_id: id, role: :member) }
 
         render json: serialize_room(room), status: :created
       rescue ActiveRecord::RecordInvalid => e
@@ -70,7 +67,7 @@ module Api
         end
 
         member.destroy
-        GroupChatChannel.broadcast_to(@room, type: "member_left", delegate_id: current_delegate.id)
+        Chat::Group::BroadcastService.member_left(@room, current_delegate.id)
         AuditLogger.room_left(@room, current_delegate, request)
         render json: { success: true }
       end
@@ -82,7 +79,7 @@ module Api
         end
 
         @room.update!(deleted_at: Time.current)
-        GroupChatChannel.broadcast_to(@room, type: "room_deleted", room_id: @room.id)
+        Chat::Group::BroadcastService.room_deleted(@room)
         AuditLogger.room_deleted(@room, current_delegate, request)
         render json: { success: true }
       end
@@ -113,47 +110,19 @@ module Api
 
       # POST /api/v1/group_chat/:id/messages
       def send_message
-        # ✅ ส่งรูปภาพ
-        if params[:image].present?
-          msg = @room.chat_messages.create!(
-            sender:       current_delegate,
-            content:      "",
-            message_type: "image"
-          )
-
-          Chat::ImageService.attach(message: msg, data_uri: params[:image])
-          msg.reload
-          MessageRead.mark_for(delegate: current_delegate, message_ids: [msg.id])
-
-          serialized = GroupChat::MessageSerializer.call(message: msg, sender: current_delegate)
-          GroupChatChannel.broadcast_to(@room, { type: "group_message", room_id: @room.id, message: serialized })
-
-          return render json: serialized, status: :created
+        msg = if params[:image].present?
+          build_image_message
+        else
+          build_text_message
         end
 
-        # ✅ ส่งข้อความ
-        content = params[:content].to_s.strip
-
-        if content.blank?
-          return render json: { error: "Content cannot be blank" }, status: :unprocessable_entity
-        end
-
-        if content.length > 2000
-          return render json: { error: "Content too long (max 2000)" }, status: :unprocessable_entity
-        end
-
-        msg = @room.chat_messages.create!(
-          sender:       current_delegate,
-          content:      content,
-          message_type: "text"
-        )
+        return unless msg  # error already rendered
 
         MessageRead.mark_for(delegate: current_delegate, message_ids: [msg.id])
-        serialized = GroupChat::MessageSerializer.call(message: msg, sender: current_delegate)
+        Chat::Group::BroadcastService.message_sent(@room, msg)
 
-        GroupChatChannel.broadcast_to(@room, { type: "group_message", room_id: @room.id, message: serialized })
-
-        render json: serialized, status: :created
+        render json: GroupChat::MessageSerializer.call(message: msg, sender: current_delegate),
+               status: :created
       rescue ArgumentError => e
         render json: { error: e.message }, status: :unprocessable_entity
       rescue ActiveRecord::RecordInvalid => e
@@ -183,6 +152,37 @@ module Api
       end
 
       private
+
+      def build_text_message
+        content = params[:content].to_s.strip
+
+        if content.blank?
+          render json: { error: "Content cannot be blank" }, status: :unprocessable_entity
+          return
+        end
+
+        if content.length > 2000
+          render json: { error: "Content too long (max 2000)" }, status: :unprocessable_entity
+          return
+        end
+
+        @room.chat_messages.create!(
+          sender:       current_delegate,
+          content:      content,
+          message_type: "text"
+        )
+      end
+
+      def build_image_message
+        msg = @room.chat_messages.create!(
+          sender:       current_delegate,
+          content:      "",
+          message_type: "image"
+        )
+        Chat::ImageService.attach(message: msg, data_uri: params[:image])
+        msg.reload
+        msg
+      end
 
       def set_room
         @room = ChatRoom.find(params[:id])

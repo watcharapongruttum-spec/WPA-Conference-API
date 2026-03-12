@@ -1,9 +1,9 @@
+# app/controllers/api/v1/chat_rooms_controller.rb
 module Api
   module V1
     class ChatRoomsController < ApplicationController
       before_action :set_room, only: %i[destroy join leave]
 
-      # POST /api/v1/chat_rooms → forward to GroupChatController logic
       def create
         room_attrs = params.require(:chat_room).permit(:title, :room_kind)
 
@@ -32,11 +32,11 @@ module Api
 
       def destroy
         member = @room.chat_room_members.find_by(delegate: current_delegate)
-        return render json: { error: "Not member" }, status: :not_found unless member
-        return render json: { error: "Admin only" }, status: :forbidden unless member.admin?
+        return render json: { error: "Not member" },   status: :not_found  unless member
+        return render json: { error: "Admin only" },   status: :forbidden  unless member.admin?
 
         @room.update!(deleted_at: Time.current)
-        GroupChatChannel.broadcast_to(@room, type: "room_deleted", room_id: @room.id)
+        Chat::Group::BroadcastService.room_deleted(@room)
         AuditLogger.room_deleted(@room, current_delegate, request)
         render json: { success: true }
       end
@@ -44,15 +44,13 @@ module Api
       def join
         return render json: { error: "Room deleted" }, status: :unprocessable_entity if @room.deleted_at.present?
 
-        member = ChatRoomMember.find_or_initialize_by(chat_room: @room, delegate: current_delegate)
-        is_new = member.new_record?
+        member   = ChatRoomMember.find_or_initialize_by(chat_room: @room, delegate: current_delegate)
+        is_new   = member.new_record?
         member.role ||= :member
         member.save!
 
         if is_new
-          GroupChatChannel.broadcast_to(@room, type: "member_joined",
-            delegate: { id: current_delegate.id, name: current_delegate.name,
-                        avatar_url: current_delegate.avatar_url })
+          Chat::Group::BroadcastService.member_joined(@room, current_delegate)
           AuditLogger.room_joined(@room, current_delegate, request)
         end
 
@@ -68,7 +66,7 @@ module Api
         end
 
         member.destroy
-        GroupChatChannel.broadcast_to(@room, type: "member_left", delegate_id: current_delegate.id)
+        Chat::Group::BroadcastService.member_left(@room, current_delegate.id)
         AuditLogger.room_left(@room, current_delegate, request)
         render json: { success: true }
       end

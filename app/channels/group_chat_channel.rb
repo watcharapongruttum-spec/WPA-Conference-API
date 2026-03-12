@@ -37,11 +37,8 @@ class GroupChatChannel < ApplicationCable::Channel
     )
 
     MessageRead.mark_for(delegate: current_delegate, message_ids: [msg.id])
-    broadcast_message(msg)
+    Chat::Group::BroadcastService.message_sent(@room, msg)
     notify_group_members(msg)
-    # ✅ FIX: ลบ push_to_offline_members ออก
-    # notify_group_members → BroadcastService → NotificationDeliveryJob ส่ง FCM ให้อยู่แล้ว
-    # การเรียก push_to_offline_members ซ้อนทำให้ offline members ได้รับ push 2 ครั้ง
   rescue ActiveRecord::RecordInvalid => e
     transmit(type: "error", message: e.message)
   rescue StandardError => e
@@ -53,8 +50,7 @@ class GroupChatChannel < ApplicationCable::Channel
   def send_image(data)
     data     = parse(data)
     data_uri = data["image"]
-    # return transmit(type: "error", message: "No image provided") if data_uri.blank?
-    return transmit({ "type" => "error", "message" => "No image provided" }) if data_uri.blank?
+    return transmit(type: "error", message: "No image provided") if data_uri.blank?
 
     msg = @room.chat_messages.create!(
       sender:       current_delegate,
@@ -65,13 +61,11 @@ class GroupChatChannel < ApplicationCable::Channel
     Chat::ImageService.attach(message: msg, data_uri: data_uri)
     msg.reload
     MessageRead.mark_for(delegate: current_delegate, message_ids: [msg.id])
-    broadcast_message(msg)
+    Chat::Group::BroadcastService.message_sent(@room, msg)
     notify_group_members(msg)
-    # ✅ FIX: ลบ push_to_offline_members ออกเหมือนกัน
   rescue ArgumentError => e
     msg&.destroy
-    # transmit(type: "error", message: e.message)
-    transmit({ "type" => "error", "message" => e.message })
+    transmit(type: "error", message: e.message)
   rescue ActiveRecord::RecordInvalid => e
     transmit(type: "error", message: e.record.errors.full_messages.join(", "))
   end
@@ -81,18 +75,11 @@ class GroupChatChannel < ApplicationCable::Channel
     data = parse(data)
     msg  = find_own_message(data["message_id"])
     return transmit(type: "error", message: "Message not found") unless msg
-    return transmit(type: "error", message: "Message deleted") if msg.deleted?
+    return transmit(type: "error", message: "Message deleted")   if msg.deleted?
     return transmit(type: "error", message: "Cannot edit image") if msg.image?
 
     msg.update!(content: data["content"].to_s.strip, edited_at: Time.current)
-
-    GroupChatChannel.broadcast_to(@room, {
-      type:       "group_message_edited",
-      room_id:    @room.id,
-      message_id: msg.id,
-      content:    msg.content,
-      edited_at:  TimeFormatter.format(msg.edited_at)
-    })
+    Chat::Group::BroadcastService.message_edited(@room, msg)
   rescue ActiveRecord::RecordInvalid => e
     transmit(type: "error", message: e.message)
   end
@@ -102,26 +89,20 @@ class GroupChatChannel < ApplicationCable::Channel
     data = parse(data)
     msg  = find_own_message(data["message_id"])
     return transmit(type: "error", message: "Message not found") unless msg
-    return transmit(type: "error", message: "Already deleted") if msg.deleted?
+    return transmit(type: "error", message: "Already deleted")   if msg.deleted?
 
     msg.update!(deleted_at: Time.current)
-
-    GroupChatChannel.broadcast_to(@room, {
-      type:       "group_message_deleted",
-      room_id:    @room.id,
-      message_id: msg.id
-    })
+    Chat::Group::BroadcastService.message_deleted(@room, msg)
   end
 
   # ================= ENTER ROOM =================
   def enter_room(_data)
     REDIS.setex(room_active_key, 3600, "1")
 
-    unread = @room.chat_messages
-                  .where.not(sender_id: current_delegate.id)
-                  .where(deleted_at: nil)
-
-    unread_ids = unread.pluck(:id)
+    unread_ids = @room.chat_messages
+                      .where.not(sender_id: current_delegate.id)
+                      .where(deleted_at: nil)
+                      .pluck(:id)
     return if unread_ids.empty?
 
     newly_read_ids = MessageRead.mark_for(
@@ -130,14 +111,7 @@ class GroupChatChannel < ApplicationCable::Channel
     )
     return if newly_read_ids.empty?
 
-    now = Time.current
-    GroupChatChannel.broadcast_to(@room, {
-      type:        "bulk_read",
-      room_id:     @room.id,
-      message_ids: newly_read_ids,
-      reader:      DelegatePresenter.minimal(current_delegate),
-      read_at:     TimeFormatter.format(now)
-    })
+    Chat::Group::BroadcastService.bulk_read(@room, current_delegate, newly_read_ids)
   end
 
   # ================= LEAVE ROOM =================
@@ -147,35 +121,14 @@ class GroupChatChannel < ApplicationCable::Channel
 
   # ================= TYPING =================
   def typing(_data)
-    GroupChatChannel.broadcast_to(@room, {
-      type:        "typing",
-      room_id:     @room.id,
-      delegate_id: current_delegate.id,
-      name:        current_delegate.name
-    })
+    Chat::Group::BroadcastService.typing(@room, current_delegate)
   end
 
   def stop_typing(_data)
-    GroupChatChannel.broadcast_to(@room, {
-      type:        "stop_typing",
-      room_id:     @room.id,
-      delegate_id: current_delegate.id
-    })
+    Chat::Group::BroadcastService.stop_typing(@room, current_delegate)
   end
 
   private
-
-  def broadcast_message(msg)
-    GroupChatChannel.broadcast_to(@room, {
-      type:    "group_message",
-      room_id: @room.id,
-      message: serialize_message(msg)
-    })
-  end
-
-  def serialize_message(msg)
-    GroupChat::MessageSerializer.call(message: msg, sender: msg.sender)
-  end
 
   def find_own_message(message_id)
     @room.chat_messages.find_by(id: message_id, sender_id: current_delegate.id)
@@ -213,8 +166,4 @@ class GroupChatChannel < ApplicationCable::Channel
       Rails.logger.error "[GroupChatChannel] notify failed for delegate=#{delegate_id}: #{e.message}"
     end
   end
-
-  # ✅ FIX: ลบ push_to_offline_members method ออกทั้งหมด
-  # เพราะ notify_group_members → BroadcastService → NotificationDeliveryJob
-  # จัดการ FCM ให้อยู่แล้ว รวมถึงเช็ค online/offline ด้วย
 end

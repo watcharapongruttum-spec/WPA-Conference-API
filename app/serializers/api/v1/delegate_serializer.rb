@@ -14,11 +14,16 @@ module Api
                  :team_id,
                  :first_login,
                  :is_connected,
-                 :connection_status
+                 :connection_status,
+                 :connection_request_id
 
       # ---------------- COMPANY ----------------
       def company_name
         object.company&.name || "N/A"
+      end
+
+      def connection_request_id
+        object.connection_request_id_with(scope)
       end
 
       def country_code

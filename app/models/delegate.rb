@@ -220,7 +220,19 @@ class Delegate < ApplicationRecord
     end
   end
 
-
+  def connection_request_id_with(me)
+    return nil if me.nil? || me.id == id
+    ConnectionRequest
+      .where(
+        "(requester_id = :me AND target_id = :other)
+          OR (requester_id = :other AND target_id = :me)",
+        me: me.id,
+        other: id
+      )
+      .where(status: :pending)
+      .order(created_at: :desc)
+      .first&.id
+  end
 
 
 

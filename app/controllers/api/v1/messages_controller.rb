@@ -89,15 +89,9 @@ module Api
       def mark_as_read
         return render json: { error: "Forbidden" }, status: :forbidden \
           unless @message.recipient_id == current_delegate.id
-
-        return render json: { success: true, read_at: TimeFormatter.format(@message.read_at) }, status: :ok \
-          if @message.read_at.present?
-
         # ✅ ใช้ ReadService — sync ทั้ง read_at และ MessageRead และ broadcast WS
         Chat::ReadService.mark_one(@message)
-
         Rails.cache.delete("dashboard:#{current_delegate.id}:v1")
-
         render json: { success: true, read_at: TimeFormatter.format(@message.reload.read_at) }
       end
 

@@ -42,13 +42,12 @@ module Chat
 
     # ================= MARK ONE (direct chat) =================
     def self.mark_one(message)
-      return if message.read_at.present?
+      now = message.read_at || Time.current
 
-      now = Time.current
-
-      # ✅ sync ทั้ง read_at และ MessageRead
-      message.update_column(:read_at, now)
-      _insert_message_reads([message.id], message.recipient_id, now)
+      unless message.read_at.present?
+        message.update_column(:read_at, now)
+        _insert_message_reads([message.id], message.recipient_id, now)
+      end
 
       payload = {
         type:       "message_read",
