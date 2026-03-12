@@ -51,17 +51,18 @@ module Api
             requester_id: current_delegate.id,
             target_id: target.id
           )
+
           @connection.update!(status: :pending)
 
-          notification = Notification.create!(
+          AuditLogger.connection_request_created(@connection, request)
+
+          Notifications::Pipeline.call_connection(
             delegate: target,
-            notification_type: "connection_request",
+            type: "connection_request",
             notifiable: @connection
           )
 
-          AuditLogger.connection_request_created(@connection, request)
-          Notification::BroadcastService.call(notification)
-          Rails.cache.delete("dashboard:#{target.id}:v1") # ← เพิ่ม
+          Rails.cache.delete("dashboard:#{target.id}:v1")
         end
 
         render json: @connection,
@@ -89,20 +90,19 @@ module Api
             target_id: connection.target_id
           ) { |c| c.status = "accepted" }
 
-          # ✅ ส่งข้อความอัตโนมัติหาทั้งสองฝ่าย
           send_connected_message(
-            from: current_delegate, # B (คนกด Accept)
-            to: connection.requester # A (คนส่ง Request)
-          )
-
-          notification = Notification.create!(
-            delegate: connection.requester,
-            notification_type: "connection_accepted",
-            notifiable: connection
+            from: current_delegate,
+            to: connection.requester
           )
 
           AuditLogger.connection_accepted(connection, request)
-          Notification::BroadcastService.call(notification)
+
+          Notifications::Pipeline.call_connection(
+            delegate: connection.requester,
+            type: "connection_accepted",
+            notifiable: connection
+          )
+
           Rails.cache.delete("dashboard:#{connection.requester_id}:v1")
         end
 
@@ -124,16 +124,16 @@ module Api
 
         ActiveRecord::Base.transaction do
           connection.update!(status: :rejected)
+
           AuditLogger.connection_rejected(connection, request)
 
-          notification = Notification.create!(
+          Notifications::Pipeline.call_connection(
             delegate: connection.requester,
-            notification_type: "connection_rejected",
+            type: "connection_rejected",
             notifiable: connection
           )
 
-          Notification::BroadcastService.call(notification)
-          Rails.cache.delete("dashboard:#{connection.requester_id}:v1") # ← เพิ่ม
+          Rails.cache.delete("dashboard:#{connection.requester_id}:v1")
         end
 
         render json: connection,
@@ -165,12 +165,12 @@ module Api
       # ============================
       # DELETE /api/v1/requests/:id/cancel
       # ============================
-
       def cancel
         connection = ConnectionRequest.find_by(
-          id: params[:id],                      # ← ใช้ id ตรงๆ
-          requester_id: current_delegate.id     # ← ยืนยันว่าเป็นเจ้าของ
+          id: params[:id],
+          requester_id: current_delegate.id
         )
+
         return render json: { error: "Not found" }, status: :not_found unless connection
 
         connection.destroy
@@ -183,21 +183,18 @@ module Api
       # AUTO MESSAGE เมื่อเป็นเพื่อนกัน
       # ============================
       def send_connected_message(from:, to:)
-        # ข้อความหา A (จาก B) — "เราเป็นเพื่อนกันแล้ว"
         msg_to_requester = ChatMessage.create!(
           sender: from,
           recipient: to,
           content: "🤝 คุณและ #{from.name} เป็นเพื่อนกันแล้ว!"
         )
 
-        # ข้อความหา B (จาก A) — ให้ B เห็นในหน้าแชทของตัวเองด้วย
         msg_to_acceptor = ChatMessage.create!(
           sender: to,
           recipient: from,
           content: "🤝 คุณและ #{to.name} เป็นเพื่อนกันแล้ว!"
         )
 
-        # Broadcast ผ่าน WS ทันที
         broadcast_connected_message(msg_to_requester)
         broadcast_connected_message(msg_to_acceptor)
       end
@@ -211,7 +208,7 @@ module Api
         }
 
         ChatChannel.broadcast_to(message.recipient, payload)
-        ChatChannel.broadcast_to(message.sender,    payload)
+        ChatChannel.broadcast_to(message.sender, payload)
       end
 
       def render_not_found

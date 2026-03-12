@@ -6,7 +6,7 @@
 #   1. ActionCable → in-app real-time (ทุก type)
 #   2. FCM via Job → push notification (เฉพาะ type ที่อนุญาต + delegate offline)
 #
-module Notification
+module Notifications
   class Pipeline
 
     FCM_TYPES = %w[new_message new_group_message leave_reported].freeze
