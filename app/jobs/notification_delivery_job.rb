@@ -184,19 +184,23 @@ class NotificationDeliveryJob < ApplicationJob
 
 
 
-def recent_messages_body(sender_id, recipient_id, chat_room_id, prefix = nil)
-  scope = ChatMessage
-            .where(sender_id: sender_id, deleted_at: nil, message_type: "text")
-            .where.not(content: [nil, ""])
+  def recent_messages_body(sender_id, recipient_id, chat_room_id, prefix = nil)
+    scope = ChatMessage
+              .where(sender_id: sender_id, deleted_at: nil, message_type: "text")
+              .where.not(content: [nil, ""])
 
-  scope = chat_room_id.present? \
-            ? scope.where(chat_room_id: chat_room_id) \
-            : scope.where(recipient_id: recipient_id, chat_room_id: nil)
+    scope = chat_room_id.present? \
+              ? scope.where(chat_room_id: chat_room_id) \
+              : scope.where(recipient_id: recipient_id, chat_room_id: nil)
 
-  latest = scope.order(created_at: :desc).limit(1).pluck(:content).first.to_s
+    messages = scope.order(created_at: :desc).limit(4).pluck(:content).reverse
 
-  prefix.present? ? "#{prefix}: #{latest.truncate(80)}" : latest.truncate(80)
-end
+    if prefix.present?
+      messages.map { |c| "#{prefix}: #{c.truncate(60)}" }.join("\n")
+    else
+      messages.map { |c| c.truncate(60) }.join("\n")
+    end
+  end
 
 
 
