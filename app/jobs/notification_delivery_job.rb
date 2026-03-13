@@ -79,11 +79,23 @@ class NotificationDeliveryJob < ApplicationJob
     )
   end
 
+
+
+
+
+
+
+
+
+
+
+
   def send_summary(notification, count, debug_id)
     Rails.logger.warn "🚀 [NDJ-#{debug_id}] CALL FCM summary count=#{count}"
 
     msg = notification.notifiable
 
+    # ✅ แก้ — ดึงจาก sender ของ message ไม่ใช่ delegate ของ notification
     sender_name = if msg.respond_to?(:sender)
                     msg&.sender&.name
                   elsif msg.respond_to?(:reported_by)
@@ -91,7 +103,7 @@ class NotificationDeliveryJob < ApplicationJob
                   end || "Someone"
 
     title = case notification.notification_type
-            when "new_message"       then sender_name
+            when "new_message"       then sender_name          # ✅ ชื่อคนส่ง
             when "new_group_message" then msg&.chat_room&.title || "Group Chat"
             when "leave_reported"    then "แจ้งลาการนัดหมาย"
             else "New Messages"
@@ -104,6 +116,19 @@ class NotificationDeliveryJob < ApplicationJob
       data:  base_data(notification)
     )
   end
+
+
+
+
+
+
+
+
+
+
+
+
+
 
   def build_title_body(notification, msg, sender_name)
     case notification.notification_type
