@@ -82,8 +82,17 @@ class NotificationDeliveryJob < ApplicationJob
   def send_summary(notification, count, debug_id)
     Rails.logger.warn "🚀 [NDJ-#{debug_id}] CALL FCM summary count=#{count}"
 
+    msg = notification.notifiable
+
+    sender_name = if msg.respond_to?(:sender)
+                    msg&.sender&.name
+                  elsif msg.respond_to?(:reported_by)
+                    msg&.reported_by&.name
+                  end || "Someone"
+
     title = case notification.notification_type
-            when "new_group_message" then notification.notifiable&.chat_room&.title || "Group Chat"
+            when "new_message"       then sender_name
+            when "new_group_message" then msg&.chat_room&.title || "Group Chat"
             when "leave_reported"    then "แจ้งลาการนัดหมาย"
             else "New Messages"
             end
@@ -91,20 +100,22 @@ class NotificationDeliveryJob < ApplicationJob
     FcmService.send_push(
       token: notification.delegate.device_token,
       title: title,
-      body:  "You have #{count} unread notifications",
+      body:  "มี #{count} ข้อความที่ยังไม่ได้อ่าน",
       data:  base_data(notification)
     )
   end
 
   def build_title_body(notification, msg, sender_name)
     case notification.notification_type
+    when "new_message"
+      content = msg&.image? ? "📷 รูปภาพ" : msg&.content&.truncate(80)
+      # ✅ title = ชื่อผู้ส่ง, body = เนื้อหาเลย (แบบ LINE/Messenger)
+      [sender_name, content]
     when "new_group_message"
       room_title = msg&.chat_room&.title || "Group Chat"
       content    = msg&.image? ? "📷 รูปภาพ" : msg&.content&.truncate(80)
+      # ✅ title = ชื่อ room, body = ชื่อผู้ส่ง: เนื้อหา
       [room_title, "#{sender_name}: #{content}"]
-    when "new_message"
-      content = msg&.image? ? "📷 รูปภาพ" : msg&.content&.truncate(80)
-      ["New Message", "#{sender_name}: #{content}"]
     when "leave_reported"
       ["แจ้งลาการนัดหมาย", "#{sender_name} ขอยกเลิกการนัดหมาย"]
     else
@@ -113,11 +124,19 @@ class NotificationDeliveryJob < ApplicationJob
   end
 
   def base_data(notification)
+    msg = notification.notifiable
+
+    # ✅ ดึง sender_id และ chat_room_id เพื่อให้ Flutter navigate ได้ถูกหน้า
+    sender_id    = msg&.sender_id if msg.respond_to?(:sender_id)
+    chat_room_id = msg&.chat_room_id if msg.respond_to?(:chat_room_id)
+
     {
       type:            notification.notification_type,
       message_id:      notification.notifiable_id.to_s,
       notification_id: notification.id.to_s,
-      screen:          "chat"
+      screen:          "chat",
+      sender_id:       sender_id.to_s,       # ✅ Flutter ใช้ไปหน้า direct chat
+      chat_room_id:    chat_room_id.to_s     # ✅ Flutter ใช้ไปหน้า group chat
     }
   end
 end
