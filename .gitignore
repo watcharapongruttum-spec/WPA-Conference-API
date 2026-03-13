@@ -46,4 +46,4 @@ config/*firebase-adminsdk*.json
 # Test scripts and backup
 test_scripts/
 backup_db/
-config/firebase/service-account.json
+config/firebase/service-account.jsondirect_chat_logs_*/
