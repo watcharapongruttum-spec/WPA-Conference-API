@@ -4,6 +4,13 @@ module Api
     class TablesController < ApplicationController
 
       # GET /api/v1/tables/time_view
+      def time_view
+        render json: Table.time_view(
+          params:           params,
+          current_delegate: current_delegate
+        )
+      end
+
       # GET /api/v1/tables/grid_view
       def grid_view
         tables = Table.includes(:teams)
@@ -15,15 +22,6 @@ module Api
             occupancy:    t.teams.count
           }
         }
-      end
-
-
-      def time_view
-        result = TableTimeViewService.call(
-          params:           params,
-          current_delegate: current_delegate
-        )
-        render json: result
       end
 
     end
