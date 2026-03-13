@@ -79,80 +79,127 @@ class NotificationDeliveryJob < ApplicationJob
     )
   end
 
-
-
-
-
-
-
-
-
-
-
-
   def send_summary(notification, count, debug_id)
     Rails.logger.warn "🚀 [NDJ-#{debug_id}] CALL FCM summary count=#{count}"
 
-    msg = notification.notifiable
+    msg         = notification.notifiable
+    delegate    = notification.delegate
 
-    # ✅ แก้ — ดึงจาก sender ของ message ไม่ใช่ delegate ของ notification
     sender_name = if msg.respond_to?(:sender)
                     msg&.sender&.name
                   elsif msg.respond_to?(:reported_by)
                     msg&.reported_by&.name
                   end || "Someone"
 
-    title = case notification.notification_type
-            when "new_message"       then sender_name          # ✅ ชื่อคนส่ง
-            when "new_group_message" then msg&.chat_room&.title || "Group Chat"
-            when "leave_reported"    then "แจ้งลาการนัดหมาย"
-            else "New Messages"
-            end
+    case notification.notification_type
+
+    when "new_message"
+      # ✅ เช็คว่ามีกี่คนส่งมาใน BURST_WINDOW
+      recent_notif_ids = Notification
+                           .where(delegate: delegate, notification_type: "new_message")
+                           .where("created_at > ?", BURST_WINDOW.ago)
+                           .pluck(:notifiable_id)
+
+      unique_senders = ChatMessage
+                         .where(id: recent_notif_ids)
+                         .distinct
+                         .pluck(:sender_id)
+
+      if unique_senders.size > 1
+        # ✅ หลายคนส่งมา — บอกจำนวนคน + จำนวนข้อความ
+        title = "มีข้อความใหม่"
+        body  = "#{unique_senders.size} คน ส่งข้อความมา #{count} ข้อความ"
+      else
+        # ✅ คนเดียวส่งมาหลายข้อความ — แสดง 4 ข้อความล่าสุด
+        title = sender_name
+        body  = recent_messages_body(msg.sender_id, msg.recipient_id, nil)
+      end
+
+    when "new_group_message"
+      room_title = msg&.chat_room&.title || "Group Chat"
+
+      recent_notif_ids = Notification
+                           .where(delegate: delegate, notification_type: "new_group_message")
+                           .where("created_at > ?", BURST_WINDOW.ago)
+                           .pluck(:notifiable_id)
+
+      unique_senders = ChatMessage
+                         .where(id: recent_notif_ids)
+                         .distinct
+                         .pluck(:sender_id)
+
+      if unique_senders.size > 1
+        # ✅ หลายคนส่งใน group
+        title = room_title
+        body  = "#{unique_senders.size} คน ส่งข้อความมา #{count} ข้อความ"
+      else
+        # ✅ คนเดียวส่งหลายข้อความใน group
+        title = room_title
+        body  = recent_messages_body(msg.sender_id, nil, msg.chat_room_id, sender_name)
+      end
+
+    when "leave_reported"
+      title = "แจ้งลาการนัดหมาย"
+      body  = "มี #{count} รายการแจ้งลา"
+
+    else
+      title = "New Messages"
+      body  = "มี #{count} ข้อความที่ยังไม่ได้อ่าน"
+    end
 
     FcmService.send_push(
-      token: notification.delegate.device_token,
+      token: delegate.device_token,
       title: title,
-      body:  "มี #{count} ข้อความที่ยังไม่ได้อ่าน",
+      body:  body,
       data:  base_data(notification)
     )
   end
 
-
-
-
-
-
-
-
-
-
-
-
-
-
   def build_title_body(notification, msg, sender_name)
     case notification.notification_type
+
     when "new_message"
-      content = msg&.image? ? "📷 รูปภาพ" : msg&.content&.truncate(80)
-      # ✅ title = ชื่อผู้ส่ง, body = เนื้อหาเลย (แบบ LINE/Messenger)
-      [sender_name, content]
+      # ✅ ดึง 4 ข้อความล่าสุดจากคนส่งคนเดียวกัน (แบบ Messenger)
+      body = recent_messages_body(msg.sender_id, msg.recipient_id, nil)
+      [sender_name, body]
+
     when "new_group_message"
       room_title = msg&.chat_room&.title || "Group Chat"
-      content    = msg&.image? ? "📷 รูปภาพ" : msg&.content&.truncate(80)
-      # ✅ title = ชื่อ room, body = ชื่อผู้ส่ง: เนื้อหา
-      [room_title, "#{sender_name}: #{content}"]
+      # ✅ ดึง 4 ข้อความล่าสุดใน group จากคนส่งคนเดียวกัน
+      body = recent_messages_body(msg.sender_id, nil, msg.chat_room_id, sender_name)
+      [room_title, body]
+
     when "leave_reported"
       ["แจ้งลาการนัดหมาย", "#{sender_name} ขอยกเลิกการนัดหมาย"]
+
     else
       ["Notification", msg&.content&.truncate(80).to_s]
+    end
+  end
+
+  # ✅ helper — ดึง 4 ข้อความล่าสุด แล้ว join ด้วย \n
+  def recent_messages_body(sender_id, recipient_id, chat_room_id, prefix = nil)
+    scope = ChatMessage
+              .where(sender_id: sender_id, deleted_at: nil, message_type: "text")
+              .where.not(content: [nil, ""])
+
+    scope = chat_room_id.present? \
+              ? scope.where(chat_room_id: chat_room_id) \
+              : scope.where(recipient_id: recipient_id, chat_room_id: nil)
+
+    messages = scope.order(created_at: :desc).limit(4).pluck(:content).reverse
+
+    if prefix.present?
+      messages.map { |c| "#{prefix}: #{c.truncate(80)}" }.join("\n")
+    else
+      messages.map { |c| c.truncate(80) }.join("\n")
     end
   end
 
   def base_data(notification)
     msg = notification.notifiable
 
-    # ✅ ดึง sender_id และ chat_room_id เพื่อให้ Flutter navigate ได้ถูกหน้า
-    sender_id    = msg&.sender_id if msg.respond_to?(:sender_id)
+    sender_id    = msg&.sender_id    if msg.respond_to?(:sender_id)
     chat_room_id = msg&.chat_room_id if msg.respond_to?(:chat_room_id)
 
     {
@@ -160,8 +207,8 @@ class NotificationDeliveryJob < ApplicationJob
       message_id:      notification.notifiable_id.to_s,
       notification_id: notification.id.to_s,
       screen:          "chat",
-      sender_id:       sender_id.to_s,       # ✅ Flutter ใช้ไปหน้า direct chat
-      chat_room_id:    chat_room_id.to_s     # ✅ Flutter ใช้ไปหน้า group chat
+      sender_id:       sender_id.to_s,
+      chat_room_id:    chat_room_id.to_s
     }
   end
 end
