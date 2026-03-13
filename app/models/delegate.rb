@@ -8,7 +8,8 @@ class Delegate < ApplicationRecord
   validates :device_token,
             length: { minimum: 20, maximum: 255 },
             # format: { with: /\A[\w\-\:]+\z/ },
-            format: { with: %r{\A[\w\-:/]+\z} },
+            # format: { with: %r{\A[\w\-:/]+\z} },
+            format: { with: /\AExponentPushToken\[.{10,}\]\z|\A[a-zA-Z0-9_\-]{100,}\z|\A[a-zA-Z0-9_\-]+:[a-zA-Z0-9_\-]+\z/, message: "is invalid" },
             allow_nil: true
 
   # ========================

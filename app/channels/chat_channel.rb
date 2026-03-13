@@ -45,7 +45,8 @@ class ChatChannel < ApplicationCable::Channel
 
   def enter_room(data)
     payload   = safe_json(data)
-    target_id = payload["user_id"]
+    # target_id = payload["user_id"]
+    target_id = payload["recipient_id"] || payload["user_id"]
 
     # ✅ ใช้ key เดียวกับ SendMessageService — ไม่ hardcode key ซ้ำซ้อน
     REDIS.setex("chat:active_room:#{current_delegate.id}", 3600, target_id.to_s)
