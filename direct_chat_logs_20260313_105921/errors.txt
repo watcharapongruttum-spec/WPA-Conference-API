@@ -1,0 +1,7 @@
+FAIL: 1.7a read_at ยัง NULL (content='S1autoread1773374376' db='wpa_development')
+FAIL: 1.7b ไม่มี message_reads ของ B
+FAIL: 2.3 read_at มีค่า = '0'
+FAIL: 2.4 ไม่มี notification หลัง 8 วินาที (DB='wpa_development')
+FAIL: 3.1 read early = '0'
+FAIL: 3.5a read_at ยัง NULL (db='wpa_development')
+FAIL: 3.5b ไม่มี message_reads ของ B

@@ -1,0 +1,11 @@
+{"type":"welcome"}
+> {"identifier":"{\"channel\":\"ChatChannel\"}","type":"confirm_subscription"}
+{"type":"ping","message":1773374385}
+{"type":"ping","message":1773374388}
+> {"type":"ping","message":1773374391}
+> {"identifier":"{\"channel\":\"ChatChannel\"}","message":{"type":"new_message","message":{"id":94,"content":"S2unread1773374376","is_deleted":false,"sender":{"id":621,"name":"Mark Coffey","title":"Director","company_name":"Cargo Overseas Ltd","avatar_url":"https://ui-avatars.com/api/?name=Mark+Coffey\u0026background=0D8ABC\u0026color=fff"},"recipient":{"id":616,"name":"Pratham Gupta","title":"","company_name":"Empros Logistics Pvt. Ltd","avatar_url":"https://ui-avatars.com/api/?name=Pratham+Gupta\u0026background=0D8ABC\u0026color=fff"},"message_type":"text","image_url":null,"created_at":"2026-03-13T10:59:52+07:00","read_at":null,"edited_at":null,"deleted_at":null}}}
+{"type":"ping","message":1773374393}
+{"type":"ping","message":1773374396}
+{"type":"ping","message":1773374399}
+{"type":"ping","message":1773374402}
+{"type":"ping","message":1773374405}
