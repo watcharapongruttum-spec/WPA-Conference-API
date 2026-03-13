@@ -14,6 +14,16 @@ class FcmService
     access_token = fetch_access_token
     return false unless access_token
 
+    # ✅ tag — direct chat ใช้ sender_id, group ใช้ chat_room_id
+    # same tag = notification ใหม่ทับอันเก่า (แบบ Messenger)
+    notif_tag = if data[:sender_id].present? && data[:sender_id] != ""
+                  "chat_#{data[:sender_id]}"
+                elsif data[:chat_room_id].present? && data[:chat_room_id] != ""
+                  "room_#{data[:chat_room_id]}"
+                else
+                  "chat_general"
+                end
+
     payload_hash = {
       message: {
         token: token,
@@ -25,14 +35,16 @@ class FcmService
           priority: "high",
           notification: {
             sound:        "default",
-            click_action: "FLUTTER_NOTIFICATION_CLICK"
+            click_action: "FLUTTER_NOTIFICATION_CLICK",
+            tag:          notif_tag   # ✅ replace แทน stack
           }
         },
         apns: {
           payload: {
             aps: {
-              sound: "default",
-              badge: 1
+              sound:              "default",
+              badge:              1,
+              "thread-id":        notif_tag   # ✅ iOS grouping
             }
           }
         },
@@ -74,8 +86,6 @@ class FcmService
     "https://fcm.googleapis.com/v1/projects/#{ENV.fetch('FIREBASE_PROJECT_ID')}/messages:send"
   end
 
-  # ✅ FIX: เพิ่ม race_condition_ttl เพื่อป้องกัน Sidekiq workers หลายตัว
-  # fetch token พร้อมกันตอน cache expire
   def self.fetch_access_token
     Rails.cache.fetch("fcm_access_token", expires_in: 50.minutes, race_condition_ttl: 10.seconds) do
       json_io =
@@ -97,7 +107,6 @@ class FcmService
     nil
   end
 
-  # ✅ FIX: เพิ่ม log delegate_id ที่ถูกลบ token เพื่อ debug ได้ง่ายขึ้น
   def self.handle_invalid_token(token, body)
     parsed     = JSON.parse(body)
     error_code = parsed.dig("error", "details")
@@ -112,7 +121,6 @@ class FcmService
 
     return unless invalid
 
-    # ✅ FIX: log delegate_ids ที่ถูกลบ token ก่อน update
     affected_ids = Delegate.where(device_token: token).pluck(:id)
     Delegate.where(device_token: token).update_all(device_token: nil)
 

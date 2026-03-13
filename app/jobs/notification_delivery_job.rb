@@ -177,7 +177,13 @@ class NotificationDeliveryJob < ApplicationJob
     end
   end
 
-  # ✅ helper — ดึง 4 ข้อความล่าสุด แล้ว join ด้วย \n
+
+
+
+
+
+
+
   def recent_messages_body(sender_id, recipient_id, chat_room_id, prefix = nil)
     scope = ChatMessage
               .where(sender_id: sender_id, deleted_at: nil, message_type: "text")
@@ -190,11 +196,19 @@ class NotificationDeliveryJob < ApplicationJob
     messages = scope.order(created_at: :desc).limit(4).pluck(:content).reverse
 
     if prefix.present?
-      messages.map { |c| "#{prefix}: #{c.truncate(80)}" }.join("\n")
+      messages.map { |c| "#{prefix}: #{c.truncate(60)}" }.join(" • ")
     else
-      messages.map { |c| c.truncate(80) }.join("\n")
+      messages.map { |c| c.truncate(60) }.join(" • ")
     end
   end
+
+
+
+
+
+
+
+
 
   def base_data(notification)
     msg = notification.notifiable
