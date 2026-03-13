@@ -5,7 +5,7 @@ module Chat
     def self.read_all(delegate)
       now = Time.current
 
-      # ✅ Direct chat — mark ทั้ง read_at (backward compat) และ MessageRead
+      # ── Direct chat ──────────────────────────────
       direct_messages = ChatMessage
         .where(recipient_id: delegate.id, read_at: nil, deleted_at: nil)
         .where(chat_room_id: nil)
@@ -15,26 +15,61 @@ module Chat
       if direct_ids.any?
         direct_messages.update_all(read_at: now)
         _insert_message_reads(direct_ids, delegate.id, now)
+
+        # ✅ เพิ่ม — broadcast ให้ sender ทุกคนที่ถูกอ่าน
+        sender_ids = ChatMessage
+                      .where(id: direct_ids)
+                      .distinct
+                      .pluck(:sender_id)
+
+        payload = {
+          type:        "bulk_read",
+          message_ids: direct_ids,
+          read_at:     TimeFormatter.format(now)
+        }
+
+        Delegate.where(id: sender_ids).find_each do |sender|
+          ChatChannel.broadcast_to(sender, payload)
+        end
+        # ✅ แจ้ง reader เองด้วย — Flutter อัพเดท UI ฝั่งตัวเอง
+        ChatChannel.broadcast_to(delegate, payload)
       end
 
-      # ✅ Group chat — mark ผ่าน MessageRead table
+      # ── Group chat ───────────────────────────────
       group_room_ids = ChatRoomMember
-                       .joins(:chat_room)
-                       .where(delegate_id: delegate.id)
-                       .where(chat_rooms: { deleted_at: nil })
-                       .pluck(:chat_room_id)
+                      .joins(:chat_room)
+                      .where(delegate_id: delegate.id)
+                      .where(chat_rooms: { deleted_at: nil })
+                      .pluck(:chat_room_id)
 
       if group_room_ids.any?
         group_ids = ChatMessage
-                    .where(chat_room_id: group_room_ids)
-                    .where(deleted_at: nil)
-                    .where.not(sender_id: delegate.id)
-                    .where.not(
-                      id: MessageRead.where(delegate_id: delegate.id).select(:chat_message_id)
-                    )
-                    .pluck(:id)
+                      .where(chat_room_id: group_room_ids)
+                      .where(deleted_at: nil)
+                      .where.not(sender_id: delegate.id)
+                      .where.not(
+                        id: MessageRead.where(delegate_id: delegate.id).select(:chat_message_id)
+                      )
+                      .pluck(:id)
 
-        _insert_message_reads(group_ids, delegate.id, now) if group_ids.any?
+        if group_ids.any?
+          _insert_message_reads(group_ids, delegate.id, now)
+
+          # ✅ เพิ่ม — broadcast bulk_read ให้แต่ละ room
+          rooms = ChatMessage
+                    .where(id: group_ids)
+                    .distinct
+                    .pluck(:chat_room_id)
+
+          ChatRoom.where(id: rooms).find_each do |room|
+            room_msg_ids = group_ids & ChatMessage
+                                        .where(chat_room_id: room.id)
+                                        .pluck(:id)
+            next if room_msg_ids.empty?
+
+            Chat::Group::BroadcastService.bulk_read(room, delegate, room_msg_ids)
+          end
+        end
       end
 
       Rails.cache.delete("dashboard:#{delegate.id}:v1")

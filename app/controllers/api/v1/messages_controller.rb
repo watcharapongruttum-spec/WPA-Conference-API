@@ -116,7 +116,7 @@ module Api
       def conversation
         other_id = params[:delegate_id]
         page = (params[:page] || 1).to_i
-        per  = [(params[:per] || 50).to_i, 100].min
+        per  = [(params[:per] || 30).to_i, 100].min
 
         @messages = ChatMessage
                     .where(
