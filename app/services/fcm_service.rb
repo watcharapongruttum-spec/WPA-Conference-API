@@ -37,7 +37,8 @@ class FcmService
             sound:                 "default",
             click_action:          "FLUTTER_NOTIFICATION_CLICK",
             tag:                   notif_tag,
-            notification_priority: "PRIORITY_HIGH" 
+            notification_priority: "PRIORITY_HIGH",
+            channel_id:   "chat_messages"
           }
         },
         apns: {
