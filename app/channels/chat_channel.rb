@@ -46,15 +46,15 @@ class ChatChannel < ApplicationCable::Channel
   def enter_room(data)
     payload   = safe_json(data)
     target_id = payload["user_id"]
-    REDIS.set("chat:room:#{current_delegate.id}:#{target_id}", "open")
-    REDIS.set("chat:active_room:#{current_delegate.id}", target_id.to_s)
+
+    # ✅ ใช้ key เดียวกับ SendMessageService — ไม่ hardcode key ซ้ำซ้อน
+    REDIS.setex("chat:active_room:#{current_delegate.id}", 3600, target_id.to_s)
+
     Chat::ReadService.mark_room(current_delegate.id, target_id)
   end
 
   def leave_room(data)
-    payload   = safe_json(data)
-    target_id = payload["user_id"]
-    REDIS.del("chat:room:#{current_delegate.id}:#{target_id}")
+    # ✅ ลบแค่ key เดียว ไม่มี "chat:room:..." อีกต่อไป
     REDIS.del("chat:active_room:#{current_delegate.id}")
   end
 
@@ -65,9 +65,13 @@ class ChatChannel < ApplicationCable::Channel
       recipient_id: payload["recipient_id"],
       content:      payload["content"]
     )
-    Notifications::Pipeline.call(message)  # ✅ แก้จาก Notification::CreateService
+
     broadcast_message(message)
-    auto_read_if_open(message)             # ✅ อ่านอัตโนมัติถ้า recipient เปิดห้องอยู่
+
+    # ✅ ตรวจหลัง SendMessageService — ถ้า recipient เปิดห้องอยู่
+    # SendMessageService จะ mark read ไปแล้ว (read_at จะมีค่า)
+    # → ไม่ต้องสร้าง notification / ส่ง push
+    Notifications::Pipeline.call(message) unless message.read_at.present?
   rescue StandardError => e
     handle_error(e)
   end
@@ -76,14 +80,17 @@ class ChatChannel < ApplicationCable::Channel
     payload  = safe_json(data)
     data_uri = payload["image"]
     return transmit(type: "error", message: "No image provided") if data_uri.blank?
+
     message = Chat::SendImageService.call(
       sender:       current_delegate,
       recipient_id: payload["recipient_id"],
       data_uri:     data_uri
     )
-    Notifications::Pipeline.call(message)  # ✅ แก้จาก Notification::CreateService
+
     broadcast_message(message)
-    auto_read_if_open(message)             # ✅ อ่านอัตโนมัติถ้า recipient เปิดห้องอยู่
+
+    # ✅ เหมือน send_message — skip notification ถ้าอ่านแล้ว
+    Notifications::Pipeline.call(message) unless message.read_at.present?
   rescue ArgumentError => e
     handle_error(e)
   rescue StandardError => e
@@ -91,19 +98,6 @@ class ChatChannel < ApplicationCable::Channel
   end
 
   private
-
-  # ✅ ถ้า recipient เปิดห้องนี้อยู่ → mark_one ทันที
-  def auto_read_if_open(message)
-    recipient_id  = message.recipient_id
-    sender_id     = message.sender_id
-    room_open_key = "chat:room:#{recipient_id}:#{sender_id}"
-
-    return unless REDIS.get(room_open_key) == "open"
-
-    Chat::ReadService.mark_one(message)
-  rescue StandardError => e
-    Rails.logger.warn "[ChatChannel] auto_read failed: #{e.message}"
-  end
 
   def broadcast_message(message)
     message = ChatMessage

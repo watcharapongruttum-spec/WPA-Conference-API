@@ -1,4 +1,4 @@
-# app/services/notification/pipeline.rb
+# app/services/notifications/pipeline.rb
 #
 # Single entry point สำหรับ notification flow ทุก type
 #
@@ -15,6 +15,11 @@ module Notifications
     def self.call(message)
       recipient = message.recipient
       return unless recipient
+
+      # ✅ ถ้า recipient อ่านแล้ว (เปิดห้องอยู่) → ไม่สร้าง notification เลย
+      # read_at ถูก set โดย SendMessageService#auto_mark_if_recipient_connected
+      return if message.read_at.present?
+
       return unless acquire_lock("notif_lock:#{message.id}")
 
       notification = create!(
