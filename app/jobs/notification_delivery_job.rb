@@ -196,9 +196,9 @@ class NotificationDeliveryJob < ApplicationJob
     messages = scope.order(created_at: :desc).limit(4).pluck(:content).reverse
 
     if prefix.present?
-      messages.map { |c| "#{prefix}: #{c.truncate(60)}" }.join(" • ")
+      messages.map { |c| "#{prefix}: #{c.truncate(60)}" }.join("\n")
     else
-      messages.map { |c| c.truncate(60) }.join(" • ")
+      messages.map { |c| c.truncate(60) }.join("\n")
     end
   end
 

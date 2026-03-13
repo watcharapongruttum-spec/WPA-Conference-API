@@ -34,9 +34,10 @@ class FcmService
         android: {
           priority: "high",
           notification: {
-            sound:        "default",
-            click_action: "FLUTTER_NOTIFICATION_CLICK",
-            tag:          notif_tag   # ✅ replace แทน stack
+            sound:                 "default",
+            click_action:          "FLUTTER_NOTIFICATION_CLICK",
+            tag:                   notif_tag,
+            notification_priority: "PRIORITY_HIGH" 
           }
         },
         apns: {
@@ -44,7 +45,7 @@ class FcmService
             aps: {
               sound:              "default",
               badge:              1,
-              "thread-id":        notif_tag   # ✅ iOS grouping
+              "thread-id":        notif_tag   
             }
           }
         },
