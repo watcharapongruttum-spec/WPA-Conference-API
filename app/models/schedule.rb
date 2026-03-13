@@ -160,8 +160,12 @@ class Schedule < ApplicationRecord
     # PERSONAL MEETINGS
     # ===============================
     personal_scope = with_full_data
-                     .mine(delegate.id)
-                     .by_date(conference_date.id)
+                    .mine(delegate.id)
+                    .by_date(conference_date.id)
+                    .where(          # ← เพิ่มตรงนี้
+                      "booker_id IS NULL OR booker_id IN (?)",
+                      Delegate.select(:id)
+                    )
 
     personal_scope = personal_scope.where(start_at: slot.start_at) if slot
 
