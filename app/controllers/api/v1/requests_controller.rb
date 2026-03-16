@@ -179,25 +179,40 @@ module Api
 
       private
 
+
+
+
+
       # ============================
-      # AUTO MESSAGE เมื่อเป็นเพื่อนกัน
+      # AUTO MESSAGE WHEN CONNECTED
       # ============================
       def send_connected_message(from:, to:)
         msg_to_requester = ChatMessage.create!(
           sender: from,
           recipient: to,
-          content: "🤝 คุณและ #{from.name} เป็นเพื่อนกันแล้ว!"
+          content: "🤝 You and #{to.name} are now connected!"
         )
 
         msg_to_acceptor = ChatMessage.create!(
           sender: to,
           recipient: from,
-          content: "🤝 คุณและ #{to.name} เป็นเพื่อนกันแล้ว!"
+          content: "🤝 You and #{from.name} are now connected!"
         )
 
         broadcast_connected_message(msg_to_requester)
         broadcast_connected_message(msg_to_acceptor)
       end
+
+
+
+
+
+
+
+
+
+
+
 
       def broadcast_connected_message(message)
         payload = {
