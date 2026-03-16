@@ -20,13 +20,13 @@ module Api
         return render json: { success: true } if current_delegate.device_token == token
 
         ActiveRecord::Base.transaction do
-          # ✅ เคลียร์ token นี้ออกจาก delegate อื่นก่อน
-          # กรณี user login 2 account ในเครื่องเดียว
-          # token จะย้ายมาอยู่กับ account ที่ login ล่าสุด
-          # account เก่าจะไม่ได้รับ push อีก
+          # ✅ kick token เก่าออก + invalidate JWT ของ delegate อื่นที่เคยใช้ device นี้
           Delegate.where(device_token: token)
                   .where.not(id: current_delegate.id)
-                  .update_all(device_token: nil)
+                  .each do |old_delegate|
+                    old_delegate.invalidate_all_tokens!
+                    old_delegate.update!(device_token: nil)
+                  end
 
           current_delegate.update!(device_token: token)
         end
@@ -36,6 +36,12 @@ module Api
         render json: { error: e.message }, status: :unprocessable_entity
       end
 
+
+
+
+
+
+      
       private
 
       def device_params

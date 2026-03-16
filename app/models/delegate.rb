@@ -102,12 +102,27 @@ class Delegate < ApplicationRecord
   def generate_jwt_token
     payload = {
       delegate_id: id,
+      token_version: token_version,
       exp: JWT_CONFIG[:expiration_time].from_now.to_i,
       iss: JWT_CONFIG[:issuer]
     }
 
     JWT.encode(payload, JWT_CONFIG[:secret], JWT_CONFIG[:algorithm])
   end
+
+
+
+
+
+  def invalidate_all_tokens!
+    increment!(:token_version)
+  end
+
+
+
+
+
+
 
   # ========================
   # Password reset

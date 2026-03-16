@@ -431,6 +431,7 @@ ActiveRecord::Schema[7.0].define(version: 202107270010001) do
     t.string "device_token"
     t.string "reset_password_token"
     t.datetime "reset_password_sent_at"
+    t.integer "token_version", default: 1, null: false
     t.index ["branch_id"], name: "index_delegates_on_branch_id"
     t.index ["company_id"], name: "index_delegates_on_company_id"
     t.index ["device_token"], name: "idx_delegates_device_token_unique", unique: true, where: "(device_token IS NOT NULL)"

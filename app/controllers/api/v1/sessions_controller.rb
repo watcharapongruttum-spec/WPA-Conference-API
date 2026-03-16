@@ -124,6 +124,7 @@ module Api
         end
 
         if current_delegate.update(password: p[:new_password])
+          current_delegate.invalidate_all_tokens!
           AuditLogger.password_change(
             delegate: current_delegate,
             request: request,
@@ -135,6 +136,25 @@ module Api
                  status: :unprocessable_entity
         end
       end
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
       # ============================================
       # POST /api/v1/forgot_password
@@ -221,11 +241,8 @@ module Api
         end
 
         ActiveRecord::Base.transaction do
-          @delegate.update!(
-            password: password,
-            password_confirmation: password
-          )
-
+          @delegate.update!(password: password,password_confirmation: password)
+          @delegate.invalidate_all_tokens!
           @delegate.clear_reset_token!
 
           SecurityLog.create!(

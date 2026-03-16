@@ -73,20 +73,55 @@ class ApplicationController < ActionController::API
     @current_delegate = authenticate_from_token
   end
 
+
+
+
+
+
+
+
+
+
+
+
+
   def authenticate_from_token
     token = request.headers["Authorization"]&.split&.last
     return nil if token.blank?
 
     payload = JwtDecoder.decode!(token)
-    Delegate.find(payload["delegate_id"])
-  rescue JWT::DecodeError,
-         JWT::ExpiredSignature,
-         JWT::VerificationError,
-         JWT::InvalidIssuerError => e
+    delegate = Delegate.find_by(id: payload["delegate_id"])
+    return nil unless delegate
 
+    # ✅ เช็ค version ตรงกับใน DB ไหม
+    return nil if payload["token_version"] != delegate.token_version
+
+    delegate
+  rescue JWT::DecodeError,
+        JWT::ExpiredSignature,
+        JWT::VerificationError,
+        JWT::InvalidIssuerError => e
     Rails.logger.warn "JWT Error: #{e.class} - #{e.message}"
     nil
   end
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
   def authenticate_delegate!
     return if current_delegate
