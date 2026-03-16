@@ -79,7 +79,11 @@ module Api
           params: timeline_params
         )
 
-        return render json: { error: result[:error] }, status: :not_found if result[:error]
+        # ✅ เพิ่ม error case
+        if result[:error]
+          status = result[:error] == :delegate_not_found ? :not_found : :unprocessable_entity
+          return render json: { error: result[:error] }, status: status
+        end
 
         render_timeline(result, result[:user], include_user: true)
       end

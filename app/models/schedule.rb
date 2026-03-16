@@ -136,7 +136,7 @@ class Schedule < ApplicationRecord
   def self.build_timeline_for(delegate:, params:)
     years = years_of(delegate.id)
 
-    year = params[:year].presence || years.last || Date.today.year.to_s
+    year = params[:year].presence || "2025"
     conference = Conference.find_by(conference_year: year)
     return { error: :conference_not_found, years: years } unless conference
 
@@ -273,6 +273,11 @@ class Schedule < ApplicationRecord
   def self.build_schedule_others(viewer:, params:)
     target_delegate = Delegate.find_by(id: params[:delegate_id])
     return { error: :delegate_not_found } unless target_delegate
+
+    years = years_of(target_delegate.id)
+    unless years.map(&:to_s).include?("2025")  # ✅ แก้ตรงนี้
+      return { error: :no_schedule_found, years: years }
+    end
 
     result = build_timeline_for(delegate: target_delegate, params: params)
     result.merge(user: target_delegate)
