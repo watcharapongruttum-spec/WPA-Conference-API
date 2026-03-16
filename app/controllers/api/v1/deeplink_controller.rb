@@ -151,12 +151,46 @@ module Api
         HTML
       end
 
+
+
+
+
+
+
+
+      # def form_html(token, error)
+      #   # ✅ FIX: escape error เพื่อป้องกัน XSS
+      #   error_block = error ? "<div class='error-box'>#{CGI.escapeHTML(error.to_s)}</div>" : ""
+
+      #   <<~HTML
+      #     <h2>ตั้งรหัสผ่านใหม่</h2>
+      #     #{error_block}
+      #     <form method="POST" action="/api/v1/deeplink/reset_password_submit">
+      #       <input type="hidden" name="token" value="#{CGI.escapeHTML(token.to_s)}">
+      #       <input type="hidden" name="authenticity_token" value="#{begin
+      #         form_authenticity_token
+      #       rescue StandardError
+      #         ''
+      #       end}">
+
+      #       <label>รหัสผ่านใหม่</label>
+      #       <input type="password" name="password" placeholder="อย่างน้อย 8 ตัว" required>
+      #       <div class="hint">ต้องมีตัวเลขอย่างน้อย 1 ตัว</div>
+
+      #       <label>ยืนยันรหัสผ่าน</label>
+      #       <input type="password" name="password_confirmation" placeholder="กรอกซ้ำอีกครั้ง" required>
+
+      #       <button type="submit">เปลี่ยนรหัสผ่าน</button>
+      #     </form>
+      #   HTML
+      # end
+
+
       def form_html(token, error)
-        # ✅ FIX: escape error เพื่อป้องกัน XSS
         error_block = error ? "<div class='error-box'>#{CGI.escapeHTML(error.to_s)}</div>" : ""
 
         <<~HTML
-          <h2>ตั้งรหัสผ่านใหม่</h2>
+          <h2>Reset Your Password</h2>
           #{error_block}
           <form method="POST" action="/api/v1/deeplink/reset_password_submit">
             <input type="hidden" name="token" value="#{CGI.escapeHTML(token.to_s)}">
@@ -166,54 +200,124 @@ module Api
               ''
             end}">
 
-            <label>รหัสผ่านใหม่</label>
-            <input type="password" name="password" placeholder="อย่างน้อย 8 ตัว" required>
-            <div class="hint">ต้องมีตัวเลขอย่างน้อย 1 ตัว</div>
+            <label>New Password</label>
+            <input type="password" name="password" placeholder="At least 8 characters" required>
+            <div class="hint">Must contain at least one number</div>
 
-            <label>ยืนยันรหัสผ่าน</label>
-            <input type="password" name="password_confirmation" placeholder="กรอกซ้ำอีกครั้ง" required>
+            <label>Confirm Password</label>
+            <input type="password" name="password_confirmation" placeholder="Enter again" required>
 
-            <button type="submit">เปลี่ยนรหัสผ่าน</button>
+            <button type="submit">Reset Password</button>
           </form>
         HTML
       end
+
+
+
+
+
+
+
+
+
+
+      # def success_html
+      #   app_url = "wpa://reset-success"
+
+      #   <<~HTML
+      #     <div class="icon">✅</div>
+      #     <h2>เปลี่ยนรหัสผ่านสำเร็จ</h2>
+      #     <p class="message">รหัสผ่านของคุณถูกเปลี่ยนแล้ว<br>กลับไปเข้าสู่ระบบในแอพได้เลย</p>
+      #     <a href="#{app_url}" class="open-app-btn">เปิดแอพ WPA</a>
+      #     <script>
+      #       setTimeout(function() { window.location = "#{app_url}"; }, 1500);
+      #     </script>
+      #   HTML
+      # end
+
+      # def expired_html
+      #   # ✅ FIX: แก้ข้อความให้ตรงกับ delegate.rb ที่ expire จริงๆ 30 นาที
+      #   <<~HTML
+      #     <div class="icon">⏰</div>
+      #     <h2>ลิงก์หมดอายุแล้ว</h2>
+      #     <p class="message">
+      #       ลิงก์นี้ใช้งานได้ภายใน 30 นาทีหลังจากขอ<br>
+      #       กรุณาขอลิงก์ใหม่อีกครั้งในแอพ
+      #     </p>
+      #   HTML
+      # end
+
+      # def invalid_html
+      #   <<~HTML
+      #     <div class="icon">❌</div>
+      #     <h2>ลิงก์ไม่ถูกต้อง</h2>
+      #     <p class="message">
+      #       ลิงก์นี้ไม่ถูกต้องหรือถูกใช้ไปแล้ว<br>
+      #       กรุณาขอลิงก์ใหม่อีกครั้งในแอพ
+      #     </p>
+      #   HTML
+      # end
+
+
+
+
 
       def success_html
         app_url = "wpa://reset-success"
 
         <<~HTML
           <div class="icon">✅</div>
-          <h2>เปลี่ยนรหัสผ่านสำเร็จ</h2>
-          <p class="message">รหัสผ่านของคุณถูกเปลี่ยนแล้ว<br>กลับไปเข้าสู่ระบบในแอพได้เลย</p>
-          <a href="#{app_url}" class="open-app-btn">เปิดแอพ WPA</a>
+          <h2>Password Reset Successful</h2>
+          <p class="message">
+            Your password has been updated.<br>
+            You can now log in again using the WPA app.
+          </p>
+          <a href="#{app_url}" class="open-app-btn">Open WPA App</a>
           <script>
             setTimeout(function() { window.location = "#{app_url}"; }, 1500);
           </script>
         HTML
       end
 
+
       def expired_html
-        # ✅ FIX: แก้ข้อความให้ตรงกับ delegate.rb ที่ expire จริงๆ 30 นาที
         <<~HTML
           <div class="icon">⏰</div>
-          <h2>ลิงก์หมดอายุแล้ว</h2>
+          <h2>Link Expired</h2>
           <p class="message">
-            ลิงก์นี้ใช้งานได้ภายใน 30 นาทีหลังจากขอ<br>
-            กรุณาขอลิงก์ใหม่อีกครั้งในแอพ
+            This reset link is only valid for 30 minutes after requesting.<br>
+            Please request a new one in the app.
           </p>
         HTML
       end
 
+
+
       def invalid_html
         <<~HTML
           <div class="icon">❌</div>
-          <h2>ลิงก์ไม่ถูกต้อง</h2>
+          <h2>Invalid Link</h2>
           <p class="message">
-            ลิงก์นี้ไม่ถูกต้องหรือถูกใช้ไปแล้ว<br>
-            กรุณาขอลิงก์ใหม่อีกครั้งในแอพ
+            This link is invalid or has already been used.<br>
+            Please request a new reset link in the app.
           </p>
         HTML
       end
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     end
   end
 end

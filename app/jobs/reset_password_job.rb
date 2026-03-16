@@ -18,11 +18,11 @@ class ResetPasswordJob < ApplicationJob
     Rails.logger.info "=============================="
 
     html = <<~HTML
-      <!DOCTYPE html>
-      <html lang="th">
-      <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <style>
           * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -160,45 +160,50 @@ class ResetPasswordJob < ApplicationJob
 
             <!-- Body -->
             <div class="body">
-              <p class="greeting">สวัสดีคุณ #{delegate.name},</p>
-              <p class="description">
-                เราได้รับคำขอรีเซ็ตรหัสผ่านสำหรับบัญชีของคุณ<br>
-                กรุณาเลือกวิธีที่ต้องการด้านล่าง ลิงก์นี้จะหมดอายุใน <strong>30 นาที</strong>
+              <p class="greeting">Hello #{delegate.name},</p>
+             <p class="description">
+              We received a request to reset the password for your account.<br>
+              Please choose one of the options below. This link will expire in <strong>30 minutes</strong>.
               </p>
               <!-- ✅ FIX #6: แก้จาก "1 ชั่วโมง" → "30 นาที"
                    ให้ตรงกับ delegate.rb reset_token_valid? ที่เช็ค 30.minutes.ago -->
 
               <!-- ปุ่ม 1: เปิดแอพ -->
               <a href="#{app_url}" class="btn btn-primary">
-                📱 &nbsp;เปิดในแอพ WPA
+              📱 &nbsp;Open in WPA App
               </a>
 
               <div class="divider">
                 <div class="divider-line"></div>
-                <div class="divider-text">หรือถ้าแอพไม่เปิด</div>
+                <div class="divider-text">or if the app does not open</div>
                 <div class="divider-line"></div>
               </div>
 
               <!-- ปุ่ม 2: รีเซ็ตผ่านเว็บ -->
               <a href="#{web_url}" class="btn btn-secondary">
-                🌐 &nbsp;รีเซ็ตรหัสผ่านผ่านเว็บ
+              🌐 &nbsp;Reset Password via Web
               </a>
 
               <!-- Note -->
               <div class="note">
-                <p>
-                  ⚠️ <strong>หากคุณไม่ได้ขอรีเซ็ตรหัสผ่าน</strong><br>
-                  กรุณาเพิกเฉยต่ออีเมลนี้ รหัสผ่านของคุณจะไม่ถูกเปลี่ยนแปลง
-                </p>
+              <p>
+              ⚠️ <strong>If you did not request a password reset</strong><br>
+              Please ignore this email. Your password will remain unchanged.
+              </p>
               </div>
+
+
+
+
+
             </div>
 
             <!-- Footer -->
             <div class="footer">
               <p>
-                อีเมลนี้ถูกส่งโดยอัตโนมัติ กรุณาอย่าตอบกลับ<br>
-                © #{Time.current.year} WPA Conference. All rights reserved.
-              </p>
+            This email was sent automatically. Please do not reply.<br>
+            © #{Time.current.year} WPA Conference. All rights reserved.
+            </p>
             </div>
 
           </div>
@@ -211,7 +216,7 @@ class ResetPasswordJob < ApplicationJob
 
     BrevoMailService.send_email(
       to: delegate.email,
-      subject: "รีเซ็ตรหัสผ่าน — WPA Conference",
+      subject: "Reset Your Password — WPA Conference",
       html: html
     )
   end
