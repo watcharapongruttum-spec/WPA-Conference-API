@@ -34,6 +34,8 @@ gem "rqrcode"
 gem "sentry-rails"
 gem "sentry-ruby"
 gem "sidekiq", "~> 7.0"
+# Gemfile
+gem 'faker'
 
 group :test do
   gem "action-cable-testing"

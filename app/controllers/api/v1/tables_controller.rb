@@ -11,6 +11,13 @@ module Api
         )
       end
 
+
+
+
+
+
+
+
       # GET /api/v1/tables/grid_view
       def grid_view
         tables = Table.includes(:teams)
@@ -23,6 +30,21 @@ module Api
           }
         }
       end
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+      
 
     end
   end

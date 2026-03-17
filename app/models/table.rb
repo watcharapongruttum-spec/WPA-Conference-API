@@ -8,6 +8,13 @@ class Table < ApplicationRecord
   TIMEZONE = "Asia/Bangkok"
 
   # ──────────────────────────────────────────────────────────────
+  # Normalize table_number: "01" → "1", " 2 " → "2"
+  # ──────────────────────────────────────────────────────────────
+  def self.normalize_table_number(val)
+    val.to_s.strip.gsub(/^0+/, "")
+  end
+
+  # ──────────────────────────────────────────────────────────────
   # Class methods
   # ──────────────────────────────────────────────────────────────
 
@@ -101,44 +108,106 @@ class Table < ApplicationRecord
     schedules
   end
 
+  # ──────────────────────────────────────────────────────────────
+  # AR-based schedule loader
+  # - ใช้ AR bind param → Rails จัดการ timezone ให้เองทุก query
+  # - snap ไปหา slot ที่ใกล้ที่สุดในวันเดียวกันเสมอ
+  # ──────────────────────────────────────────────────────────────
   def self.load_schedules_at(datetime)
-    base = Schedule.includes(
-      :table,
-      booker:   :company,
-      delegate: :company,
-      team:     [:delegates, :company]
-    ).where("booker_id IS NOT NULL")
-     .where("table_number IS NOT NULL AND table_number != ''")
-     .where("booker_id IN (?)", Delegate.select(:id))
+    dt_bkk   = datetime.in_time_zone(TIMEZONE)
+    bkk_date = dt_bkk.to_date.to_s
+    dt_utc   = dt_bkk.utc
+
+    base = Schedule
+      .includes(booker: :company, delegate: :company, team: [:delegates, :company])
+      .where("booker_id IS NOT NULL")
+      .where("table_number IS NOT NULL AND table_number != ''")
+      .where("booker_id IN (?)", Delegate.select(:id))
 
     slot_start = Schedule
-      .where("start_at <= ? AND end_at > ?", datetime, datetime)
+      .where("start_at <= ? AND end_at > ?", dt_utc, dt_utc)
       .where("booker_id IS NOT NULL")
+      .where("table_number IS NOT NULL AND table_number != ''")
+      .where("booker_id IN (?)", Delegate.select(:id))
       .order(:start_at)
       .pick(:start_at)
 
-    return base.none unless slot_start
+    if slot_start.nil?
+      all_day_starts = Schedule
+        .where("booker_id IS NOT NULL")
+        .where("table_number IS NOT NULL AND table_number != ''")
+        .where("booker_id IN (?)", Delegate.select(:id))
+        .where("DATE(start_at AT TIME ZONE '#{TIMEZONE}') = ?", bkk_date)
+        .pluck(:start_at)
+        .uniq
+      slot_start = all_day_starts.min_by { |t| (t - dt_utc).abs }
+    end
 
-    base.where(start_at: slot_start)
+    return [] unless slot_start
+
+    schedules = base.where(start_at: slot_start).to_a
+
+    schedules.map do |s|
+      members = (s.team&.delegates || []).map do |d|
+        { id: d.id, name: d.name.presence || "Unknown", title: d.title.presence&.strip || "" }
+      end
+
+      person = s.booker || s.delegate
+
+      {
+        id:           s.id,
+        start_at:     s.start_at,
+        end_at:       s.end_at,
+        table_number: s.table_number,
+        booker_id:    s.booker_id,
+        delegate_id:  s.delegate_id,
+        target_id:    s.target_id,
+        booker: person ? {
+          id:         person.id,
+          name:       person.name.presence || "Unknown",
+          title:      person.title.presence&.strip || "",
+          company_id: person.company_id,
+          company:    person.company&.name.presence || ""
+        } : nil,
+        delegate: nil,
+        team: s.team ? {
+          id:           s.team.id,
+          name:         s.team.name.presence || "",
+          country_code: s.team.country_code || "",
+          company:      s.team.company&.name.presence || "",
+          members:      members
+        } : nil
+      }
+    end
   end
 
   def self.resolve_conference_date(datetime, conference, schedules)
     bkk_date = datetime.in_time_zone(TIMEZONE).to_date
     conference&.conference_dates&.find_by(on_date: bkk_date) ||
-      schedules.first&.conference_date
+      begin
+        first_schedule = schedules.first
+        if first_schedule
+          ConferenceDate.find_by(
+            id: Schedule.where(id: first_schedule[:id]).pick(:conference_date_id)
+          )
+        end
+      end
   end
 
   def self.build_response(conference:, target_year:, datetime:, schedules:, conf_date:, current_delegate:)
-    bkk_date          = datetime.in_time_zone(TIMEZONE).to_date
-    all_tables        = sorted_for_view
-    adjacent_by_id    = parse_adjacent_tables(all_tables)
-    numeric_tables    = all_tables.select { |t| t.table_number.to_s =~ /^\d+$/ }
-    columns           = detect_columns_from(numeric_tables)
-    rows              = (numeric_tables.size.to_f / columns).ceil
-    schedule_by_table = schedules.group_by { |s| s.table_number.to_s.strip }
+    bkk_date       = datetime.in_time_zone(TIMEZONE).to_date
+    all_tables     = sorted_for_view
+    adjacent_by_id = parse_adjacent_tables(all_tables)
+    numeric_tables = all_tables.select { |t| t.table_number.to_s =~ /^\d+$/ }
+    columns        = detect_columns_from(numeric_tables)
+    rows           = (numeric_tables.size.to_f / columns).ceil
+
+    schedule_by_table = schedules.group_by do |s|
+      normalize_table_number(s[:table_number])
+    end
 
     tables_json = all_tables
-      .select { |t| schedule_by_table[t.table_number.to_s.strip]&.any? }
+      .select { |t| schedule_by_table[normalize_table_number(t.table_number)]&.any? }
       .map { |t| t.to_time_view_json(schedule_by_table, adjacent_by_id) }
 
     {
@@ -185,12 +254,12 @@ class Table < ApplicationRecord
     tid = current_delegate.team_id
 
     schedule =
-      schedules.find { |s| (s.booker_id == did || s.delegate_id == did) && s.table_number.present? } ||
-      schedules.find { |s| tid.present? && s.target_id == tid && s.table_number.present? } ||
-      schedules.find { |s| s.booker_id == did || s.delegate_id == did } ||
-      schedules.find { |s| tid.present? && s.target_id == tid }
+      schedules.find { |s| (s[:booker_id] == did || s[:delegate_id] == did) && s[:table_number].present? } ||
+      schedules.find { |s| tid.present? && s[:target_id] == tid && s[:table_number].present? } ||
+      schedules.find { |s| s[:booker_id] == did || s[:delegate_id] == did } ||
+      schedules.find { |s| tid.present? && s[:target_id] == tid }
 
-    schedule&.table_number
+    schedule&.dig(:table_number)
   end
 
   def self.times_today_for(conf_date)
@@ -227,11 +296,12 @@ class Table < ApplicationRecord
   def self.parse_time_param(raw)
     return nil if raw.blank?
     cleaned = raw.to_s.strip
-    cleaned =~ /\A\d{2}:\d{2}\z/ ? cleaned : nil
+    return nil unless cleaned =~ /\A\d{1,2}:\d{2}\z/
+    cleaned.rjust(5, "0")   # "9:00" → "09:00"
   end
 
   def self.parse_bangkok_datetime(year, date, time_str, fallback)
-    Time.zone.parse("#{year}-#{date.strftime('%m-%d')} #{time_str}")
+    ActiveSupport::TimeZone[TIMEZONE].parse("#{year}-#{date.strftime('%m-%d')} #{time_str}")
   rescue ArgumentError
     fallback
   end
@@ -240,14 +310,20 @@ class Table < ApplicationRecord
   # Instance methods
   # ──────────────────────────────────────────────────────────────
 
-  def to_time_view_json(schedule_by_table, adjacent_by_id)
-    key             = table_number.to_s.strip
+  def to_time_view_json(schedule_by_table, _adjacent_by_id)
+    key             = Table.normalize_table_number(table_number)
     table_schedules = schedule_by_table[key] || []
+
+    adjacent = begin
+      YAML.safe_load(adjacent_tables || "--- []")
+    rescue StandardError
+      []
+    end
 
     {
       table_id:        id,
       table_number:    table_number,
-      adjacent_tables: adjacent_by_id[id] || [],
+      adjacent_tables: adjacent,
       meetings:        table_schedules.map { |s| build_meeting_json(s) },
       delegates:       build_delegates_json(table_schedules)
     }
@@ -256,62 +332,56 @@ class Table < ApplicationRecord
   private
 
   def build_meeting_json(schedule)
-    person_a = schedule.booker || schedule.delegate
-    team     = schedule.team
+    person_a = schedule[:booker] || schedule[:delegate]
+    team     = schedule[:team]
 
     booker_json = if person_a
       {
-        id:         person_a.id,
-        name:       person_a.name.presence || "Unknown",
-        title:      person_a.title.presence&.strip || "",
-        company_id: person_a.company_id,
-        company:    person_a.company&.name.presence || "",
-        avatar_url: "https://ui-avatars.com/api/?name=#{CGI.escape(person_a.name.to_s)}"
+        id:         person_a[:id],
+        name:       person_a[:name],
+        title:      person_a[:title],
+        company_id: person_a[:company_id],
+        company:    person_a[:company],
+        avatar_url: "https://ui-avatars.com/api/?name=#{CGI.escape(person_a[:name].to_s)}"
       }
     end
 
     target_team_json = if team
-      members = team.delegates.map do |d|
-        {
-          id:         d.id,
-          name:       d.name.presence || "Unknown",
-          title:      d.title.presence&.strip || "",
-          avatar_url: "https://ui-avatars.com/api/?name=#{CGI.escape(d.name.to_s)}"
-        }
-      end
       {
-        team_id:      team.id,
-        team_name:    team.name.presence || "",
-        country_code: team.country_code || "",
-        company:      team.company&.name.presence || "",
-        members:      members,
-        member_count: members.size
+        team_id:      team[:id],
+        team_name:    team[:name],
+        country_code: team[:country_code],
+        company:      team[:company],
+        members:      team[:members].map do |m|
+          m.merge(avatar_url: "https://ui-avatars.com/api/?name=#{CGI.escape(m[:name].to_s)}")
+        end,
+        member_count: team[:members].size
       }
     end
 
     {
-      schedule_id: schedule.id,
-      start_at:    schedule.start_at&.in_time_zone(TIMEZONE)&.iso8601,
-      end_at:      schedule.end_at&.in_time_zone(TIMEZONE)&.iso8601,
+      schedule_id: schedule[:id],
+      start_at:    schedule[:start_at]&.in_time_zone(TIMEZONE)&.iso8601,
+      end_at:      schedule[:end_at]&.in_time_zone(TIMEZONE)&.iso8601,
       booker:      booker_json,
       target_team: target_team_json
     }
   end
 
   def build_delegates_json(table_schedules)
-    bookers = table_schedules.flat_map { |s| [s.booker, s.delegate].compact }
-    targets = table_schedules.flat_map { |s| s.team&.delegates.to_a }
+    bookers = table_schedules.filter_map { |s| s[:booker] || s[:delegate] }
+    members = table_schedules.flat_map { |s| s.dig(:team, :members) || [] }
 
-    (bookers + targets)
-      .uniq(&:id)
-      .sort_by(&:id)
+    (bookers + members)
+      .uniq { |d| d[:id] }
+      .sort_by { |d| d[:id] }
       .map do |d|
         {
-          id:         d.id,
-          name:       d.name.presence || "Unknown",
-          title:      d.title.presence&.strip || "",
-          company:    d.company&.name.presence || "",
-          avatar_url: "https://ui-avatars.com/api/?name=#{CGI.escape(d.name.to_s)}"
+          id:         d[:id],
+          name:       d[:name],
+          title:      d[:title],
+          company:    d[:company] || "",
+          avatar_url: "https://ui-avatars.com/api/?name=#{CGI.escape(d[:name].to_s)}"
         }
       end
   end
