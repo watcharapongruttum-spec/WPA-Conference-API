@@ -10,9 +10,12 @@ class Schedule < ApplicationRecord
 
   has_many :leave_forms
 
+
   has_one :latest_leave_form,
           -> { order(created_at: :desc) },
           class_name: "LeaveForm"
+
+  validate :table_not_double_booked, if: -> { table_number.present? && start_at.present? }
 
   # ===============================
   # DEFAULT INCLUDE
@@ -538,10 +541,38 @@ class Schedule < ApplicationRecord
   end
 
   # ===============================
-  # TEAM DELEGATES
-  # ===============================
-  def team_delegates
-    return [] unless team
-    team.delegates
-  end
+    # TEAM DELEGATES
+    # ===============================
+    def team_delegates
+      return [] unless team
+      team.delegates
+    end
+
+    # ===============================
+    # VALIDATIONS (private)
+    # ===============================
+    private
+
+    def table_not_double_booked
+      # Booth รองรับหลายคู่ได้ — ไม่ต้องเช็ค
+      return if table_number.to_s.match?(/\ABooth\s/i)
+
+      conflict = Schedule
+        .where(table_number: table_number)
+        .where(start_at: start_at)
+        .where(conference_date_id: conference_date_id)
+        .where.not(id: id)
+        .exists?
+
+      errors.add(:base, "โต๊ะ #{table_number} ถูกจองในช่วงเวลานี้แล้ว") if conflict
+    end
+
+
+
+
+
+
+
+
+
 end

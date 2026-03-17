@@ -83,7 +83,7 @@ class Table < ApplicationRecord
 
   def self.resolve_schedules(datetime, params, target_year)
     user_selected = params[:date].present? && params[:time].present?
-    schedules     = load_schedules_at(datetime)
+    schedules     = load_schedules_at(datetime, target_year)   
     input_date    = datetime.in_time_zone(TIMEZONE).to_date
 
     if schedules.empty? && !user_selected
@@ -93,7 +93,8 @@ class Table < ApplicationRecord
         .where("booker_id IS NOT NULL")
         .order(:start_at)
         .pick(:start_at)
-      schedules = load_schedules_at(first_of_day) if first_of_day
+      # schedules = load_schedules_at(first_of_day) if first_of_day
+      schedules = load_schedules_at(first_of_day, target_year) if first_of_day
     end
 
     if schedules.empty? && !user_selected
@@ -102,7 +103,8 @@ class Table < ApplicationRecord
         .where("booker_id IS NOT NULL")
         .order(:start_at)
         .pick(:start_at)
-      schedules = load_schedules_at(first_of_year) if first_of_year
+      # schedules = load_schedules_at(first_of_year) if first_of_year
+      schedules = load_schedules_at(first_of_year, target_year) if first_of_year
     end
 
     schedules
@@ -113,18 +115,22 @@ class Table < ApplicationRecord
   # - ใช้ AR bind param → Rails จัดการ timezone ให้เองทุก query
   # - snap ไปหา slot ที่ใกล้ที่สุดในวันเดียวกันเสมอ
   # ──────────────────────────────────────────────────────────────
-  def self.load_schedules_at(datetime)
-    dt_bkk   = datetime.in_time_zone(TIMEZONE)
-    bkk_date = dt_bkk.to_date.to_s
-    dt_utc   = dt_bkk.utc
+  def self.load_schedules_at(datetime, target_year = nil)
+    dt_bkk      = datetime.in_time_zone(TIMEZONE)
+    bkk_date    = dt_bkk.to_date.to_s
+    dt_utc      = dt_bkk.utc
+    target_year ||= dt_bkk.year                                            # ← เพิ่ม
+    year_cond   = "EXTRACT(YEAR FROM start_at AT TIME ZONE '#{TIMEZONE}') = #{target_year.to_i}"  # ← เพิ่ม
 
     base = Schedule
       .includes(booker: :company, delegate: :company, team: [:delegates, :company])
+      .where(year_cond)                                                     # ← เพิ่ม
       .where("booker_id IS NOT NULL")
       .where("table_number IS NOT NULL AND table_number != ''")
       .where("booker_id IN (?)", Delegate.select(:id))
 
     slot_start = Schedule
+      .where(year_cond)                                                     # ← เพิ่ม
       .where("start_at <= ? AND end_at > ?", dt_utc, dt_utc)
       .where("booker_id IS NOT NULL")
       .where("table_number IS NOT NULL AND table_number != ''")
@@ -134,6 +140,7 @@ class Table < ApplicationRecord
 
     if slot_start.nil?
       all_day_starts = Schedule
+        .where(year_cond)                                                   # ← เพิ่ม
         .where("booker_id IS NOT NULL")
         .where("table_number IS NOT NULL AND table_number != ''")
         .where("booker_id IN (?)", Delegate.select(:id))
@@ -320,12 +327,20 @@ class Table < ApplicationRecord
       []
     end
 
+    # Booth แสดงแค่ 1 meeting ต่อ slot — เลือก id น้อยสุด (จองก่อน)
+    display_schedules = if table_number.to_s.match?(/\ABooth\s/i)
+      first = table_schedules.min_by { |s| s[:id] }
+      first ? [first] : []
+    else
+      table_schedules
+    end
+
     {
       table_id:        id,
       table_number:    table_number,
       adjacent_tables: adjacent,
-      meetings:        table_schedules.map { |s| build_meeting_json(s) },
-      delegates:       build_delegates_json(table_schedules)
+      meetings:        display_schedules.map { |s| build_meeting_json(s) },
+      delegates:       build_delegates_json(display_schedules)
     }
   end
 
