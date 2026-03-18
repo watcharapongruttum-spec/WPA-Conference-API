@@ -74,604 +74,211 @@ class Schedule < ApplicationRecord
   }
 
   # ===============================
-  # YEARS / DATES
+  # TIMELINE (raw SQL)
   # ===============================
-  def self.years_of(delegate_id)
-    joins(conference_date: :conference)
-      .mine(delegate_id)
-      .pluck("conferences.conference_year")
-      .uniq
-      .sort
-  end
 
-  def self.available_dates_of(conference)
-    conference.conference_dates.order(:on_date).pluck(:on_date)
-  end
-
-  def self.resolve_date(params_date, delegate_id, conference, available_dates)
-    if params_date.present?
-      begin
-        return Date.parse(params_date)
-      rescue
-        nil
-      end
-    end
-
-    first = joins(:conference_date)
-              .where(conference_dates: { conference_id: conference.id })
-              .mine(delegate_id)
-              .order("conference_dates.on_date ASC")
-              .first
-
-    first&.conference_date&.on_date || available_dates.first
-  end
-
-  def self.format_time(time)
-    TimeFormatter.format(time)
-  end
-
-  # =====================================================
-  # SLOT RESOLVER
-  # =====================================================
-  def self.resolve_time_slot(conference_date_id:, date:, time:)
-    return nil unless time.present?
-
-    selected_time =
-      begin
-        Time.zone.parse("#{date} #{time}")
-      rescue
-        nil
-      end
-
-    return nil unless selected_time
-
-    where(conference_date_id: conference_date_id)
-      .where("start_at <= ? AND end_at > ?", selected_time, selected_time)
-      .where("delegate_id IS NOT NULL OR booker_id IS NOT NULL")
-      .order(:start_at)
-      .first
-  end
-
-  # =====================================================
-  # CENTRAL TIMELINE BUILDER
-  # =====================================================
-  def self.build_timeline_for(delegate:, params:)
-    years = years_of(delegate.id)
-
-    year       = params[:year].presence || "2025"
-    conference = Conference.find_by(conference_year: year)
-    return { error: :conference_not_found, years: years } unless conference
-
-    available_dates = available_dates_of(conference)
-    selected_date   = resolve_date(params[:date], delegate.id, conference, available_dates)
-    return { error: :no_dates } unless selected_date
-
-    conference_date = conference.conference_dates.find_by(on_date: selected_date)
-    return { error: :date_not_found } unless conference_date
-
-    slot = resolve_time_slot(
-      conference_date_id: conference_date.id,
-      date:               selected_date,
-      time:               params[:time]
-    )
-
-    personal_scope = with_full_data
-                       .mine(delegate.id)
-                       .by_date(conference_date.id)
-                       .where(
-                         "booker_id IS NULL OR booker_id IN (?)",
-                         Delegate.select(:id)
-                       )
-
-    personal_scope = personal_scope.where(start_at: slot.start_at) if slot
-
-    all_personal = personal_scope.sorted.to_a
-
-    personal =
-      all_personal
-        .group_by(&:start_at)
-        .map do |_time, meetings|
-          meetings.find { |m| m.booker_id == delegate.id } ||
-            meetings.find { |m| m.table_number.present? } ||
-            meetings.first
-        end
-
-    global_scope = ConferenceSchedule
-                     .by_date(conference_date.id)
-                     .only_events
-
-    global_scope = global_scope.where(start_at: slot.start_at) if slot
-
-    global = global_scope.sorted.to_a
-
-    merged = []
-
-    global.each do |g|
-      merged << {
-        type:      "event",
-        id:        g.id,
-        title:     g.title,
-        start_at:  format_time(g.start_at),
-        end_at:    format_time(g.end_at),
-        raw_start: g.start_at
-      }
-    end
-
-    personal.each do |s|
-      merged << {
-        type:       "meeting",
-        serializer: s,
-        start_at:   format_time(s.start_at),
-        end_at:     format_time(s.end_at),
-        raw_start:  s.start_at
-      }
-    end
-
-    all_slots =
-      if slot
-        [[slot.start_at, slot.end_at]]
-      else
-        Schedule
-          .where(conference_date_id: conference_date.id)
-          .where("delegate_id IS NOT NULL OR booker_id IS NOT NULL")
-          .distinct
-          .pluck(:start_at, :end_at)
-      end
-
-    personal_times = personal.map(&:start_at).to_set
-    event_times    = global.map(&:start_at).to_set
-
-    all_slots.each do |start_at, end_at|
-      next if personal_times.include?(start_at)
-      next if event_times.include?(start_at)
-
-      merged << {
-        type:      "nomeeting",
-        start_at:  format_time(start_at),
-        end_at:    format_time(end_at),
-        raw_start: start_at
-      }
-    end
-
-    merged.sort_by! { |x| x[:raw_start] }
-    merged.each { |x| x.delete(:raw_start) }
-
-    {
-      years:           years,
-      year:            year,
-      available_dates: available_dates,
-      selected_date:   selected_date,
-      schedules:       merged
-    }
-  end
-
-  # ===============================
-  # MY SCHEDULE  (SQL-based)
-  # ===============================
-  def self.build_my_schedule(delegate:, params:)
-    years = years_of(delegate.id)
-    year  = params[:year].presence || "2025"
-
-    conference = Conference.find_by(conference_year: year)
-    return { error: :conference_not_found, years: years } unless conference
-
-    available_dates = available_dates_of(conference)
-    selected_date   = resolve_date(params[:date], delegate.id, conference, available_dates)
-    return { error: :no_dates } unless selected_date
-
-    conference_date = conference.conference_dates.find_by(on_date: selected_date)
-    return { error: :date_not_found } unless conference_date
-
-    schedules = fetch_my_schedule_via_sql(
-      delegate:        delegate,
-      conference_id:   conference.id,
-      conference_date: conference_date,
-      selected_date:   selected_date,
-      time_param:      params[:time]
-    )
-
-    {
-      years:           years,
-      year:            year,
-      available_dates: available_dates,
-      selected_date:   selected_date,
-      schedules:       schedules
-    }
-  end
-
-  # =====================================================
-  # PRIVATE: fetch schedule via single CTE SQL
-  #
-  # SQL structure:
-  #   meeting_detail → meetings ของ delegate (ทั้ง target/booker side)
-  #   events         → conference events (allow_booking = false)
-  #   all_slots      → slot ทั้งหมดของวันนี้ใน conference
-  #   gaps           → slot ที่ delegate ไม่มี meeting และไม่ใช่ event = nomeeting
-  # =====================================================
-
-
-  def self.fetch_my_schedule_via_sql(delegate:, conference_id:, conference_date:, selected_date:, time_param:)
-    delegate_id        = delegate.id
-    conference_date_id = conference_date.id
-    conn               = ActiveRecord::Base.connection
-    bkk_zone           = Time.find_zone("Asia/Bangkok")
-
-    # ── time slot filter ──────────────────────────────────
-    slot = resolve_time_slot(
-      conference_date_id: conference_date_id,
-      date:               selected_date,
-      time:               time_param
-    )
-
-    slot_meeting_cond = slot ? "AND s.start_at = #{conn.quote(slot.start_at.utc.to_s(:db))}" : ""
-    slot_event_cond   = slot ? "AND cs.start_at = #{conn.quote(slot.start_at.utc.to_s(:db))}" : ""
-    slot_all_cond     = slot ? "AND s2.start_at = #{conn.quote(slot.start_at.utc.to_s(:db))}" : ""
-
-    conf_date_id_q = conference_date_id.to_i
-    del_id_q       = delegate_id.to_i
-
-    # ══════════════════════════════════════════════════════
-    # CTE SQL — meeting + event + nomeeting ในครั้งเดียว
-    # ══════════════════════════════════════════════════════
+  def self.timeline_rows(conference_id:, filter_date:, delegate_id:, label: "timeline")
     sql = <<~SQL
-      WITH
-      -- 🟢 meeting detail
+      WITH params AS (
+        SELECT
+          $1::int  AS conference_id,
+          $2::date AS filter_date,
+          $3::int  AS delegate_id
+      ),
+      leave_data AS (
+        SELECT
+          lf.schedule_id,
+          jsonb_build_object(
+            'id',          lf.id,
+            'status',      lf.status,
+            'leave_type',  jsonb_build_object(
+                             'id',      lt.id,
+                             'code',    lt.code,
+                             'name_th', lt.name_th,
+                             'name_en', lt.name_en
+                           ),
+            'explanation', lf.explanation,
+            'reported_at', to_char(
+                             lf.reported_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Bangkok',
+                             'YYYY-MM-DD"T"HH24:MI:SS+07:00'
+                           )
+          ) AS leave_json
+        FROM leave_forms lf
+        JOIN leave_types lt ON lt.id = lf.leave_type_id
+      ),
       meeting_detail AS (
         SELECT
-          s.id,
-          (s.start_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Bangkok') AS start_at,
-          (s.end_at   AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Bangkok') AS end_at,
-          s.table_number  AS "table",
-          s.country,
-          t_me.id           AS my_team_id,
-          t_me.name         AS my_team_name,
-          b_me.trading_name AS my_company,
-          t_op.id           AS op_team_id,
-          t_op.name         AS op_team_name,
-          b_op.trading_name AS op_company,
+          s.id AS schedule_id,
+          to_char(
+            s.start_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Bangkok',
+            'YYYY-MM-DD"T"HH24:MI:SS+07:00'
+          ) AS start_at,
+          to_char(
+            s.end_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Bangkok',
+            'YYYY-MM-DD"T"HH24:MI:SS+07:00'
+          ) AS end_at,
+          s.table_number,
+          EXTRACT(EPOCH FROM (s.end_at - s.start_at))::int / 60 AS duration_minutes,
+          DATE(s.start_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Bangkok')::text AS conference_date,
+          c_op.country AS country,
+          ld.leave_json,
           json_agg(DISTINCT jsonb_build_object(
-            'id',   d_me.id,
-            'name', d_me.name
-          )) FILTER (WHERE d_me.id IS NOT NULL) AS my_delegates,
-          json_agg(DISTINCT jsonb_build_object(
-            'id',   d_op.id,
-            'name', d_op.name
-          )) FILTER (WHERE d_op.id IS NOT NULL) AS op_delegates
-
+            'id',      d_op.id,
+            'name',    d_op.name,
+            'company', b_op_d.trading_name
+          )) FILTER (WHERE d_op.id IS NOT NULL) AS team_delegates
         FROM schedules s
-
-        -- หาทีมของ delegate นี้
-        LEFT JOIN delegates d_self ON d_self.id = #{del_id_q}
-        LEFT JOIN teams     t_me   ON t_me.id   = d_self.team_id
-        LEFT JOIN branches  b_me   ON t_me.branch_id = b_me.id
-
-        -- หาทีมฝั่งตรงข้าม (opponent)
+        JOIN conference_dates cd
+          ON s.conference_date_id = cd.id
+          AND cd.conference_id = (SELECT conference_id FROM params)
+        LEFT JOIN delegates d_self
+          ON d_self.id = (SELECT delegate_id FROM params)
+        LEFT JOIN teams t_me ON t_me.id = d_self.team_id
         LEFT JOIN teams t_op
           ON t_op.id = CASE
-            WHEN s.target_id = t_me.id THEN s.booker_id
-            ELSE s.target_id
-          END
-        LEFT JOIN branches b_op ON t_op.branch_id = b_op.id
-
-        -- delegates ทีมเราและทีม opponent
-        LEFT JOIN delegates d_me ON d_me.team_id = t_me.id
+                WHEN s.target_id = t_me.id THEN s.booker_id
+                ELSE s.target_id
+            END
         LEFT JOIN delegates d_op ON d_op.team_id = t_op.id
-
+        LEFT JOIN companies c_op ON c_op.id = t_op.company_id
+        LEFT JOIN branches b_op_d ON b_op_d.id = d_op.branch_id
+        LEFT JOIN leave_data ld ON ld.schedule_id = s.id
         WHERE
-          s.conference_date_id = #{conf_date_id_q}
+          DATE(s.start_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Bangkok')
+            = (SELECT filter_date FROM params)
           AND t_me.id IN (s.target_id, s.booker_id)
-          AND s.table_number IS NOT NULL
-          AND TRIM(s.table_number) <> ''
-          #{slot_meeting_cond}
-
         GROUP BY
-          s.id, s.start_at, s.end_at, s.table_number, s.country,
-          t_me.id, t_me.name, b_me.trading_name,
-          t_op.id, t_op.name, b_op.trading_name
+          s.id, s.start_at, s.end_at, s.table_number,
+          c_op.country, ld.leave_json
       ),
-
-      -- 🟡 conference events (allow_booking = false)
       events AS (
         SELECT
-          cs.id,
-          (cs.start_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Bangkok') AS start_at,
-          (cs.end_at   AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Bangkok') AS end_at,
+          cs.id AS event_id,
+          to_char(
+            cs.start_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Bangkok',
+            'YYYY-MM-DD"T"HH24:MI:SS+07:00'
+          ) AS start_at,
+          to_char(
+            cs.end_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Bangkok',
+            'YYYY-MM-DD"T"HH24:MI:SS+07:00'
+          ) AS end_at,
           cs.title
         FROM conference_schedules cs
+        JOIN conference_dates cd
+          ON cs.conference_date_id = cd.id
+          AND cd.conference_id = (SELECT conference_id FROM params)
         WHERE
-          cs.conference_date_id = #{conf_date_id_q}
-          AND cs.allow_booking = false
-          #{slot_event_cond}
+          cs.allow_booking = false
+          AND DATE(cs.start_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Bangkok')
+            = (SELECT filter_date FROM params)
       ),
-
-      -- 🔵 slot ทั้งหมดของวันนี้ใน conference (เพื่อหา nomeeting)
-      all_slots AS (
-        SELECT DISTINCT
-          (s2.start_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Bangkok') AS start_at,
-          (s2.end_at   AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Bangkok') AS end_at
-        FROM schedules s2
-        WHERE
-          s2.conference_date_id = #{conf_date_id_q}
-          AND (s2.delegate_id IS NOT NULL OR s2.booker_id IS NOT NULL)
-          #{slot_all_cond}
+      base AS (
+        SELECT start_at, end_at FROM meeting_detail
+        UNION ALL
+        SELECT start_at, end_at FROM events
       ),
-
-      -- 🧩 nomeeting = slot ที่ delegate ไม่มี meeting และไม่ใช่ event
+      ordered AS (
+        SELECT *, LEAD(start_at) OVER (ORDER BY start_at) AS next_start
+        FROM base
+      ),
       gaps AS (
-        SELECT a.start_at, a.end_at
-        FROM all_slots a
-        WHERE NOT EXISTS (
-          SELECT 1 FROM meeting_detail m WHERE m.start_at = a.start_at
-        )
-        AND NOT EXISTS (
-          SELECT 1 FROM events e WHERE e.start_at = a.start_at
-        )
+        SELECT end_at AS start_at, next_start AS end_at
+        FROM ordered
+        WHERE next_start IS NOT NULL AND next_start > end_at
       )
-
-      -- 🔥 FINAL: UNION ทั้ง 3 ประเภท
       SELECT
-        m.id,
-        m.start_at,
-        m.end_at,
-        'meeting'  AS type,
-        NULL::text AS title,
-        m.table,
+        m.start_at, m.end_at,
+        'meeting'          AS type,
+        m.schedule_id      AS id,
+        NULL::text         AS title,
+        m.table_number,
         m.country,
-        m.my_team_id,
-        m.my_team_name,
-        m.my_company,
-        m.op_team_id,
-        m.op_team_name,
-        m.op_company,
-        m.my_delegates,
-        m.op_delegates
+        m.conference_date,
+        m.duration_minutes,
+        m.leave_json,
+        m.team_delegates
       FROM meeting_detail m
-
       UNION ALL
-
       SELECT
-        e.id,
-        e.start_at,
-        e.end_at,
-        'event',
-        e.title,
-        NULL::text,
-        NULL::text,
-        NULL::bigint,
-        NULL::text,
-        NULL::text,
-        NULL::bigint,
-        NULL::text,
-        NULL::text,
-        NULL::json,
-        NULL::json
+        e.start_at, e.end_at,
+        'event', e.event_id, e.title,
+        NULL::text, NULL::text, NULL::text,
+        NULL::int, NULL::jsonb, NULL::json
       FROM events e
-
       UNION ALL
-
       SELECT
-        NULL::bigint,
-        g.start_at,
-        g.end_at,
-        'nomeeting',
-        NULL::text,
-        NULL::text,
-        NULL::text,
-        NULL::bigint,
-        NULL::text,
-        NULL::text,
-        NULL::bigint,
-        NULL::text,
-        NULL::text,
-        NULL::json,
-        NULL::json
+        g.start_at, g.end_at,
+        'nomeeting', NULL::bigint, NULL::text,
+        NULL::text, NULL::text, NULL::text,
+        NULL::int, NULL::jsonb, NULL::json
       FROM gaps g
-
       ORDER BY start_at
     SQL
 
-    rows = conn.execute(sql).to_a
+    connection.exec_query(sql, "#{label}_timeline", [conference_id, filter_date, delegate_id])
+  end
 
-    # ── แปลง rows → schedule items ──────────────────────
-    items = rows.map do |row|
-      raw_start = bkk_zone.parse(row["start_at"].to_s) rescue nil
-      raw_end   = bkk_zone.parse(row["end_at"].to_s)   rescue nil
+  def self.available_years(conference_id:)
+    sql = <<~SQL
+      SELECT DISTINCT EXTRACT(YEAR FROM on_date)::int AS year
+      FROM conference_dates
+      WHERE conference_id = $1
+      ORDER BY year
+    SQL
 
+    connection.exec_query(sql, "available_years", [conference_id]).map { |r| r["year"].to_s }
+  end
+
+  def self.available_dates(conference_id:, year:)
+    sql = <<~SQL
+      SELECT on_date
+      FROM conference_dates
+      WHERE conference_id = $1
+        AND EXTRACT(YEAR FROM on_date) = $2
+      ORDER BY on_date
+    SQL
+
+    connection.exec_query(sql, "available_dates", [conference_id, year]).map { |r| r["on_date"].to_s }
+  end
+
+  def self.format_timeline(rows)
+    rows.map do |row|
       case row["type"]
-
-      # ── meeting ─────────────────────────────────────────
-      when "meeting"
-        duration = (raw_start && raw_end) ? ((raw_end - raw_start) / 60).to_i : 20
-
-        raw_op = begin
-          JSON.parse(row["op_delegates"].to_s)
-        rescue
-          []
-        end
-
-        team_delegates = raw_op.map do |d|
-          { id: d["id"].to_i, name: d["name"], company: row["op_company"] }
-        end.uniq { |d| d[:id] }
-
+      when "event"
+        { type: "event", id: row["id"], title: row["title"],
+          start_at: row["start_at"], end_at: row["end_at"] }
+      when "nomeeting"
+        { type: "nomeeting", start_at: row["start_at"], end_at: row["end_at"] }
+      else
         {
           type:             "meeting",
-          id:               row["id"].to_i,
-          table_number:     row["table"],
-          country:          row["country"].presence,
-          conference_date:  selected_date.to_s,
-          duration_minutes: duration,
-          leave:            nil,
-          team_delegates:   team_delegates,
-          _raw_start:       raw_start,
-          _raw_end:         raw_end,
-          _schedule_id:     row["id"].to_i
-        }
-
-      # ── event ────────────────────────────────────────────
-      when "event"
-        {
-          type:       "event",
-          id:         row["id"].to_i,
-          title:      row["title"],
-          _raw_start: raw_start,
-          _raw_end:   raw_end
-        }
-
-      # ── nomeeting ────────────────────────────────────────
-      when "nomeeting"
-        {
-          type:       "nomeeting",
-          _raw_start: raw_start,
-          _raw_end:   raw_end
+          id:               row["id"],
+          table_number:     row["table_number"],
+          country:          row["country"],
+          conference_date:  row["conference_date"],
+          duration_minutes: row["duration_minutes"],
+          leave:            parse_json_column(row["leave_json"], single: true),
+          team_delegates:   parse_json_column(row["team_delegates"]),
+          start_at:         row["start_at"],
+          end_at:           row["end_at"]
         }
       end
-    end.compact
-
-    # ── เติม leave data สำหรับ meeting items ─────────────
-    meeting_items = items.select { |i| i[:type] == "meeting" }
-    schedule_ids  = meeting_items.map { |m| m[:_schedule_id] }
-    leave_map     = fetch_leave_map(schedule_ids)
-    meeting_items.each { |m| m[:leave] = leave_map[m[:_schedule_id]] }
-
-    # ── format → clean internal keys ─────────────────────
-    items.map do |item|
-      raw_start = item.delete(:_raw_start)
-      raw_end   = item.delete(:_raw_end)
-      item.delete(:_schedule_id)
-      # item[:start_at] = raw_start&.in_time_zone("Asia/Bangkok")&.iso8601
-      # item[:end_at]   = raw_end&.in_time_zone("Asia/Bangkok")&.iso8601
-
-      
-      # item[:start_at] = raw_start&.utc&.iso8601   
-      # item[:end_at]   = raw_end&.utc&.iso8601  
-      
-      item[:start_at] = raw_start&.utc&.strftime("%Y-%m-%dT%H:%M:%S+07:00")
-      item[:end_at]   = raw_end&.utc&.strftime("%Y-%m-%dT%H:%M:%S+07:00")
-
-
-
-      item
     end
-
-
-    
-  end
-
-
-
-
-  # ──────────────────────────────────────────────────────────────
-  # PRIVATE: ดึง leave data สำหรับ schedule_ids ที่กำหนด
-  # ──────────────────────────────────────────────────────────────
-  def self.fetch_leave_map(schedule_ids)
-    return {} if schedule_ids.blank?
-
-    LeaveForm.includes(:leave_type)
-             .where(schedule_id: schedule_ids)
-             .order(created_at: :desc)
-             .each_with_object({}) do |lf, map|
-      next if map.key?(lf.schedule_id)
-
-      map[lf.schedule_id] = {
-        id:         lf.id,
-        status:     lf.status,
-        leave_type: {
-          id:      lf.leave_type.id,
-          code:    lf.leave_type.code,
-          name_th: lf.leave_type.name_th,
-          name_en: lf.leave_type.name_en
-        },
-        explanation: lf.explanation,
-        reported_at: lf.reported_at&.in_time_zone("Asia/Bangkok")&.iso8601
-      }
-    end
-  rescue => e
-    Rails.logger.warn "[fetch_leave_map] #{e.message}"
-    {}
   end
 
   # ===============================
-  # SCHEDULE OTHERS
+  # PRIVATE CLASS METHODS
   # ===============================
-  def self.build_schedule_others(viewer:, params:)
-    target_delegate = Delegate.find_by(id: params[:delegate_id])
-    return { error: :delegate_not_found } unless target_delegate
+  class << self
+    private
 
-    years = years_of(target_delegate.id)
-    unless years.map(&:to_s).include?("2025")
-      return { error: :no_schedule_found, years: years }
+    def parse_json_column(value, single: false)
+      return (single ? nil : []) if value.nil?
+      parsed = value.is_a?(String) ? JSON.parse(value) : value
+      single ? parsed : Array(parsed)
+    rescue JSON::ParserError
+      single ? nil : []
     end
-
-    result = build_timeline_for(delegate: target_delegate, params: params)
-    result.merge(user: target_delegate)
   end
 
-  # ===============================
-  # INDEX
-  # ===============================
-  def self.build_index(delegate:, params:)
-    page     = (params[:page] || 1).to_i
-    per_page = [(params[:per_page] || 15).to_i, 100].min
-
-    scope = with_full_data
-
-    if params[:delegate_id].present?
-      scope = scope.mine(params[:delegate_id])
-    else
-      scope = scope.mine(delegate.id)
-    end
-
-    if params[:year].present?
-      scope = scope.joins(conference_date: :conference)
-                   .where("conferences.conference_year = ?", params[:year])
-    end
-
-    if params[:date].present?
-      begin
-        date  = Date.parse(params[:date].to_s)
-        scope = scope.joins(:conference_date)
-                     .where(conference_dates: { on_date: date })
-      rescue ArgumentError
-        # invalid date — ignore
-      end
-    end
-
-    total     = scope.count
-    schedules = scope.sorted
-                     .offset((page - 1) * per_page)
-                     .limit(per_page)
-
-    {
-      page:      page,
-      per_page:  per_page,
-      total:     total,
-      schedules: schedules
-    }
-  end
-
-  # ===============================
-  # TEAM DELEGATES
-  # ===============================
-  def team_delegates
-    return [] unless team
-    team.delegates
-  end
-
-  # ===============================
-  # VALIDATIONS (private)
-  # ===============================
-  private
-
-  def table_not_double_booked
-    return if table_number.to_s.match?(/\ABooth\s/i)
-
-    conflict = Schedule
-      .where(table_number: table_number)
-      .where(start_at: start_at)
-      .where(conference_date_id: conference_date_id)
-      .where.not(id: id)
-      .exists?
-
-    errors.add(:base, "โต๊ะ #{table_number} ถูกจองในช่วงเวลานี้แล้ว") if conflict
-  end
 end

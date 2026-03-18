@@ -1,222 +1,80 @@
 module Api
   module V1
     class SchedulesController < ApplicationController
-      # ===============================
-      # INDEX
-      # ===============================
-      def index
-        result = Schedule.build_index(
-          delegate: current_delegate,
-          params: index_params
-        )
-
-        render json: {
-          page: result[:page],
-          per_page: result[:per_page],
-          total: result[:total],
-          schedules: ActiveModelSerializers::SerializableResource.new(
-            result[:schedules] || [],
-            each_serializer: Api::V1::ScheduleSerializer,
-            scope: current_delegate
-          )
-        }
-      end
-
-      # ===============================
-      # CREATE
-      # ===============================
-      def create
-        schedule = Schedule.new(schedule_params)
-
-        if schedule.save
-          render json: schedule, status: :created
-        else
-          render json: { error: "Validation failed", messages: schedule.errors.full_messages }, status: :unprocessable_entity
-        end
-      end
 
       # ===============================
       # MY SCHEDULE
-      # ==============================
-
-      # def my_schedule
-      #   # 🔒 SCH-009: ตรวจ date format ก่อนเลย — ถ้าผิดคืน 422 ทันที
-      #   if params[:date].present?
-      #     begin
-      #       Date.parse(params[:date].to_s)
-      #     rescue ArgumentError, TypeError
-      #       return render json: { error: "Invalid date format. Use YYYY-MM-DD." },
-      #                     status: :unprocessable_entity
-      #     end
-      #   end
-
-      #   result = Schedule.build_my_schedule(
-      #     delegate: current_delegate,
-      #     params: timeline_params
-      #   )
-
-      #   return render json: { error: result[:error] }, status: :not_found if result[:error]
-
-      #   render_timeline(result, current_delegate)
-      # end
-
-
-
+      # ===============================
       def my_schedule
-        if params[:date].present?
-          begin
-            Date.parse(params[:date].to_s)
-          rescue ArgumentError, TypeError
-            return render json: { error: "Invalid date format. Use YYYY-MM-DD." },
-                          status: :unprocessable_entity
-          end
-        end
+        filter_date   = parse_date_param! or return
+        conference_id = fetch_conference_id! or return
+        delegate_id   = current_delegate.id
 
-        result = Schedule.build_my_schedule(
-          delegate: current_delegate,
-          params:   timeline_params
-        )
-
-        return render json: { error: result[:error] }, status: :not_found if result[:error]
-
-        render json: {
-          available_years:  result[:years]           || [],
-          year:             result[:year],
-          available_dates:  result[:available_dates] || [],
-          date:             result[:selected_date],
-          schedules:        result[:schedules]
-        }
+        render json: build_response(conference_id, filter_date, delegate_id, label: "my_schedule")
       end
-
-
-
-
-
-
-
-
-
-
-
-
-
 
       # ===============================
       # SCHEDULE OTHERS
       # ===============================
       def schedule_others
-        result = Schedule.build_schedule_others(
-          viewer: current_delegate,
-          params: timeline_params
+        return render json: { error: "delegate_id is required." },
+                      status: :unprocessable_entity unless params[:delegate_id].present?
+
+        target_delegate = Delegate.find_by(id: params[:delegate_id])
+        return render json: { error: "Delegate not found." },
+                      status: :not_found unless target_delegate
+
+        filter_date   = parse_date_param! or return
+        conference_id = fetch_conference_id! or return
+
+        render json: build_response(conference_id, filter_date, target_delegate.id, label: "schedule_others").merge(
+          user: Api::V1::DelegateSerializer.new(target_delegate)
         )
-
-        # ✅ เพิ่ม error case
-        if result[:error]
-          status = result[:error] == :delegate_not_found ? :not_found : :unprocessable_entity
-          return render json: { error: result[:error] }, status: status
-        end
-
-        render_timeline(result, result[:user], include_user: true)
       end
 
       private
 
       # ===============================
-      # STRONG PARAMS
+      # BUILD RESPONSE
       # ===============================
+      def build_response(conference_id, filter_date, delegate_id, label:)
+        rows          = Schedule.timeline_rows(conference_id: conference_id, filter_date: filter_date, delegate_id: delegate_id, label: label)
+        selected_year = params[:year]&.to_i || filter_date.year
 
-      # สำหรับสร้าง schedule
-      def schedule_params
-        params.require(:schedule).permit(
-          :start_time,
-          :end_time,
-          :date,
-          :table_number,
-          :team_id,
-          :location,
-          :note
-        )
-      end
-
-      # สำหรับ index (pagination / filter)
-      def index_params
-        params.permit(
-          :page,
-          :per_page,
-          :year,
-          :date,
-          :team_id,
-          :delegate_id
-        )
-      end
-
-      # สำหรับ my_schedule / schedule_others
-      def timeline_params
-        params.permit(
-          :year,
-          :date,
-          :delegate_id
-        )
-      end
-
-      # ===============================
-      # RENDER TIMELINE (เหมือนเดิม 100%)
-      # ===============================
-      def render_timeline(result, scope_user, include_user: false)
-        timeline = result[:schedules].map do |item|
-          if item[:type] == "event" || item[:type] == "nomeeting"
-            item
-          else
-            schedule = item[:serializer]
-
-            data = ActiveModelSerializers::SerializableResource.new(
-              schedule,
-              serializer: Api::V1::ScheduleSerializer,
-              scope: scope_user
-            ).as_json.except(:delegate)
-
-            # meeting_type = schedule.table_number.nil? ? "nomeeting" : "meeting"
-            meeting_type = schedule.table_number.present? ? "meeting" : "nomeeting"
-
-            # ✅ แก้ตรงนี้
-            who_to_meet = if schedule.target_id == scope_user.team_id
-              # เราเป็น target → คนที่มาพบเราคือ booker
-              [schedule.booker].compact.map do |d|
-                { id: d.id, name: d.name, company: d.company&.name }
-              end
-            else
-              # เราเป็น booker → คนที่เราจะไปพบคือ target team
-              schedule.team_delegates.map do |d|
-                { id: d.id, name: d.name, company: d.company&.name }
-              end
-            end
-
-            data.merge(type: meeting_type, team_delegates: who_to_meet)
-          end
-        end
-
-        response = {
-          available_years:  result[:years] || [],
-          year:             result[:year],
-          available_dates:  result[:available_dates] || [],
-          date:             result[:selected_date],
-          schedules:        timeline
+        {
+          years:           Schedule.available_years(conference_id: conference_id),
+          year:            selected_year.to_s,
+          available_dates: Schedule.available_dates(conference_id: conference_id, year: selected_year),
+          selected_date:   filter_date.to_s,
+          schedules:       Schedule.format_timeline(rows)
         }
-
-        response[:user] = Api::V1::DelegateSerializer.new(result[:user]) if include_user
-
-        render json: response
       end
 
+      # ===============================
+      # PARAM HELPERS
+      # ===============================
+      def parse_date_param!
+        if params[:date].present?
+          begin
+            Date.parse(params[:date].to_s)
+          rescue ArgumentError, TypeError
+            render json: { error: "Invalid date format. Use YYYY-MM-DD." },
+                   status: :unprocessable_entity
+            nil
+          end
+        else
+          Date.today
+        end
+      end
 
-
-
-
-
-
-
-
-
+      def fetch_conference_id!
+        conference_id = Reservation.find(current_delegate.reservation_id).conference_id
+        unless conference_id
+          render json: { error: "Conference not found for this delegate." }, status: :not_found
+          return nil
+        end
+        conference_id
+      end
 
     end
   end

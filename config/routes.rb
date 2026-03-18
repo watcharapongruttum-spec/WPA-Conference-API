@@ -56,7 +56,7 @@ Rails.application.routes.draw do
       end
 
       # Schedules
-      resources :schedules, only: %i[index create] do
+      resources :schedules, only: %i[] do
         collection do
           get :my_schedule
           get :schedule_others
