@@ -283,12 +283,13 @@ class Schedule < ApplicationRecord
   # PRIVATE: fetch schedule via single CTE SQL
   #
   # SQL structure:
-  #   meeting_detail  → meetings ของ delegate (ทั้ง target/booker side)
-  #   events          → conference events (allow_booking = false)
-  #   base → ordered → gaps → nomeeting slots ระหว่าง meeting+event
-  #
-  # หมายเหตุ: เพิ่ม s.id ใน meeting_detail เพื่อใช้กับ leave_map
+  #   meeting_detail → meetings ของ delegate (ทั้ง target/booker side)
+  #   events         → conference events (allow_booking = false)
+  #   all_slots      → slot ทั้งหมดของวันนี้ใน conference
+  #   gaps           → slot ที่ delegate ไม่มี meeting และไม่ใช่ event = nomeeting
   # =====================================================
+
+
   def self.fetch_my_schedule_via_sql(delegate:, conference_id:, conference_date:, selected_date:, time_param:)
     delegate_id        = delegate.id
     conference_date_id = conference_date.id
@@ -304,15 +305,13 @@ class Schedule < ApplicationRecord
 
     slot_meeting_cond = slot ? "AND s.start_at = #{conn.quote(slot.start_at.utc.to_s(:db))}" : ""
     slot_event_cond   = slot ? "AND cs.start_at = #{conn.quote(slot.start_at.utc.to_s(:db))}" : ""
-    # กรณีกรอง slot เดียว → ไม่มี gap ที่มีความหมาย → ปิด gaps ด้วย WHERE 1=0
-    gaps_where        = slot ? "WHERE 1=0" : "WHERE next_start IS NOT NULL AND next_start > end_at"
+    slot_all_cond     = slot ? "AND s2.start_at = #{conn.quote(slot.start_at.utc.to_s(:db))}" : ""
 
-    conf_id_q = conference_id.to_i
-    del_id_q  = delegate_id.to_i
-    date_q    = conn.quote(selected_date.to_s)
+    conf_date_id_q = conference_date_id.to_i
+    del_id_q       = delegate_id.to_i
 
     # ══════════════════════════════════════════════════════
-    # CTE SQL — meeting + event + nomeeting gaps ในครั้งเดียว
+    # CTE SQL — meeting + event + nomeeting ในครั้งเดียว
     # ══════════════════════════════════════════════════════
     sql = <<~SQL
       WITH
@@ -340,9 +339,6 @@ class Schedule < ApplicationRecord
           )) FILTER (WHERE d_op.id IS NOT NULL) AS op_delegates
 
         FROM schedules s
-        JOIN conference_dates cd
-          ON  s.conference_date_id = cd.id
-          AND cd.conference_id     = #{conf_id_q}
 
         -- หาทีมของ delegate นี้
         LEFT JOIN delegates d_self ON d_self.id = #{del_id_q}
@@ -362,7 +358,7 @@ class Schedule < ApplicationRecord
         LEFT JOIN delegates d_op ON d_op.team_id = t_op.id
 
         WHERE
-          DATE(s.start_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Bangkok') = #{date_q}
+          s.conference_date_id = #{conf_date_id_q}
           AND t_me.id IN (s.target_id, s.booker_id)
           AND s.table_number IS NOT NULL
           AND TRIM(s.table_number) <> ''
@@ -382,35 +378,37 @@ class Schedule < ApplicationRecord
           (cs.end_at   AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Bangkok') AS end_at,
           cs.title
         FROM conference_schedules cs
-        JOIN conference_dates cd
-          ON  cs.conference_date_id = cd.id
-          AND cd.conference_id      = #{conf_id_q}
         WHERE
-          cs.allow_booking = false
-          AND DATE(cs.start_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Bangkok') = #{date_q}
+          cs.conference_date_id = #{conf_date_id_q}
+          AND cs.allow_booking = false
           #{slot_event_cond}
       ),
 
-      -- 🧩 หา gap (nomeeting) ระหว่าง meeting + event
-      base AS (
-        SELECT start_at, end_at FROM meeting_detail
-        UNION ALL
-        SELECT start_at, end_at FROM events
+      -- 🔵 slot ทั้งหมดของวันนี้ใน conference (เพื่อหา nomeeting)
+      all_slots AS (
+        SELECT DISTINCT
+          (s2.start_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Bangkok') AS start_at,
+          (s2.end_at   AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Bangkok') AS end_at
+        FROM schedules s2
+        WHERE
+          s2.conference_date_id = #{conf_date_id_q}
+          AND (s2.delegate_id IS NOT NULL OR s2.booker_id IS NOT NULL)
+          #{slot_all_cond}
       ),
-      ordered AS (
-        SELECT *,
-               LEAD(start_at) OVER (ORDER BY start_at) AS next_start
-        FROM base
-      ),
+
+      -- 🧩 nomeeting = slot ที่ delegate ไม่มี meeting และไม่ใช่ event
       gaps AS (
-        SELECT
-          end_at     AS start_at,
-          next_start AS end_at
-        FROM ordered
-        #{gaps_where}
+        SELECT a.start_at, a.end_at
+        FROM all_slots a
+        WHERE NOT EXISTS (
+          SELECT 1 FROM meeting_detail m WHERE m.start_at = a.start_at
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM events e WHERE e.start_at = a.start_at
+        )
       )
 
-      -- 🔥 FINAL: UNION ทั้ง 3 ประเภท (column count ต้องตรงกันทุก SELECT)
+      -- 🔥 FINAL: UNION ทั้ง 3 ประเภท
       SELECT
         m.id,
         m.start_at,
@@ -485,7 +483,6 @@ class Schedule < ApplicationRecord
       when "meeting"
         duration = (raw_start && raw_end) ? ((raw_end - raw_start) / 60).to_i : 20
 
-        # op_delegates → team_delegates ใน response
         raw_op = begin
           JSON.parse(row["op_delegates"].to_s)
         rescue
@@ -503,7 +500,7 @@ class Schedule < ApplicationRecord
           country:          row["country"].presence,
           conference_date:  selected_date.to_s,
           duration_minutes: duration,
-          leave:            nil,            # เติมทีหลังจาก leave_map
+          leave:            nil,
           team_delegates:   team_delegates,
           _raw_start:       raw_start,
           _raw_end:         raw_end,
@@ -520,7 +517,7 @@ class Schedule < ApplicationRecord
           _raw_end:   raw_end
         }
 
-      # ── nomeeting (gap) ──────────────────────────────────
+      # ── nomeeting ────────────────────────────────────────
       when "nomeeting"
         {
           type:       "nomeeting",
@@ -541,11 +538,27 @@ class Schedule < ApplicationRecord
       raw_start = item.delete(:_raw_start)
       raw_end   = item.delete(:_raw_end)
       item.delete(:_schedule_id)
-      item[:start_at] = raw_start&.in_time_zone("Asia/Bangkok")&.iso8601
-      item[:end_at]   = raw_end&.in_time_zone("Asia/Bangkok")&.iso8601
+      # item[:start_at] = raw_start&.in_time_zone("Asia/Bangkok")&.iso8601
+      # item[:end_at]   = raw_end&.in_time_zone("Asia/Bangkok")&.iso8601
+
+      
+      # item[:start_at] = raw_start&.utc&.iso8601   
+      # item[:end_at]   = raw_end&.utc&.iso8601  
+      
+      item[:start_at] = raw_start&.utc&.strftime("%Y-%m-%dT%H:%M:%S+07:00")
+      item[:end_at]   = raw_end&.utc&.strftime("%Y-%m-%dT%H:%M:%S+07:00")
+
+
+
       item
     end
+
+
+    
   end
+
+
+
 
   # ──────────────────────────────────────────────────────────────
   # PRIVATE: ดึง leave data สำหรับ schedule_ids ที่กำหนด
@@ -557,7 +570,7 @@ class Schedule < ApplicationRecord
              .where(schedule_id: schedule_ids)
              .order(created_at: :desc)
              .each_with_object({}) do |lf, map|
-      next if map.key?(lf.schedule_id) # เก็บแค่อันล่าสุด
+      next if map.key?(lf.schedule_id)
 
       map[lf.schedule_id] = {
         id:         lf.id,
@@ -650,7 +663,6 @@ class Schedule < ApplicationRecord
   private
 
   def table_not_double_booked
-    # Booth รองรับหลายคู่ได้ — ไม่ต้องเช็ค
     return if table_number.to_s.match?(/\ABooth\s/i)
 
     conflict = Schedule
