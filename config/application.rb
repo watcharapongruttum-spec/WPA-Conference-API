@@ -12,7 +12,7 @@ module WPAConferenceApi
     # TIME ZONE
     # ==============================
     config.time_zone = 'Asia/Bangkok'
-    config.active_record.default_timezone = :local
+    config.active_record.default_timezone = :utc
 
     # ==============================
     # ACTIVE JOB

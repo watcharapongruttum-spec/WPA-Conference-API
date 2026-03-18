@@ -81,56 +81,51 @@ class Table < ApplicationRecord
     parse_bangkok_datetime(target_year, input_date, input_time, bkk_now)
   end
 
+  # ──────────────────────────────────────────────────────────────
+  # RESOLVE SCHEDULES
+  #
+  # กฎ:
+  #   - ถ้าส่ง time มา → ตรวจสอบแบบเข้มงวด ต้องตรง slot เป๊ะ
+  #     ถ้าเป็นเวลา break / event / ช่วงว่าง → คืน [] ทันที ไม่ snap
+  #   - ถ้าไม่ส่ง time มา → ใช้ slot แรกของวันเป็น default
+  # ──────────────────────────────────────────────────────────────
   def self.resolve_schedules(datetime, params, target_year)
-    user_selected = params[:date].present? && params[:time].present?
-    schedules     = load_schedules_at(datetime, target_year)   
-    input_date    = datetime.in_time_zone(TIMEZONE).to_date
+    input_date = datetime.in_time_zone(TIMEZONE).to_date
 
-    if schedules.empty? && !user_selected
-      first_of_day = Schedule
-        .where("DATE(start_at AT TIME ZONE '#{TIMEZONE}') = ?", input_date)
-        .where("EXTRACT(YEAR FROM start_at AT TIME ZONE '#{TIMEZONE}') = ?", target_year)
-        .where("booker_id IS NOT NULL")
-        .order(:start_at)
-        .pick(:start_at)
-      # schedules = load_schedules_at(first_of_day) if first_of_day
-      schedules = load_schedules_at(first_of_day, target_year) if first_of_day
+    if params[:time].present?
+      # ส่ง time มา → ต้องตรง slot เป๊ะเท่านั้น ไม่ snap
+      return load_schedules_exact(datetime, target_year)
     end
 
-    if schedules.empty? && !user_selected
-      first_of_year = Schedule
-        .where("EXTRACT(YEAR FROM start_at AT TIME ZONE '#{TIMEZONE}') = ?", target_year)
-        .where("booker_id IS NOT NULL")
-        .order(:start_at)
-        .pick(:start_at)
-      # schedules = load_schedules_at(first_of_year) if first_of_year
-      schedules = load_schedules_at(first_of_year, target_year) if first_of_year
-    end
-
-    schedules
-  end
-
-  # ──────────────────────────────────────────────────────────────
-  # AR-based schedule loader
-  # - ใช้ AR bind param → Rails จัดการ timezone ให้เองทุก query
-  # - snap ไปหา slot ที่ใกล้ที่สุดในวันเดียวกันเสมอ
-  # ──────────────────────────────────────────────────────────────
-  def self.load_schedules_at(datetime, target_year = nil)
-    dt_bkk      = datetime.in_time_zone(TIMEZONE)
-    bkk_date    = dt_bkk.to_date.to_s
-    dt_utc      = dt_bkk.utc
-    target_year ||= dt_bkk.year                                            # ← เพิ่ม
-    year_cond   = "EXTRACT(YEAR FROM start_at AT TIME ZONE '#{TIMEZONE}') = #{target_year.to_i}"  # ← เพิ่ม
-
-    base = Schedule
-      .includes(booker: :company, delegate: :company, team: [:delegates, :company])
-      .where(year_cond)                                                     # ← เพิ่ม
+    # ไม่ส่ง time → ใช้ slot แรกของวันเป็น default
+    first_of_day = Schedule
+      .where("DATE(start_at AT TIME ZONE '#{TIMEZONE}') = ?", input_date)
+      .where("EXTRACT(YEAR FROM start_at AT TIME ZONE '#{TIMEZONE}') = ?", target_year)
       .where("booker_id IS NOT NULL")
       .where("table_number IS NOT NULL AND table_number != ''")
       .where("booker_id IN (?)", Delegate.select(:id))
+      .order(:start_at)
+      .pick(:start_at)
 
+    return [] unless first_of_day
+
+    load_schedules_at(first_of_day, target_year)
+  end
+
+  # ──────────────────────────────────────────────────────────────
+  # LOAD SCHEDULES EXACT
+  # ใช้เมื่อ user ส่ง time มา → ต้องตรง slot เป๊ะ
+  # ตรวจว่า datetime อยู่ใน range (start_at <= time < end_at) จริงๆ
+  # ถ้าเป็นเวลา break / event / ช่วงว่าง → คืน [] ทันที
+  # ──────────────────────────────────────────────────────────────
+  def self.load_schedules_exact(datetime, target_year = nil)
+    dt_utc      = datetime.in_time_zone(TIMEZONE).utc
+    target_year ||= datetime.in_time_zone(TIMEZONE).year
+    year_cond   = "EXTRACT(YEAR FROM start_at AT TIME ZONE '#{TIMEZONE}') = #{target_year.to_i}"
+
+    # หา slot ที่ครอบเวลานี้จริงๆ (start_at <= time < end_at)
     slot_start = Schedule
-      .where(year_cond)                                                     # ← เพิ่ม
+      .where(year_cond)
       .where("start_at <= ? AND end_at > ?", dt_utc, dt_utc)
       .where("booker_id IS NOT NULL")
       .where("table_number IS NOT NULL AND table_number != ''")
@@ -138,21 +133,29 @@ class Table < ApplicationRecord
       .order(:start_at)
       .pick(:start_at)
 
-    if slot_start.nil?
-      all_day_starts = Schedule
-        .where(year_cond)                                                   # ← เพิ่ม
-        .where("booker_id IS NOT NULL")
-        .where("table_number IS NOT NULL AND table_number != ''")
-        .where("booker_id IN (?)", Delegate.select(:id))
-        .where("DATE(start_at AT TIME ZONE '#{TIMEZONE}') = ?", bkk_date)
-        .pluck(:start_at)
-        .uniq
-      slot_start = all_day_starts.min_by { |t| (t - dt_utc).abs }
-    end
-
+    # ไม่ตรง slot ใดเลย → คืน [] ทันที ไม่ snap ไปหาเวลาอื่น
     return [] unless slot_start
 
-    schedules = base.where(start_at: slot_start).to_a
+    load_schedules_at(slot_start, target_year)
+  end
+
+  # ──────────────────────────────────────────────────────────────
+  # LOAD SCHEDULES AT
+  # รับ exact slot_start Time object แล้วโหลด schedules ของ slot นั้น
+  # ──────────────────────────────────────────────────────────────
+  def self.load_schedules_at(datetime, target_year = nil)
+    dt_utc      = datetime.in_time_zone(TIMEZONE).utc
+    target_year ||= datetime.in_time_zone(TIMEZONE).year
+    year_cond   = "EXTRACT(YEAR FROM start_at AT TIME ZONE '#{TIMEZONE}') = #{target_year.to_i}"
+
+    schedules = Schedule
+      .includes(booker: :company, delegate: :company, team: [:delegates, :company])
+      .where(year_cond)
+      .where("booker_id IS NOT NULL")
+      .where("table_number IS NOT NULL AND table_number != ''")
+      .where("booker_id IN (?)", Delegate.select(:id))
+      .where(start_at: dt_utc)
+      .to_a
 
     schedules.map do |s|
       members = (s.team&.delegates || []).map do |d|
@@ -163,8 +166,8 @@ class Table < ApplicationRecord
 
       {
         id:           s.id,
-        start_at:     s.start_at,
-        end_at:       s.end_at,
+        start_at:     s.start_at.in_time_zone(TIMEZONE),
+        end_at:       s.end_at.in_time_zone(TIMEZONE),
         table_number: s.table_number,
         booker_id:    s.booker_id,
         delegate_id:  s.delegate_id,
@@ -230,7 +233,7 @@ class Table < ApplicationRecord
   end
 
   def self.sorted_for_view
-    order(
+    includes(:teams).order(
       Arel.sql("CASE WHEN table_number ~ '^[0-9]+$' THEN 0 ELSE 1 END, table_number::text")
     ).to_a
   end
@@ -327,10 +330,18 @@ class Table < ApplicationRecord
       []
     end
 
-    # Booth แสดงแค่ 1 meeting ต่อ slot — เลือก id น้อยสุด (จองก่อน)
     display_schedules = if table_number.to_s.match?(/\ABooth\s/i)
-      first = table_schedules.min_by { |s| s[:id] }
-      first ? [first] : []
+      owner_team_ids = teams.map(&:id)
+
+      chosen = if owner_team_ids.any?
+        owner_schedules = table_schedules.select { |s| owner_team_ids.include?(s[:target_id]) }
+        owner_schedules.min_by { |s| s[:id] } ||
+          table_schedules.min_by { |s| s[:id] }
+      else
+        table_schedules.min_by { |s| s[:id] }
+      end
+
+      chosen ? [chosen] : []
     else
       table_schedules
     end
@@ -376,8 +387,8 @@ class Table < ApplicationRecord
 
     {
       schedule_id: schedule[:id],
-      start_at:    schedule[:start_at]&.in_time_zone(TIMEZONE)&.iso8601,
-      end_at:      schedule[:end_at]&.in_time_zone(TIMEZONE)&.iso8601,
+      start_at:    schedule[:start_at]&.iso8601,
+      end_at:      schedule[:end_at]&.iso8601,
       booker:      booker_json,
       target_team: target_team_json
     }

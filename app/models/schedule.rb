@@ -284,6 +284,8 @@ class Schedule < ApplicationRecord
     team_id            = delegate.team_id || 0
     conference_date_id = conference_date.id
     conn               = ActiveRecord::Base.connection
+    # ── Bangkok timezone zone object (ใช้ทุกที่ใน method นี้) ──
+    bkk_zone           = Time.find_zone("Asia/Bangkok")
 
     # ── time slot filter ──────────────────────────────────
     slot      = resolve_time_slot(conference_date_id: conference_date_id,
@@ -294,8 +296,6 @@ class Schedule < ApplicationRecord
 
     # ══════════════════════════════════════════════════════
     # SQL A: ฉันเป็น TARGET
-    #   team_delegates = booker delegate
-    #   country        = s.country (เก็บตรงใน schedules table)
     # ══════════════════════════════════════════════════════
     sql_as_target = <<~SQL
       SELECT
@@ -322,8 +322,6 @@ class Schedule < ApplicationRecord
 
     # ══════════════════════════════════════════════════════
     # SQL B: ฉันเป็น BOOKER
-    #   team_delegates = target team's delegates
-    #   country        = s.country (เก็บตรงใน schedules table)
     # ══════════════════════════════════════════════════════
     sql_as_booker = <<~SQL
       SELECT
@@ -355,9 +353,13 @@ class Schedule < ApplicationRecord
 
     # ── group by schedule id → แปลงเป็น schedule hashes ─────
     schedule_hashes = rows.group_by { |r| r["id"] }.map do |_id, group|
-      first     = group.first
-      raw_start = Time.zone.parse(first["start_at"].to_s) rescue nil
-      raw_end   = Time.zone.parse(first["end_at"].to_s)   rescue nil
+      first = group.first
+
+      # FIX: ใช้ bkk_zone.parse แทน Time.zone.parse
+      # เพื่อให้ parse เวลาจาก SQL string เป็น Asia/Bangkok เสมอ
+      raw_start = bkk_zone.parse(first["start_at"].to_s) rescue nil
+      raw_end   = bkk_zone.parse(first["end_at"].to_s)   rescue nil
+
       duration  = (raw_start && raw_end) ? ((raw_end - raw_start) / 60).to_i : 20
       has_table = first["table_number"].present?
 
@@ -406,12 +408,16 @@ class Schedule < ApplicationRecord
     event_scope = event_scope.where(start_at: slot.start_at) if slot
 
     event_items = event_scope.map do |g|
+      # FIX: force เป็น Time object ก่อน ป้องกันกรณี g.start_at เป็น string
+      raw_start = g.start_at.is_a?(Time) ? g.start_at : bkk_zone.parse(g.start_at.to_s)
+      raw_end   = g.end_at.is_a?(Time)   ? g.end_at   : bkk_zone.parse(g.end_at.to_s)
+
       {
         type:       "event",
         id:         g.id,
         title:      g.title,
-        _raw_start: g.start_at,
-        _raw_end:   g.end_at
+        _raw_start: raw_start,
+        _raw_end:   raw_end
       }
     end
 
@@ -429,7 +435,6 @@ class Schedule < ApplicationRecord
     meeting_times = meeting_items.map { |m| m[:_raw_start] }.to_set
     event_times   = event_items.map   { |e| e[:_raw_start] }.to_set
 
-    # pure slot → 3 fields เท่านั้น (ไม่มี id, leave ฯลฯ)
     nomeeting_items = all_slots.filter_map do |sa, ea|
       next if meeting_times.include?(sa)
       next if event_times.include?(sa)
@@ -541,38 +546,29 @@ class Schedule < ApplicationRecord
   end
 
   # ===============================
-    # TEAM DELEGATES
-    # ===============================
-    def team_delegates
-      return [] unless team
-      team.delegates
-    end
+  # TEAM DELEGATES
+  # ===============================
+  def team_delegates
+    return [] unless team
+    team.delegates
+  end
 
-    # ===============================
-    # VALIDATIONS (private)
-    # ===============================
-    private
+  # ===============================
+  # VALIDATIONS (private)
+  # ===============================
+  private
 
-    def table_not_double_booked
-      # Booth รองรับหลายคู่ได้ — ไม่ต้องเช็ค
-      return if table_number.to_s.match?(/\ABooth\s/i)
+  def table_not_double_booked
+    # Booth รองรับหลายคู่ได้ — ไม่ต้องเช็ค
+    return if table_number.to_s.match?(/\ABooth\s/i)
 
-      conflict = Schedule
-        .where(table_number: table_number)
-        .where(start_at: start_at)
-        .where(conference_date_id: conference_date_id)
-        .where.not(id: id)
-        .exists?
+    conflict = Schedule
+      .where(table_number: table_number)
+      .where(start_at: start_at)
+      .where(conference_date_id: conference_date_id)
+      .where.not(id: id)
+      .exists?
 
-      errors.add(:base, "โต๊ะ #{table_number} ถูกจองในช่วงเวลานี้แล้ว") if conflict
-    end
-
-
-
-
-
-
-
-
-
+    errors.add(:base, "โต๊ะ #{table_number} ถูกจองในช่วงเวลานี้แล้ว") if conflict
+  end
 end
