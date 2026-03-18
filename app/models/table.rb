@@ -88,73 +88,112 @@ class Table < ApplicationRecord
   #   - ถ้าส่ง time มา → ตรวจสอบแบบเข้มงวด ต้องตรง slot เป๊ะ
   #     ถ้าเป็นเวลา break / event / ช่วงว่าง → คืน [] ทันที ไม่ snap
   #   - ถ้าไม่ส่ง time มา → ใช้ slot แรกของวันเป็น default
+  #
+  # ใช้ SQL หา schedule IDs ก่อน แล้วค่อย load ผ่าน ActiveRecord
+  # เพื่อให้ได้ structure ครบเหมือนเดิมทุก field
   # ──────────────────────────────────────────────────────────────
   def self.resolve_schedules(datetime, params, target_year)
-    input_date = datetime.in_time_zone(TIMEZONE).to_date
+    conference = resolve_conference
+    return [] unless conference
+
+    tz       = TIMEZONE
+    bkk_time = datetime.in_time_zone(tz)
 
     if params[:time].present?
-      # ส่ง time มา → ต้องตรง slot เป๊ะเท่านั้น ไม่ snap
-      return load_schedules_exact(datetime, target_year)
+      # ส่ง time มา → ต้อง match slot เป๊ะ (overlap 20 นาที)
+      ids = fetch_schedule_ids_for_slot(bkk_time, conference, tz)
+      return [] if ids.empty?
+
+      load_schedules_by_ids(ids, target_year)
+    else
+      # ไม่ส่ง time → ใช้ slot แรกของวัน
+      input_date = bkk_time.to_date
+      ids = fetch_schedule_ids_for_day(input_date, conference, tz, target_year)
+      return [] if ids.empty?
+
+      load_schedules_by_ids(ids, target_year)
     end
-
-    # ไม่ส่ง time → ใช้ slot แรกของวันเป็น default
-    first_of_day = Schedule
-      .where("DATE(start_at AT TIME ZONE '#{TIMEZONE}') = ?", input_date)
-      .where("EXTRACT(YEAR FROM start_at AT TIME ZONE '#{TIMEZONE}') = ?", target_year)
-      .where("booker_id IS NOT NULL")
-      .where("table_number IS NOT NULL AND table_number != ''")
-      .where("booker_id IN (?)", Delegate.select(:id))
-      .order(:start_at)
-      .pick(:start_at)
-
-    return [] unless first_of_day
-
-    load_schedules_at(first_of_day, target_year)
   end
 
   # ──────────────────────────────────────────────────────────────
-  # LOAD SCHEDULES EXACT
-  # ใช้เมื่อ user ส่ง time มา → ต้องตรง slot เป๊ะ
-  # ตรวจว่า datetime อยู่ใน range (start_at <= time < end_at) จริงๆ
-  # ถ้าเป็นเวลา break / event / ช่วงว่าง → คืน [] ทันที
+  # SQL: หา schedule ids ที่ overlap กับช่วงเวลาที่กำหนด
+  # overlap condition: start_at < end_ts AND (start_at + 20 min) > start_ts
   # ──────────────────────────────────────────────────────────────
-  def self.load_schedules_exact(datetime, target_year = nil)
-    dt_utc      = datetime.in_time_zone(TIMEZONE).utc
-    target_year ||= datetime.in_time_zone(TIMEZONE).year
-    year_cond   = "EXTRACT(YEAR FROM start_at AT TIME ZONE '#{TIMEZONE}') = #{target_year.to_i}"
+  def self.fetch_schedule_ids_for_slot(bkk_time, conference, tz)
+    start_ts = bkk_time.strftime("%Y-%m-%d %H:%M:%S")
+    end_ts   = (bkk_time + 20.minutes).strftime("%Y-%m-%d %H:%M:%S")
+    conf_id  = conference.id.to_i
 
-    # หา slot ที่ครอบเวลานี้จริงๆ (start_at <= time < end_at)
-    slot_start = Schedule
-      .where(year_cond)
-      .where("start_at <= ? AND end_at > ?", dt_utc, dt_utc)
-      .where("booker_id IS NOT NULL")
-      .where("table_number IS NOT NULL AND table_number != ''")
-      .where("booker_id IN (?)", Delegate.select(:id))
-      .order(:start_at)
-      .pick(:start_at)
+    sql = <<~SQL
+      WITH params AS (
+        SELECT
+          #{conf_id}::int         AS conference_id,
+          timestamp '#{start_ts}' AS start_ts,
+          timestamp '#{end_ts}'   AS end_ts
+      ),
+      matched AS (
+        SELECT DISTINCT
+          s.id                                                            AS schedule_id,
+          (s.start_at AT TIME ZONE 'UTC' AT TIME ZONE '#{tz}')           AS bkk_start
+        FROM schedules s
+        JOIN conference_dates cd ON s.conference_date_id = cd.id
+        WHERE cd.conference_id = (SELECT conference_id FROM params)
+          AND s.booker_id      IS NOT NULL
+          AND s.table_number   IS NOT NULL
+          AND TRIM(s.table_number) <> ''
+          AND s.booker_id IN (SELECT id FROM delegates)
+      )
+      SELECT schedule_id
+      FROM matched
+      WHERE bkk_start < (SELECT end_ts   FROM params)
+        AND (bkk_start + interval '20 minutes') > (SELECT start_ts FROM params)
+      ORDER BY bkk_start;
+    SQL
 
-    # ไม่ตรง slot ใดเลย → คืน [] ทันที ไม่ snap ไปหาเวลาอื่น
-    return [] unless slot_start
-
-    load_schedules_at(slot_start, target_year)
+    ActiveRecord::Base.connection.exec_query(sql).rows.flatten.map(&:to_i)
   end
 
   # ──────────────────────────────────────────────────────────────
-  # LOAD SCHEDULES AT
-  # รับ exact slot_start Time object แล้วโหลด schedules ของ slot นั้น
+  # SQL: หา slot แรกของวัน แล้วดึง schedule ids ของ slot นั้น
   # ──────────────────────────────────────────────────────────────
-  def self.load_schedules_at(datetime, target_year = nil)
-    dt_utc      = datetime.in_time_zone(TIMEZONE).utc
-    target_year ||= datetime.in_time_zone(TIMEZONE).year
-    year_cond   = "EXTRACT(YEAR FROM start_at AT TIME ZONE '#{TIMEZONE}') = #{target_year.to_i}"
+  def self.fetch_schedule_ids_for_day(date, conference, tz, target_year)
+    date_str = date.strftime("%Y-%m-%d")
+    conf_id  = conference.id.to_i
 
+    sql = <<~SQL
+      WITH first_slot AS (
+        SELECT MIN(s.start_at) AS slot_start
+        FROM schedules s
+        JOIN conference_dates cd ON s.conference_date_id = cd.id
+        WHERE cd.conference_id = #{conf_id}
+          AND s.booker_id      IS NOT NULL
+          AND s.table_number   IS NOT NULL
+          AND TRIM(s.table_number) <> ''
+          AND s.booker_id IN (SELECT id FROM delegates)
+          AND DATE(s.start_at AT TIME ZONE 'UTC' AT TIME ZONE '#{tz}') = '#{date_str}'
+          AND EXTRACT(YEAR FROM s.start_at AT TIME ZONE 'UTC' AT TIME ZONE '#{tz}') = #{target_year.to_i}
+      )
+      SELECT s.id AS schedule_id
+      FROM schedules s, first_slot
+      WHERE s.start_at   = first_slot.slot_start
+        AND s.booker_id  IS NOT NULL
+        AND s.table_number IS NOT NULL
+        AND TRIM(s.table_number) <> ''
+        AND s.booker_id IN (SELECT id FROM delegates)
+      ORDER BY s.id;
+    SQL
+
+    ActiveRecord::Base.connection.exec_query(sql).rows.flatten.map(&:to_i)
+  end
+
+  # ──────────────────────────────────────────────────────────────
+  # โหลด schedules เต็มรูปแบบจาก ids ผ่าน ActiveRecord
+  # → structure ครบ 100% เหมือนเดิม (booker_id, target_id, team, ฯลฯ)
+  # ──────────────────────────────────────────────────────────────
+  def self.load_schedules_by_ids(ids, target_year)
     schedules = Schedule
       .includes(booker: :company, delegate: :company, team: [:delegates, :company])
-      .where(year_cond)
-      .where("booker_id IS NOT NULL")
-      .where("table_number IS NOT NULL AND table_number != ''")
-      .where("booker_id IN (?)", Delegate.select(:id))
-      .where(start_at: dt_utc)
+      .where(id: ids)
       .to_a
 
     schedules.map do |s|
@@ -212,13 +251,40 @@ class Table < ApplicationRecord
     columns        = detect_columns_from(numeric_tables)
     rows           = (numeric_tables.size.to_f / columns).ceil
 
+    # ── Pre-compute owner info ใน 1 query ─────────────────────
+    # เจ้าของ Booth อาจปรากฏเป็น booker หรือ target ก็ได้
+    # ต้อง resolve ทั้ง team_ids และ delegate_ids ของเจ้าของ
+    # เพื่อใช้ใน to_time_view_json โดยไม่ต้อง query ซ้ำทุก Booth
+    booth_tables    = all_tables.select { |t| t.table_number.to_s.match?(/\ABooth\s/i) }
+    all_owner_teams = booth_tables.flat_map { |t| t.teams.map(&:id) }.uniq
+
+    # query delegates ของ owner teams ทั้งหมดใน 1 ครั้ง
+    owner_delegate_rows = all_owner_teams.any? ?
+      Delegate.where(team_id: all_owner_teams).pluck(:id, :team_id) : []
+
+    # delegates_by_team: { team_id => [delegate_id, ...] }
+    delegates_by_team = owner_delegate_rows
+      .each_with_object(Hash.new { |h, k| h[k] = [] }) do |(did, tid), h|
+        h[tid] << did
+      end
+
+    # owner_info: { normalized_table_number => { team_ids:, delegate_ids: } }
+    owner_info = booth_tables.each_with_object({}) do |t, h|
+      team_ids     = t.teams.map(&:id)
+      delegate_ids = team_ids.flat_map { |tid| delegates_by_team[tid] }
+      h[normalize_table_number(t.table_number)] = {
+        team_ids:     team_ids,
+        delegate_ids: delegate_ids
+      }
+    end
+
     schedule_by_table = schedules.group_by do |s|
       normalize_table_number(s[:table_number])
     end
 
     tables_json = all_tables
       .select { |t| schedule_by_table[normalize_table_number(t.table_number)]&.any? }
-      .map { |t| t.to_time_view_json(schedule_by_table, adjacent_by_id) }
+      .map { |t| t.to_time_view_json(schedule_by_table, owner_info) }
 
     {
       year:        target_year,
@@ -307,7 +373,7 @@ class Table < ApplicationRecord
     return nil if raw.blank?
     cleaned = raw.to_s.strip
     return nil unless cleaned =~ /\A\d{1,2}:\d{2}\z/
-    cleaned.rjust(5, "0")   # "9:00" → "09:00"
+    cleaned.rjust(5, "0")
   end
 
   def self.parse_bangkok_datetime(year, date, time_str, fallback)
@@ -320,7 +386,7 @@ class Table < ApplicationRecord
   # Instance methods
   # ──────────────────────────────────────────────────────────────
 
-  def to_time_view_json(schedule_by_table, _adjacent_by_id)
+  def to_time_view_json(schedule_by_table, owner_info)
     key             = Table.normalize_table_number(table_number)
     table_schedules = schedule_by_table[key] || []
 
@@ -331,17 +397,35 @@ class Table < ApplicationRecord
     end
 
     display_schedules = if table_number.to_s.match?(/\ABooth\s/i)
-      owner_team_ids = teams.map(&:id)
+      info         = owner_info[key] || { team_ids: [], delegate_ids: [] }
+      team_ids     = info[:team_ids]
+      delegate_ids = info[:delegate_ids]
 
-      chosen = if owner_team_ids.any?
-        owner_schedules = table_schedules.select { |s| owner_team_ids.include?(s[:target_id]) }
-        owner_schedules.min_by { |s| s[:id] } ||
-          table_schedules.min_by { |s| s[:id] }
+      if team_ids.any?
+        # ══════════════════════════════════════════════════════
+        # เจ้าของ Booth ปรากฏใน schedule ได้ 2 แบบ:
+        #
+        #   แบบ A: เจ้าของนั่งรับ visitor
+        #          target_id = owner team, booker = visitor
+        #          → แสดง schedule นี้เป็นหลัก
+        #
+        #   แบบ B: เจ้าของเป็น booker ไปหา visitor ที่ Booth ตัวเอง
+        #          booker_id = owner delegate, target = visitor's team
+        #          → แสดง schedule นี้ถ้าไม่มีแบบ A
+        #
+        # ถ้าไม่พบ schedule ของ owner เลยใน slot นี้ → คืน []
+        # ไม่ fallback ไปแสดง schedule ของ visitor เป็นเจ้าของผิด
+        # ══════════════════════════════════════════════════════
+        chosen =
+          table_schedules.find { |s| team_ids.include?(s[:target_id]) } ||
+          table_schedules.find { |s| delegate_ids.include?(s[:booker_id]) }
+
+        chosen ? [chosen] : []
       else
-        table_schedules.min_by { |s| s[:id] }
+        # ไม่มี owner team ผูกไว้ → fallback min id
+        chosen = table_schedules.min_by { |s| s[:id] }
+        chosen ? [chosen] : []
       end
-
-      chosen ? [chosen] : []
     else
       table_schedules
     end
