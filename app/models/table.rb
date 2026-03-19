@@ -294,26 +294,47 @@ class Table < ApplicationRecord
     booth_tables    = all_tables.select { |t| t.table_number.to_s.match?(/\ABooth\s/i) }
     all_owner_teams = booth_tables.flat_map { |t| t.teams.map(&:id) }.uniq
 
-    owner_delegate_rows = all_owner_teams.any? ?
-      Delegate.where(team_id: all_owner_teams).pluck(:id, :team_id) : []
+    # ดึง company name ของ owner teams — ใช้ทั้ง team.company_id และ delegate.company_id เป็น fallback
+    # เพราะบาง team อาจมี company_id = nil แต่ delegate มีครบ
+    owner_delegate_full = all_owner_teams.any? ?
+      Delegate.where(team_id: all_owner_teams).pluck(:id, :team_id, :company_id) : []
 
-    delegates_by_team = owner_delegate_rows
-      .each_with_object(Hash.new { |h, k| h[k] = [] }) do |(did, tid), h|
+    # rebuild delegates_by_team พร้อม company_id
+    delegates_by_team = owner_delegate_full
+      .each_with_object(Hash.new { |h, k| h[k] = [] }) do |(did, tid, _cid), h|
         h[tid] << did
       end
 
-    # ดึง company name ของ owner teams ทั้งหมดในครั้งเดียว
-    owner_company_ids   = booth_tables.flat_map { |t| t.teams.map(&:company_id) }.compact.uniq
-    owner_companies_map = Company.where(id: owner_company_ids).pluck(:id, :name).to_h
+    delegate_company_by_team = owner_delegate_full
+      .each_with_object(Hash.new { |h, k| h[k] = [] }) do |(_did, tid, cid), h|
+        h[tid] << cid if cid
+      end
+
+    all_company_ids = (
+      booth_tables.flat_map { |t| t.teams.map(&:company_id) } +
+      owner_delegate_full.map { |(_did, _tid, cid)| cid }
+    ).compact.uniq
+
+    owner_companies_map = Company.where(id: all_company_ids).pluck(:id, :name).to_h
 
     owner_info = booth_tables.each_with_object({}) do |t, h|
       team_ids     = t.teams.map(&:id)
       delegate_ids = team_ids.flat_map { |tid| delegates_by_team[tid] }
-      companies    = t.teams.filter_map { |team| owner_companies_map[team.company_id] }.uniq
+
+      # ดึง company จาก team.company_id ก่อน — ถ้า nil fallback ไป delegate.company_id
+      companies = t.teams.flat_map do |team|
+        if team.company_id
+          [owner_companies_map[team.company_id]].compact
+        else
+          delegate_company_by_team[team.id].filter_map { |cid| owner_companies_map[cid] }
+        end
+      end.uniq
+
       h[normalize_table_number(t.table_number)] = {
         team_ids:     team_ids,
         delegate_ids: delegate_ids,
-        companies:    companies
+        companies:    companies,
+        owner_teams:  t.teams.map(&:name)
       }
     end
 
@@ -485,14 +506,15 @@ class Table < ApplicationRecord
       table_id:        id,
       table_number:    table_number,
       adjacent_tables: adjacent,
-      meetings:        display_schedules.map { |s| build_meeting_json(s, owner_team_ids) },
+      meetings:        display_schedules.map { |s| build_meeting_json(s, owner_team_ids, info[:companies]) },
       delegates:       build_delegates_json(display_schedules)
     }
 
     if is_booth
       result[:booth_owner] = {
-        team_ids:  owner_team_ids,
-        companies: info[:companies]
+        team_ids:    owner_team_ids,
+        companies:   info[:companies],
+        owner_teams: info[:owner_teams] || []
       }
     end
 
@@ -501,7 +523,7 @@ class Table < ApplicationRecord
 
   private
 
-  def build_meeting_json(schedule, owner_team_ids = [])
+  def build_meeting_json(schedule, owner_team_ids = [], owner_companies = [])
     person_a = schedule[:booker]
     team     = schedule[:team]
 
@@ -512,10 +534,28 @@ class Table < ApplicationRecord
       if booker_is_owner && target_is_owner
         "owner_internal"
       elsif booker_is_owner
-        "owner_hosting"     # owner เชิญ guest มาที่ booth
+        "owner_hosting"
       elsif target_is_owner
-        "owner_as_target"   # guest เข้ามาหา owner ที่ booth
+        "owner_as_target"
       end
+    end
+
+    # owner_company = company ของฝั่งเจ้าของจาก booth_owner (source of truth)
+    # ไม่ใช้ booker.company เพราะอาจ anonymized หรือ mismatch
+    owner_company = if booker_is_owner
+      # booker เป็น owner → ดู company จาก target_team ฝั่ง owner ไม่ได้
+      # ใช้ booth_owner.companies แทน (เจ้าของ booth คือใคร)
+      owner_companies.join(" & ")
+    elsif target_is_owner
+      # target เป็น owner → ดูได้จาก target_team.company โดยตรง
+      team&.dig(:company).presence || owner_companies.join(" & ")
+    end
+
+    # guest_company = ฝั่งตรงข้าม (ไม่ใช่เจ้าของ)
+    guest_company = if booker_is_owner
+      team&.dig(:company)
+    elsif target_is_owner
+      person_a&.dig(:company)
     end
 
     booker_json = if person_a
@@ -554,6 +594,8 @@ class Table < ApplicationRecord
       meeting[:meeting_role]    = meeting_role
       meeting[:booker_is_owner] = booker_is_owner
       meeting[:target_is_owner] = target_is_owner
+      meeting[:owner_company]   = owner_company
+      meeting[:guest_company]   = guest_company
     end
 
     meeting
