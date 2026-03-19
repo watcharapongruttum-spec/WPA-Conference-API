@@ -71,14 +71,14 @@ module Api
       def parse_date_param!
         if params[:date].present?
           begin
-            Time.zone.parse(params[:date].to_s)
+            Date.parse(params[:date].to_s)   # ✅ ใช้ Date แทน Time
           rescue ArgumentError, TypeError
-            render json: { error: "Invalid date format. Use YYYY-MM-DD or ISO8601." },
+            render json: { error: "Invalid date format. Use YYYY-MM-DD." },
                   status: :unprocessable_entity
             nil
           end
         else
-          Time.zone.parse("2025-10-13T11:00:00+07:00") 
+          Date.new(2025, 10, 13)   # ✅ default เป็น Date
         end
       end
 
