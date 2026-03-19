@@ -166,7 +166,10 @@ class Table < ApplicationRecord
           AND (s.start_at + interval '20 minutes') > (SELECT start_ts FROM params)
       )
       SELECT
-        (ss.start_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Bangkok') AS start_at,
+        to_char(
+          ss.start_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Bangkok',
+          'YYYY-MM-DD"T"HH24:MI:SS+07:00'
+        ) AS start_at,
         ss.table_number AS "table",
         json_agg(DISTINCT jsonb_build_object(
           'schedule_id',  ss.id,
@@ -211,7 +214,9 @@ class Table < ApplicationRecord
 
     connection.exec_query(sql, "fetch_time_view_rows", [conference_id.to_i, utc_start, utc_end]).flat_map do |row|
       meetings = parse_json_agg(row["meetings"])
-      start_at = tz.parse(row["start_at"].to_s)
+      # start_at เป็น ISO8601 string จาก to_char แล้ว เช่น "2025-10-13T11:00:00+07:00"
+      start_at_str = row["start_at"].to_s
+      start_at = Time.iso8601(start_at_str).in_time_zone(tz)
 
       meetings.map do |m|
         booker_raw = m[:booker].is_a?(Hash) ? m[:booker].transform_keys(&:to_sym) : nil
@@ -236,6 +241,7 @@ class Table < ApplicationRecord
           id:           m[:schedule_id],
           start_at:     start_at,
           end_at:       start_at + 20.minutes,
+          start_at_str: start_at_str,
           table_number: row["table"],
           booker_id:    booker&.dig(:id),
           target_id:    team&.dig(:id),
@@ -506,7 +512,7 @@ class Table < ApplicationRecord
 
     {
       schedule_id: schedule[:id],
-      start_at:    schedule[:start_at]&.iso8601,
+      start_at:    schedule[:start_at_str] || schedule[:start_at]&.iso8601,
       end_at:      schedule[:end_at]&.iso8601,
       booker:      booker_json,
       target_team: target_team_json
