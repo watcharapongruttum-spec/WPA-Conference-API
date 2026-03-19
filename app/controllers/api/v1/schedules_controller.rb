@@ -53,19 +53,42 @@ module Api
       # ===============================
       # PARAM HELPERS
       # ===============================
+      # def parse_date_param!
+      #   if params[:date].present?
+      #     begin
+      #       Date.parse(params[:date].to_s)
+      #     rescue ArgumentError, TypeError
+      #       render json: { error: "Invalid date format. Use YYYY-MM-DD." },
+      #              status: :unprocessable_entity
+      #       nil
+      #     end
+      #   else
+      #     # Date.today
+      #     Date.new(2025, 10, 13)
+      #   end
+      # end
+
       def parse_date_param!
         if params[:date].present?
           begin
-            Date.parse(params[:date].to_s)
+            Time.zone.parse(params[:date].to_s)
           rescue ArgumentError, TypeError
-            render json: { error: "Invalid date format. Use YYYY-MM-DD." },
-                   status: :unprocessable_entity
+            render json: { error: "Invalid date format. Use YYYY-MM-DD or ISO8601." },
+                  status: :unprocessable_entity
             nil
           end
         else
-          Date.today
+          Time.zone.parse("2025-10-13T11:00:00+07:00") 
         end
       end
+
+
+
+
+
+
+
+
 
       def fetch_conference_id!
         conference_id = Reservation.find(current_delegate.reservation_id).conference_id

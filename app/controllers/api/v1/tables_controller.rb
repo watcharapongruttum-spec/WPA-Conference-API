@@ -5,6 +5,9 @@ module Api
 
       # GET /api/v1/tables/time_view?date=2025-10-13&time=11:00
       def time_view
+        params[:date] ||= "2025-10-13"
+        params[:time] ||= "11:00"
+
         render json: Table.time_view(
           params:           params,
           current_delegate: current_delegate
