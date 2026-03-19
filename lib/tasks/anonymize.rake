@@ -47,7 +47,7 @@ namespace :db do
           email:                fake_email(c.id, "company"),
           login_token:          nil,
           reset_password_token: nil,
-          encrypted_password: BCrypt::Password.create("12345678")
+          encrypted_password:   BCrypt::Password.create("12345678")
         )
       end
     end
@@ -94,11 +94,24 @@ namespace :db do
     end
 
     # ────────────────────────────────────────────────────────────
-    # 5. TEAMS (country_code + name)
+    # 5. TEAMS
     # ────────────────────────────────────────────────────────────
+    # คงรูปแบบ "Team N (City)" — counter reset ต่อ table
+    # ทีมที่ไม่มี table_id → "Team (City)" ไม่มีเลข
     puts "  [5/5] teams"
-    Team.find_each do |t|
-      safe_update(t) { t.update_columns(name: Faker::Company.name) }
+
+    team_counter = Hash.new(0)
+    Team.order(Arel.sql("table_id NULLS LAST"), :id).find_each do |t|
+      safe_update(t) do
+        city = Faker::Address.city
+        name = if t.table_id
+          team_counter[t.table_id] += 1
+          "Team #{team_counter[t.table_id]} (#{city})"
+        else
+          "Team (#{city})"
+        end
+        t.update_columns(name: name)
+      end
     end
 
     # ────────────────────────────────────────────────────────────
