@@ -111,41 +111,48 @@ class Table < ApplicationRecord
 
   # ──────────────────────────────────────────────────────────────
   # หา slot แรกของวัน (ใช้สำหรับ day mode)
+  # FIX: ใช้ parameterized query แทน string interpolation
   # ──────────────────────────────────────────────────────────────
   def self.find_first_slot(date, conference, target_year)
     sql = <<~SQL
-      SELECT MIN(s.start_at AT TIME ZONE 'UTC' AT TIME ZONE '#{TIMEZONE}') AS first_slot
+      SELECT MIN(s.start_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Bangkok') AS first_slot
       FROM schedules s
       JOIN conference_dates cd ON s.conference_date_id = cd.id
-      WHERE cd.conference_id = #{conference.id.to_i}
+      WHERE cd.conference_id = $1
         AND s.booker_id IS NOT NULL
         AND s.table_number IS NOT NULL
         AND TRIM(s.table_number) <> ''
-        AND DATE(s.start_at AT TIME ZONE 'UTC' AT TIME ZONE '#{TIMEZONE}') = '#{date.strftime("%Y-%m-%d")}'
-        AND EXTRACT(YEAR FROM s.start_at AT TIME ZONE 'UTC' AT TIME ZONE '#{TIMEZONE}') = #{target_year.to_i}
+        AND DATE(s.start_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Bangkok') = $2
+        AND EXTRACT(YEAR FROM s.start_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Bangkok') = $3
     SQL
 
-    result = connection.exec_query(sql).first
+    result = connection.exec_query(sql, "find_first_slot", [conference.id, date.strftime("%Y-%m-%d"), target_year]).first
     return nil unless result&.dig("first_slot")
 
-    ActiveSupport::TimeZone[TIMEZONE].parse(result["first_slot"].to_s)
+    # DB คืน Time object ที่ AT TIME ZONE แปลงแล้ว แต่ Ruby รับเป็น UTC
+    # ต้อง reinterpret ว่า "11:00:00 UTC" จริงๆ คือ "11:00:00 BKK" (ไม่ใช่ UTC)
+    raw_time = result["first_slot"]
+    bkk_str  = raw_time.strftime("%Y-%m-%d %H:%M:%S")
+    ActiveSupport::TimeZone[TIMEZONE].parse(bkk_str)
   rescue StandardError
     nil
   end
 
   # ──────────────────────────────────────────────────────────────
   # SQL ใหม่ — GROUP BY table, คืน meetings + delegates เป็น JSON
+  # FIX: ใช้ parameterized query + เพิ่ม booker_id IS NOT NULL
   # ──────────────────────────────────────────────────────────────
   def self.fetch_time_view_rows(conference_id, start_ts, end_ts)
-    bkk_start = start_ts.in_time_zone(TIMEZONE).strftime("%Y-%m-%d %H:%M:%S")
-    bkk_end   = end_ts.in_time_zone(TIMEZONE).strftime("%Y-%m-%d %H:%M:%S")
+    # DB timezone = UTC → ส่ง UTC string ตรงๆ
+    utc_start = start_ts.utc.strftime("%Y-%m-%d %H:%M:%S")
+    utc_end   = end_ts.utc.strftime("%Y-%m-%d %H:%M:%S")
 
     sql = <<~SQL
       WITH params AS (
         SELECT
-          #{conference_id.to_i}::int AS conference_id,
-          '#{bkk_start}'::timestamp AS start_ts,
-          '#{bkk_end}'::timestamp   AS end_ts
+          $1::int       AS conference_id,
+          $2::timestamp AS start_ts,
+          $3::timestamp AS end_ts
       ),
       slot_schedules AS (
         SELECT DISTINCT s.id, s.start_at, s.table_number, s.booker_id, s.target_id
@@ -154,11 +161,12 @@ class Table < ApplicationRecord
         WHERE cd.conference_id = (SELECT conference_id FROM params)
           AND s.table_number IS NOT NULL
           AND TRIM(s.table_number) <> ''
-          AND (s.start_at AT TIME ZONE 'UTC' AT TIME ZONE '#{TIMEZONE}') <  (SELECT end_ts FROM params)
-          AND ((s.start_at AT TIME ZONE 'UTC' AT TIME ZONE '#{TIMEZONE}') + interval '20 minutes') > (SELECT start_ts FROM params)
+          AND s.booker_id IS NOT NULL
+          AND s.start_at <  (SELECT end_ts   FROM params)
+          AND (s.start_at + interval '20 minutes') > (SELECT start_ts FROM params)
       )
       SELECT
-        (ss.start_at AT TIME ZONE 'UTC' AT TIME ZONE '#{TIMEZONE}') AS start_at,
+        (ss.start_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Bangkok') AS start_at,
         ss.table_number AS "table",
         json_agg(DISTINCT jsonb_build_object(
           'schedule_id',  ss.id,
@@ -201,12 +209,11 @@ class Table < ApplicationRecord
 
     tz = ActiveSupport::TimeZone[TIMEZONE]
 
-    connection.exec_query(sql).flat_map do |row|
+    connection.exec_query(sql, "fetch_time_view_rows", [conference_id.to_i, utc_start, utc_end]).flat_map do |row|
       meetings = parse_json_agg(row["meetings"])
       start_at = tz.parse(row["start_at"].to_s)
 
       meetings.map do |m|
-        # nested hashes จาก json_agg ยังเป็น string keys → deep symbolize
         booker_raw = m[:booker].is_a?(Hash) ? m[:booker].transform_keys(&:to_sym) : nil
         team_raw   = m[:target_team].is_a?(Hash) ? m[:target_team].transform_keys(&:to_sym) : nil
 
@@ -435,22 +442,24 @@ class Table < ApplicationRecord
       []
     end
 
-    # ถ้า booker = null → ถือว่าโต๊ะว่าง (delegate ถูกลบออกจากระบบแล้ว)
+    # ถ้า booker = null → ถือว่าโต๊ะว่าง
     occupied_schedules = table_schedules.select { |s| s[:booker].present? }
 
-    # เลือก slot ที่จะแสดง (Booth = เลือก slot ที่ owner เป็นเจ้าของ)
+    # FIX: เปลี่ยน find → filter เพื่อให้แสดงทุก meeting ใน Booth
+    # (Booth 2 มี 3 meetings พร้อมกัน — find คืนแค่ตัวแรก)
     display_schedules = if table_number.to_s.match?(/\ABooth\s/i)
       info         = owner_info[key] || { team_ids: [], delegate_ids: [] }
       team_ids     = info[:team_ids]
       delegate_ids = info[:delegate_ids]
 
       if team_ids.any?
-        chosen =
-          occupied_schedules.find { |s| team_ids.include?(s[:target_id]) } ||
-          occupied_schedules.find { |s| delegate_ids.include?(s[:booker_id]) }
-        chosen ? [chosen] : []
+        # ดึง meeting ที่ owner เป็น target หรือ booker ก็ได้
+        # target_id: 620 (Hyatt team) ✅, booker_id: 532 (Hyatt delegate) ✅, booker_id: 621 (Schumm delegate) ✅
+        occupied_schedules.filter do |s|
+          team_ids.include?(s[:target_id]) || team_ids.include?(s[:booker_id])
+        end
       else
-        occupied_schedules.first ? [occupied_schedules.first] : []
+        occupied_schedules
       end
     else
       occupied_schedules
