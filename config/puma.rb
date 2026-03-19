@@ -9,4 +9,10 @@ environment ENV.fetch('RAILS_ENV') { 'development' }
 pidfile ENV.fetch('PIDFILE') { 'tmp/pids/server.pid' }
 workers ENV.fetch('WEB_CONCURRENCY') { 2 }
 preload_app!
+
+before_worker_boot do
+  ActiveRecord::Base.establish_connection if defined?(ActiveRecord)
+end
+
+
 plugin :tmp_restart
