@@ -1,4 +1,3 @@
-# app/controllers/api/v1/admin/announcements_controller.rb
 class Api::V1::Admin::AnnouncementsController < ApplicationController
   def create
     message = params[:message] || params.dig(:notification, :message)
@@ -8,30 +7,25 @@ class Api::V1::Admin::AnnouncementsController < ApplicationController
       return
     end
 
-    sent_at = Time.current.iso8601
-    push_count = 0
+    announcement = Announcement.create!(
+      message: message,
+      sent_at: Time.current
+    )
 
-    Delegate.find_each do |delegate|
-      # ✅ 1. Real-time ผ่าน ActionCable (ตอนแอปเปิดอยู่)
-      NotificationChannel.broadcast_to(delegate, {
-                                         type: "admin_announce",
-                                         message: message,
-                                         sent_at: sent_at
-                                       })
+    # ✅ Real-time ครั้งเดียว — ทุกคนรับพร้อมกันเลย
+    ActionCable.server.broadcast("notifications:year:2025", {
+      type:    "admin_announce",
+      message: message,
+      sent_at: announcement.sent_at.iso8601
+    })
 
-      # ✅ 2. FCM Push ผ่าน Background Job (ไม่ block request แล้ว)
-      if delegate.device_token.present? && delegate.device_token.length >= 20
-        AnnouncementPushJob.perform_later(delegate.id, message, sent_at)
-        push_count += 1
-      end
-    end
-
-    Rails.logger.info "📢 Announcement queued — FCM jobs enqueued for #{push_count} devices"
+    # ✅ สร้าง Notification record + FCM ใน background
+    AnnouncementBroadcastJob.perform_later(announcement.id)
 
     render json: {
-      status: "ok",
-      message: message,
-      push_queued: push_count # เปลี่ยนชื่อ key ให้ตรงความจริง
+      status:          "ok",
+      message:         message,
+      announcement_id: announcement.id
     }, status: :ok
   end
 end

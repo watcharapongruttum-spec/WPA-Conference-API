@@ -74,9 +74,16 @@ module Api
         {
           type:    "admin_announce",
           id:      announcement&.id,
-          content: announcement&.content&.truncate(200)
+          content: announcement&.message&.truncate(200)  # ✅ .content → .message
         }
       end
+
+
+
+
+
+
+
     end
   end
 end

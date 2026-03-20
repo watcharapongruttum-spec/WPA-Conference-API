@@ -1,0 +1,9 @@
+# Read about fixtures at https://api.rubyonrails.org/classes/ActiveRecord/FixtureSet.html
+
+one:
+  message: MyText
+  sent_at: 2026-03-19 17:26:07
+
+two:
+  message: MyText
+  sent_at: 2026-03-19 17:26:07
