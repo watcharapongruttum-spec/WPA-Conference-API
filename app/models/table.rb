@@ -139,8 +139,7 @@ class Table < ApplicationRecord
 
   # ──────────────────────────────────────────────────────────────
   # fetch_time_view_rows
-  # FIX: ลบ LEFT JOIN delegates d (ที่ทำให้ delegate ข้ามโต๊ะ) ออก
-  #      ลบ json_agg delegates ออก — ใช้เฉพาะ members จาก target_team แทน
+  # ใช้ company จาก d_op.company_id (ตรงกับ schedule.rb SQL ใหม่)
   # ──────────────────────────────────────────────────────────────
   def self.fetch_time_view_rows(conference_id, start_ts, end_ts)
     utc_start = start_ts.utc.strftime("%Y-%m-%d %H:%M:%S")
@@ -171,7 +170,7 @@ class Table < ApplicationRecord
         ) AS start_at,
         ss.table_number AS "table",
         json_agg(DISTINCT jsonb_build_object(
-          'schedule_id',  ss.id,
+          'schedule_id', ss.id,
           'booker', CASE WHEN d_b.id IS NOT NULL THEN jsonb_build_object(
             'id',         d_b.id,
             'name',       d_b.name,
@@ -186,19 +185,22 @@ class Table < ApplicationRecord
             'company',      COALESCE(c_t.name, ''),
             'members', (
               SELECT json_agg(jsonb_build_object(
-                'id',    dm.id,
-                'name',  dm.name,
-                'title', COALESCE(dm.title, '')
+                'id',      dm.id,
+                'name',    dm.name,
+                'title',   COALESCE(dm.title, ''),
+                'company', COALESCE(c_dm.name, '')
               ) ORDER BY dm.id)
-              FROM delegates dm WHERE dm.team_id = t.id
+              FROM delegates dm
+              LEFT JOIN companies c_dm ON c_dm.id = dm.company_id
+              WHERE dm.team_id = t.id
             )
           ) ELSE NULL END
         )) AS meetings
       FROM slot_schedules ss
-      LEFT JOIN delegates  d_b ON d_b.id  = ss.booker_id
-      LEFT JOIN companies  c_b ON c_b.id  = d_b.company_id
-      LEFT JOIN teams      t   ON t.id    = ss.target_id
-      LEFT JOIN companies  c_t ON c_t.id  = t.company_id
+      LEFT JOIN delegates d_b ON d_b.id  = ss.booker_id
+      LEFT JOIN companies c_b ON c_b.id  = d_b.company_id
+      LEFT JOIN teams     t   ON t.id    = ss.target_id
+      LEFT JOIN companies c_t ON c_t.id  = t.company_id
       GROUP BY ss.start_at, ss.table_number
       ORDER BY ss.start_at
     SQL
@@ -380,14 +382,16 @@ class Table < ApplicationRecord
       label:         "find_my_table"
     )
 
-    record = rows.find do |row|
-      row["type"] == "meeting" &&
-        row["start_at"].to_s.include?(bkk_time.strftime("%H:%M"))
+    formatted = Schedule.format_timeline(rows)
+
+    record = formatted.find do |row|
+      row[:type] == "meeting" &&
+        row[:start_at].to_s.include?(bkk_time.strftime("%H:%M"))
     end
 
     return nil unless record
 
-    table_number = record["table_number"]
+    table_number = record[:table_number]
     return nil if table_number.blank?
 
     table_number.to_s.strip
@@ -580,7 +584,6 @@ class Table < ApplicationRecord
     meeting
   end
 
-  # FIX: ลบ booker_members ออก — ใช้เฉพาะ booker + target team members
   def build_delegates_json(table_schedules)
     bookers = table_schedules.filter_map { |s| s[:booker] }
     members = table_schedules.flat_map { |s| s.dig(:team, :members) || [] }

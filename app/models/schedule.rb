@@ -15,6 +15,7 @@ class Schedule < ApplicationRecord
           class_name: "LeaveForm"
 
   validate :table_not_double_booked, if: -> { table_number.present? && start_at.present? }
+  validate :no_double_booking
 
   # ===============================
   # DEFAULT INCLUDE
@@ -77,38 +78,13 @@ class Schedule < ApplicationRecord
   # TIMELINE (raw SQL)
   # ===============================
 
+  
   def self.timeline_rows(conference_id:, filter_date:, delegate_id:, label: "timeline")
     sql = <<~SQL
-      WITH params AS (
+      WITH meeting_data AS (
         SELECT
-          $1::int  AS conference_id,
-          $2::date AS filter_date,
-          $3::int  AS delegate_id
-      ),
-      leave_data AS (
-        SELECT
-          lf.schedule_id,
-          jsonb_build_object(
-            'id',          lf.id,
-            'status',      lf.status,
-            'leave_type',  jsonb_build_object(
-                             'id',      lt.id,
-                             'code',    lt.code,
-                             'name_th', lt.name_th,
-                             'name_en', lt.name_en
-                           ),
-            'explanation', lf.explanation,
-            'reported_at', to_char(
-                             lf.reported_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Bangkok',
-                             'YYYY-MM-DD"T"HH24:MI:SS+07:00'
-                           )
-          ) AS leave_json
-        FROM leave_forms lf
-        JOIN leave_types lt ON lt.id = lf.leave_type_id
-      ),
-      meeting_detail AS (
-        SELECT
-          s.id AS schedule_id,
+          s.id,
+          'meeting' AS type,
           to_char(
             s.start_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Bangkok',
             'YYYY-MM-DD"T"HH24:MI:SS+07:00'
@@ -118,48 +94,37 @@ class Schedule < ApplicationRecord
             'YYYY-MM-DD"T"HH24:MI:SS+07:00'
           ) AS end_at,
           s.table_number,
-          EXTRACT(EPOCH FROM (s.end_at - s.start_at))::int / 60 AS duration_minutes,
+          c_t.country,
           DATE(s.start_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Bangkok')::text AS conference_date,
-          c_op.country AS country,
-          ld.leave_json,
-          json_agg(DISTINCT jsonb_build_object(
-            'id',      d_op.id,
-            'name',    d_op.name,
-            'company', b_op_d.trading_name
-          )) FILTER (WHERE d_op.id IS NOT NULL) AS team_delegates
+          EXTRACT(EPOCH FROM (s.end_at - s.start_at))::int / 60 AS duration_minutes,
+          json_agg(
+            jsonb_build_object(
+              'id', d_op.id,
+              'name', d_op.name,
+              'company', c_op.name
+            )
+          ) FILTER (WHERE d_op.id IS NOT NULL) AS team_delegates
         FROM schedules s
-        JOIN conference_dates cd
-          ON s.conference_date_id = cd.id
-          AND cd.conference_id = (SELECT conference_id FROM params)
-        LEFT JOIN delegates d_self
-          ON d_self.id = (SELECT delegate_id FROM params)
-        LEFT JOIN teams t_me ON t_me.id = d_self.team_id
-        LEFT JOIN delegates d_booker ON d_booker.id = s.booker_id
-        LEFT JOIN teams t_op
-          ON t_op.id = CASE
-                WHEN s.target_id = t_me.id THEN d_booker.team_id
-                ELSE s.target_id
-            END
-        LEFT JOIN delegates d_op ON d_op.team_id = t_op.id
-        LEFT JOIN companies c_op ON c_op.id = t_op.company_id
-        LEFT JOIN branches b_op_d ON b_op_d.id = d_op.branch_id
-        LEFT JOIN leave_data ld ON ld.schedule_id = s.id
+        JOIN conference_dates cd ON cd.id = s.conference_date_id
+        JOIN conferences c ON c.id = cd.conference_id
+        LEFT JOIN teams t ON t.id = s.target_id
+        LEFT JOIN delegates d_op ON d_op.team_id = t.id
+        LEFT JOIN companies c_op ON c_op.id = d_op.company_id
+        LEFT JOIN companies c_t ON c_t.id = t.company_id
         WHERE
-          DATE(s.start_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Bangkok')
-            = (SELECT filter_date FROM params)
-          AND t_me.id IN (s.target_id, d_booker.team_id)
+          c.id = $1
+          AND s.booker_id = $3
           AND s.table_number IS NOT NULL
           AND TRIM(s.table_number) <> ''
-          AND s.target_id IS NOT NULL
-          AND s.booker_id IS NOT NULL
-          AND d_booker.team_id IS NOT NULL
+          AND DATE(s.start_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Bangkok') = $2::date
         GROUP BY
           s.id, s.start_at, s.end_at, s.table_number,
-          c_op.country, ld.leave_json
+          c_t.country
       ),
-      events AS (
+      event_data AS (
         SELECT
-          cs.id AS event_id,
+          cs.id,
+          'event' AS type,
           to_char(
             cs.start_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Bangkok',
             'YYYY-MM-DD"T"HH24:MI:SS+07:00'
@@ -168,61 +133,79 @@ class Schedule < ApplicationRecord
             cs.end_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Bangkok',
             'YYYY-MM-DD"T"HH24:MI:SS+07:00'
           ) AS end_at,
-          cs.title
+          cs.title,
+          cs.allow_booking
         FROM conference_schedules cs
-        JOIN conference_dates cd
-          ON cs.conference_date_id = cd.id
-          AND cd.conference_id = (SELECT conference_id FROM params)
+        JOIN conference_dates cd ON cd.id = cs.conference_date_id
+        JOIN conferences c ON c.id = cd.conference_id
         WHERE
-          cs.allow_booking = false
-          AND DATE(cs.start_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Bangkok')
-            = (SELECT filter_date FROM params)
+          c.id = $1
+          AND DATE(cs.start_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Bangkok') = $2::date
       ),
-      base AS (
-        SELECT start_at, end_at FROM meeting_detail
-        UNION ALL
-        SELECT start_at, end_at FROM events
+      -- slot ที่ allow_booking=true แต่ไม่มี meeting ของ delegate นี้ → nomeeting
+      nomeeting_slots AS (
+        SELECT
+          'nomeeting' AS type,
+          e.start_at,
+          e.end_at
+        FROM event_data e
+        WHERE e.allow_booking = true
+          AND NOT EXISTS (
+            SELECT 1 FROM meeting_data m
+            WHERE m.start_at = e.start_at
+          )
       ),
-      ordered AS (
-        SELECT *, LEAD(start_at) OVER (ORDER BY start_at) AS next_start
-        FROM base
-      ),
-      gaps AS (
-        SELECT end_at AS start_at, next_start AS end_at
-        FROM ordered
-        WHERE next_start IS NOT NULL AND next_start > end_at
+      -- event ที่ allow_booking=false เท่านั้นที่แสดง
+      real_events AS (
+        SELECT * FROM event_data
+        WHERE allow_booking = false
       )
       SELECT
-        m.start_at, m.end_at,
-        'meeting'          AS type,
-        m.schedule_id      AS id,
-        NULL::text         AS title,
-        m.table_number,
-        m.country,
-        m.conference_date,
-        m.duration_minutes,
-        m.leave_json,
-        m.team_delegates
-      FROM meeting_detail m
+        type,
+        id,
+        start_at,
+        end_at,
+        table_number,
+        country,
+        conference_date,
+        duration_minutes,
+        team_delegates,
+        NULL::text AS title
+      FROM meeting_data
       UNION ALL
       SELECT
-        e.start_at, e.end_at,
-        'event', e.event_id, e.title,
-        NULL::text, NULL::text, NULL::text,
-        NULL::int, NULL::jsonb, NULL::json
-      FROM events e
+        type,
+        id,
+        start_at,
+        end_at,
+        NULL, NULL, NULL, NULL, NULL,
+        title
+      FROM real_events
       UNION ALL
       SELECT
-        g.start_at, g.end_at,
-        'nomeeting', NULL::bigint, NULL::text,
-        NULL::text, NULL::text, NULL::text,
-        NULL::int, NULL::jsonb, NULL::json
-      FROM gaps g
+        type,
+        NULL,
+        start_at,
+        end_at,
+        NULL, NULL, NULL, NULL, NULL,
+        NULL
+      FROM nomeeting_slots
       ORDER BY start_at
     SQL
 
     connection.exec_query(sql, "#{label}_timeline", [conference_id, filter_date, delegate_id])
   end
+
+
+
+
+
+
+
+
+
+
+
 
   def self.available_years(conference_id:)
     sql = <<~SQL
@@ -263,7 +246,7 @@ class Schedule < ApplicationRecord
           country:          row["country"],
           conference_date:  row["conference_date"],
           duration_minutes: row["duration_minutes"],
-          leave:            parse_json_column(row["leave_json"], single: true),
+          leave:            nil,
           team_delegates:   parse_json_column(row["team_delegates"]),
           start_at:         row["start_at"],
           end_at:           row["end_at"]
@@ -284,6 +267,21 @@ class Schedule < ApplicationRecord
       single ? parsed : Array(parsed)
     rescue JSON::ParserError
       single ? nil : []
+    end
+  end
+
+  # ===============================
+  # PRIVATE INSTANCE METHODS
+  # ===============================
+  private
+
+  def no_double_booking
+    return unless booker_id && start_at
+
+    if Schedule.where(booker_id: booker_id, start_at: start_at)
+               .where.not(id: id)
+               .exists?
+      errors.add(:base, "Delegate is double booked at the same time")
     end
   end
 
