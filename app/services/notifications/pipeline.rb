@@ -56,23 +56,6 @@ module Notifications
       end
     end
 
-    # ─── Leave Form ───────────────────────────────────────
-    def self.call_leave(leave_form)
-      return unless leave_form&.schedule
-
-      booker   = leave_form.schedule.booker
-      reporter = leave_form.reported_by
-      return if booker.nil? || booker.id == reporter.id
-
-      notification = create!(
-        delegate:          booker,
-        notification_type: "leave_reported",
-        notifiable:        leave_form
-      )
-      Rails.cache.delete("dashboard:#{booker.id}:v1")
-      deliver(notification)
-    end
-
     # ─── Connection Events ────────────────────────────────
     def self.call_connection(delegate:, type:, notifiable:)
       notification = create!(
