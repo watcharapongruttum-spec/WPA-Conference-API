@@ -193,6 +193,11 @@ class Table < ApplicationRecord
               FROM delegates dm
               LEFT JOIN companies c_dm ON c_dm.id = dm.company_id
               WHERE dm.team_id = t.id
+                AND NOT EXISTS (
+                  SELECT 1 FROM slot_schedules sx
+                  WHERE sx.booker_id = dm.id
+                    AND sx.start_at = ss.start_at
+                )
             )
           ) ELSE NULL END
         )) AS meetings
