@@ -147,7 +147,12 @@ class Schedule < ApplicationRecord
         WHERE
           DATE(s.start_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Bangkok')
             = (SELECT filter_date FROM params)
-          AND t_me.id IN (s.target_id, d_booker.team_id) 
+          AND t_me.id IN (s.target_id, d_booker.team_id)
+          AND s.table_number IS NOT NULL
+          AND TRIM(s.table_number) <> ''
+          AND s.target_id IS NOT NULL
+          AND s.booker_id IS NOT NULL
+          AND d_booker.team_id IS NOT NULL
         GROUP BY
           s.id, s.start_at, s.end_at, s.table_number,
           c_op.country, ld.leave_json

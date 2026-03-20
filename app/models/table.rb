@@ -85,7 +85,7 @@ class Table < ApplicationRecord
   end
 
   # ──────────────────────────────────────────────────────────────
-  # RESOLVE SCHEDULES  — ใช้ SQL ใหม่ (overlap-based)
+  # RESOLVE SCHEDULES
   # ──────────────────────────────────────────────────────────────
   def self.resolve_schedules(datetime, params, target_year)
     conference = resolve_conference
@@ -94,11 +94,9 @@ class Table < ApplicationRecord
     bkk_time = datetime.in_time_zone(TIMEZONE)
 
     if params[:time].present?
-      # ── time mode: slot ที่ระบุ ─────────────────────────────────
       start_ts = bkk_time
       end_ts   = bkk_time + 20.minutes
     else
-      # ── day mode: หา slot แรกของวัน แล้ว query slot นั้น ────────
       first_slot = find_first_slot(bkk_time.to_date, conference, target_year)
       return [] unless first_slot
 
@@ -110,8 +108,7 @@ class Table < ApplicationRecord
   end
 
   # ──────────────────────────────────────────────────────────────
-  # หา slot แรกของวัน (ใช้สำหรับ day mode)
-  # FIX: parameterized query + reinterpret BKK string จาก DB
+  # หา slot แรกของวัน
   # ──────────────────────────────────────────────────────────────
   def self.find_first_slot(date, conference, target_year)
     sql = <<~SQL
@@ -133,8 +130,6 @@ class Table < ApplicationRecord
 
     return nil unless result&.dig("first_slot")
 
-    # PostgreSQL คืน Time object ที่ AT TIME ZONE แปลงแล้ว
-    # Ruby รับเป็น UTC แต่ค่าตัวเลขคือ BKK → reinterpret ตรงๆ
     raw_time = result["first_slot"]
     bkk_str  = raw_time.strftime("%Y-%m-%d %H:%M:%S")
     ActiveSupport::TimeZone[TIMEZONE].parse(bkk_str)
@@ -143,11 +138,11 @@ class Table < ApplicationRecord
   end
 
   # ──────────────────────────────────────────────────────────────
-  # SQL ใหม่ — GROUP BY table, คืน meetings + delegates เป็น JSON
-  # FIX: parameterized query + booker_id IS NOT NULL + to_char start_at
+  # fetch_time_view_rows
+  # FIX: ลบ LEFT JOIN delegates d (ที่ทำให้ delegate ข้ามโต๊ะ) ออก
+  #      ลบ json_agg delegates ออก — ใช้เฉพาะ members จาก target_team แทน
   # ──────────────────────────────────────────────────────────────
   def self.fetch_time_view_rows(conference_id, start_ts, end_ts)
-    # DB timezone = UTC → แปลง BKK time เป็น UTC string ก่อนส่ง
     utc_start = start_ts.utc.strftime("%Y-%m-%d %H:%M:%S")
     utc_end   = end_ts.utc.strftime("%Y-%m-%d %H:%M:%S")
 
@@ -198,21 +193,12 @@ class Table < ApplicationRecord
               FROM delegates dm WHERE dm.team_id = t.id
             )
           ) ELSE NULL END
-        )) AS meetings,
-        json_agg(DISTINCT jsonb_build_object(
-          'id',    d.id,
-          'name',  d.name,
-          'title', COALESCE(d.title, '')
-        )) FILTER (WHERE d.id IS NOT NULL) AS delegates
+        )) AS meetings
       FROM slot_schedules ss
       LEFT JOIN delegates  d_b ON d_b.id  = ss.booker_id
       LEFT JOIN companies  c_b ON c_b.id  = d_b.company_id
       LEFT JOIN teams      t   ON t.id    = ss.target_id
       LEFT JOIN companies  c_t ON c_t.id  = t.company_id
-      LEFT JOIN delegates  d   ON d.team_id IN (
-        ss.target_id,
-        (SELECT team_id FROM delegates WHERE id = ss.booker_id LIMIT 1)
-      )
       GROUP BY ss.start_at, ss.table_number
       ORDER BY ss.start_at
     SQL
@@ -224,7 +210,7 @@ class Table < ApplicationRecord
       [conference_id.to_i, utc_start, utc_end]
     ).flat_map do |row|
       meetings     = parse_json_agg(row["meetings"])
-      start_at_str = row["start_at"].to_s   # "2025-10-13T11:00:00+07:00"
+      start_at_str = row["start_at"].to_s
       start_at     = Time.iso8601(start_at_str).in_time_zone(tz)
       end_at_str   = (start_at + 20.minutes).strftime("%Y-%m-%dT%H:%M:%S+07:00")
 
@@ -267,8 +253,6 @@ class Table < ApplicationRecord
   end
 
   # ──────────────────────────────────────────────────────────────
-  # (ส่วนล่างนี้ไม่เปลี่ยน)
-  # ──────────────────────────────────────────────────────────────
 
   def self.resolve_conference_date(datetime, conference, schedules)
     bkk_date = datetime.in_time_zone(TIMEZONE).to_date
@@ -294,12 +278,9 @@ class Table < ApplicationRecord
     booth_tables    = all_tables.select { |t| t.table_number.to_s.match?(/\ABooth\s/i) }
     all_owner_teams = booth_tables.flat_map { |t| t.teams.map(&:id) }.uniq
 
-    # ดึง company name ของ owner teams — ใช้ทั้ง team.company_id และ delegate.company_id เป็น fallback
-    # เพราะบาง team อาจมี company_id = nil แต่ delegate มีครบ
     owner_delegate_full = all_owner_teams.any? ?
       Delegate.where(team_id: all_owner_teams).pluck(:id, :team_id, :company_id) : []
 
-    # rebuild delegates_by_team พร้อม company_id
     delegates_by_team = owner_delegate_full
       .each_with_object(Hash.new { |h, k| h[k] = [] }) do |(did, tid, _cid), h|
         h[tid] << did
@@ -321,7 +302,6 @@ class Table < ApplicationRecord
       team_ids     = t.teams.map(&:id)
       delegate_ids = team_ids.flat_map { |tid| delegates_by_team[tid] }
 
-      # ดึง company จาก team.company_id ก่อน — ถ้า nil fallback ไป delegate.company_id
       companies = t.teams.flat_map do |team|
         if team.company_id
           [owner_companies_map[team.company_id]].compact
@@ -413,9 +393,6 @@ class Table < ApplicationRecord
     table_number.to_s.strip
   end
 
-
-
-
   def self.times_today_for(conf_date)
     return [] unless conf_date
 
@@ -434,11 +411,6 @@ class Table < ApplicationRecord
 
     (meeting_times + activity_times).uniq.sort
   end
-
-
-
-
-
 
   def self.conference_days_for(conference)
     return [] unless conference
@@ -501,10 +473,8 @@ class Table < ApplicationRecord
       []
     end
 
-    # ถ้า booker = null → ถือว่าโต๊ะว่าง
     occupied_schedules = table_schedules.select { |s| s[:booker].present? }
 
-    # FIX: filter ทุก meeting ที่ owner เป็น target_id หรือ booker_id (team_id)
     is_booth       = table_number.to_s.match?(/\ABooth\s/i)
     info           = owner_info[key] || { team_ids: [], delegate_ids: [], companies: [] }
     owner_team_ids = is_booth ? info[:team_ids] : []
@@ -555,18 +525,12 @@ class Table < ApplicationRecord
       end
     end
 
-    # owner_company = company ของฝั่งเจ้าของจาก booth_owner (source of truth)
-    # ไม่ใช้ booker.company เพราะอาจ anonymized หรือ mismatch
     owner_company = if booker_is_owner
-      # booker เป็น owner → ดู company จาก target_team ฝั่ง owner ไม่ได้
-      # ใช้ booth_owner.companies แทน (เจ้าของ booth คือใคร)
       owner_companies.join(" & ")
     elsif target_is_owner
-      # target เป็น owner → ดูได้จาก target_team.company โดยตรง
       team&.dig(:company).presence || owner_companies.join(" & ")
     end
 
-    # guest_company = ฝั่งตรงข้าม (ไม่ใช่เจ้าของ)
     guest_company = if booker_is_owner
       team&.dig(:company)
     elsif target_is_owner
@@ -616,17 +580,12 @@ class Table < ApplicationRecord
     meeting
   end
 
+  # FIX: ลบ booker_members ออก — ใช้เฉพาะ booker + target team members
   def build_delegates_json(table_schedules)
     bookers = table_schedules.filter_map { |s| s[:booker] }
     members = table_schedules.flat_map { |s| s.dig(:team, :members) || [] }
 
-    # เพิ่ม: หา team_id ของ booker แล้ว query members ทีเดียว (2 queries เท่านั้น)
-    booker_ids     = bookers.map { |b| b[:id] }.compact.uniq
-    booker_team_ids = Delegate.where(id: booker_ids).pluck(:team_id).compact.uniq
-    booker_members = Delegate.where(team_id: booker_team_ids)
-                              .map { |d| { id: d.id, name: d.name, title: d.title.to_s, company: "" } }
-
-    (bookers + members + booker_members)
+    (bookers + members)
       .uniq { |d| d[:id] }
       .sort_by { |d| d[:id] }
       .map do |d|
@@ -639,12 +598,5 @@ class Table < ApplicationRecord
         }
       end
   end
-
-
-
-
-
-
-
 
 end
