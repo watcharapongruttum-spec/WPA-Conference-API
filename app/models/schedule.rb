@@ -134,9 +134,10 @@ class Schedule < ApplicationRecord
         LEFT JOIN delegates d_self
           ON d_self.id = (SELECT delegate_id FROM params)
         LEFT JOIN teams t_me ON t_me.id = d_self.team_id
+        LEFT JOIN delegates d_booker ON d_booker.id = s.booker_id
         LEFT JOIN teams t_op
           ON t_op.id = CASE
-                WHEN s.target_id = t_me.id THEN s.booker_id
+                WHEN s.target_id = t_me.id THEN d_booker.team_id
                 ELSE s.target_id
             END
         LEFT JOIN delegates d_op ON d_op.team_id = t_op.id
@@ -146,7 +147,7 @@ class Schedule < ApplicationRecord
         WHERE
           DATE(s.start_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Bangkok')
             = (SELECT filter_date FROM params)
-          AND t_me.id IN (s.target_id, s.booker_id)
+          AND t_me.id IN (s.target_id, d_booker.team_id) 
         GROUP BY
           s.id, s.start_at, s.end_at, s.table_number,
           c_op.country, ld.leave_json
