@@ -139,7 +139,6 @@ class Table < ApplicationRecord
 
   # ──────────────────────────────────────────────────────────────
   # fetch_time_view_rows
-  # ใช้ company จาก d_op.company_id (ตรงกับ schedule.rb SQL ใหม่)
   # ──────────────────────────────────────────────────────────────
   def self.fetch_time_view_rows(conference_id, start_ts, end_ts)
     utc_start = start_ts.utc.strftime("%Y-%m-%d %H:%M:%S")
@@ -169,6 +168,7 @@ class Table < ApplicationRecord
           'YYYY-MM-DD"T"HH24:MI:SS+07:00'
         ) AS start_at,
         ss.table_number AS "table",
+        ss.booker_id    AS booker_team_id,
         json_agg(DISTINCT jsonb_build_object(
           'schedule_id', ss.id,
           'booker', CASE WHEN d_b.id IS NOT NULL THEN jsonb_build_object(
@@ -193,20 +193,16 @@ class Table < ApplicationRecord
               FROM delegates dm
               LEFT JOIN companies c_dm ON c_dm.id = dm.company_id
               WHERE dm.team_id = t.id
-                AND NOT EXISTS (
-                  SELECT 1 FROM slot_schedules sx
-                  WHERE sx.booker_id = dm.id
-                    AND sx.start_at = ss.start_at
-                )
             )
           ) ELSE NULL END
         )) AS meetings
       FROM slot_schedules ss
-      LEFT JOIN delegates d_b ON d_b.id  = ss.booker_id
+      -- FIX: booker_id คือ team_id ไม่ใช่ delegate id
+      LEFT JOIN delegates d_b ON d_b.team_id = ss.booker_id
       LEFT JOIN companies c_b ON c_b.id  = d_b.company_id
       LEFT JOIN teams     t   ON t.id    = ss.target_id
       LEFT JOIN companies c_t ON c_t.id  = t.company_id
-      GROUP BY ss.start_at, ss.table_number
+      GROUP BY ss.start_at, ss.table_number, ss.booker_id
       ORDER BY ss.start_at
     SQL
 
@@ -241,16 +237,17 @@ class Table < ApplicationRecord
         end
 
         {
-          id:           m[:schedule_id],
-          start_at:     start_at,
-          end_at:       start_at + 20.minutes,
-          start_at_str: start_at_str,
-          end_at_str:   end_at_str,
-          table_number: row["table"],
-          booker_id:    booker&.dig(:id),
-          target_id:    team&.dig(:id),
-          booker:       booker,
-          team:         team
+          id:             m[:schedule_id],
+          start_at:       start_at,
+          end_at:         start_at + 20.minutes,
+          start_at_str:   start_at_str,
+          end_at_str:     end_at_str,
+          table_number:   row["table"],
+          booker_id:      booker&.dig(:id),
+          booker_team_id: row["booker_team_id"]&.to_i,
+          target_id:      team&.dig(:id),
+          booker:         booker,
+          team:           team
         }
       end
     end
@@ -488,9 +485,10 @@ class Table < ApplicationRecord
     info           = owner_info[key] || { team_ids: [], delegate_ids: [], companies: [] }
     owner_team_ids = is_booth ? info[:team_ids] : []
 
+    # FIX: ใช้ booker_team_id แทน booker_id สำหรับ booth filter
     display_schedules = if is_booth && owner_team_ids.any?
       occupied_schedules.filter do |s|
-        owner_team_ids.include?(s[:target_id]) || owner_team_ids.include?(s[:booker_id])
+        owner_team_ids.include?(s[:target_id]) || owner_team_ids.include?(s[:booker_team_id])
       end
     else
       occupied_schedules
@@ -521,7 +519,8 @@ class Table < ApplicationRecord
     person_a = schedule[:booker]
     team     = schedule[:team]
 
-    booker_is_owner = owner_team_ids.include?(schedule[:booker_id])
+    # FIX: ใช้ booker_team_id แทน booker_id สำหรับ booth owner check
+    booker_is_owner = owner_team_ids.include?(schedule[:booker_team_id])
     target_is_owner = owner_team_ids.include?(schedule[:target_id])
 
     meeting_role = if owner_team_ids.any?

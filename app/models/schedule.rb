@@ -3,7 +3,8 @@ class Schedule < ApplicationRecord
   # RELATIONS
   # ===============================
   belongs_to :conference_date
-  belongs_to :booker, class_name: "Delegate", foreign_key: :booker_id, optional: true
+  # FIX: booker_id คือ team_id ไม่ใช่ delegate id
+  belongs_to :booker, class_name: "Team", foreign_key: :booker_id, optional: true
   belongs_to :table, optional: true
   belongs_to :delegate, optional: true
   belongs_to :team, foreign_key: :target_id, optional: true
@@ -25,7 +26,7 @@ class Schedule < ApplicationRecord
       :conference_date,
       latest_leave_form: :leave_type,
       team: :delegates,
-      booker: :company
+      booker: :delegates
     )
   }
 
@@ -37,9 +38,9 @@ class Schedule < ApplicationRecord
     team_id  = delegate&.team_id
 
     if team_id
-      where("booker_id = :did OR target_id = :tid", did: delegate_id, tid: team_id)
+      where("booker_id = :tid OR target_id = :tid", tid: team_id)
     else
-      where(booker_id: delegate_id)
+      where(booker_id: nil)
     end
   }
 
@@ -49,12 +50,11 @@ class Schedule < ApplicationRecord
 
     if team_id
       where.not(
-        "schedules.booker_id = :did OR schedules.target_id = :tid",
-        did: delegate_id,
+        "schedules.booker_id = :tid OR schedules.target_id = :tid",
         tid: team_id
       )
     else
-      where.not(booker_id: delegate_id)
+      where.not(booker_id: nil)
     end
   }
 
@@ -68,8 +68,8 @@ class Schedule < ApplicationRecord
   }
 
   scope :search_name, lambda { |keyword|
-    left_joins(:booker).where(
-      "bookers_delegates.name ILIKE :k",
+    left_joins(booker: :delegates).where(
+      "delegates.name ILIKE :k",
       k: "%#{keyword}%"
     )
   }
@@ -78,7 +78,6 @@ class Schedule < ApplicationRecord
   # TIMELINE (raw SQL)
   # ===============================
 
-  
   def self.timeline_rows(conference_id:, filter_date:, delegate_id:, label: "timeline")
     sql = <<~SQL
       WITH meeting_data AS (
@@ -113,7 +112,12 @@ class Schedule < ApplicationRecord
         LEFT JOIN companies c_t ON c_t.id = t.company_id
         WHERE
           c.id = $1
-          AND s.booker_id = $3
+          -- FIX: เช็คจาก team_id ของ delegate ไม่ใช่ delegate id โดยตรง
+          -- AND s.booker_id = (SELECT team_id FROM delegates WHERE id = $3 LIMIT 1)
+          AND (
+            s.booker_id = (SELECT team_id FROM delegates WHERE id = $3 LIMIT 1)
+            OR s.target_id = (SELECT team_id FROM delegates WHERE id = $3 LIMIT 1)
+          )
           AND s.table_number IS NOT NULL
           AND TRIM(s.table_number) <> ''
           AND DATE(s.start_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Bangkok') = $2::date
@@ -196,17 +200,6 @@ class Schedule < ApplicationRecord
     connection.exec_query(sql, "#{label}_timeline", [conference_id, filter_date, delegate_id])
   end
 
-
-
-
-
-
-
-
-
-
-
-
   def self.available_years(conference_id:)
     sql = <<~SQL
       SELECT DISTINCT EXTRACT(YEAR FROM on_date)::int AS year
@@ -278,10 +271,18 @@ class Schedule < ApplicationRecord
   def no_double_booking
     return unless booker_id && start_at
 
+    # เช็ค booker team ซ้ำในเวลาเดียวกัน
     if Schedule.where(booker_id: booker_id, start_at: start_at)
                .where.not(id: id)
                .exists?
       errors.add(:base, "Delegate is double booked at the same time")
+    end
+
+    # FIX: เช็คว่า booker team ถูก book เป็น target ในเวลาเดียวกันไหม
+    if Schedule.where(target_id: booker_id, start_at: start_at)
+               .where.not(id: id)
+               .exists?
+      errors.add(:base, "Your team is already scheduled as a guest at this time")
     end
   end
 
