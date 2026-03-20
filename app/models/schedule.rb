@@ -106,14 +106,17 @@ class Schedule < ApplicationRecord
         FROM schedules s
         JOIN conference_dates cd ON cd.id = s.conference_date_id
         JOIN conferences c ON c.id = cd.conference_id
-        LEFT JOIN teams t ON t.id = s.target_id
+        -- FIX: ดึงทีมฝั่งตรงข้ามเสมอ (ถ้าเป็น booker → ดึง target, ถ้าเป็น target → ดึง booker)
+        LEFT JOIN teams t ON t.id = CASE
+          WHEN s.booker_id = (SELECT team_id FROM delegates WHERE id = $3 LIMIT 1)
+          THEN s.target_id
+          ELSE s.booker_id
+        END
         LEFT JOIN delegates d_op ON d_op.team_id = t.id
         LEFT JOIN companies c_op ON c_op.id = d_op.company_id
         LEFT JOIN companies c_t ON c_t.id = t.company_id
         WHERE
           c.id = $1
-          -- FIX: เช็คจาก team_id ของ delegate ไม่ใช่ delegate id โดยตรง
-          -- AND s.booker_id = (SELECT team_id FROM delegates WHERE id = $3 LIMIT 1)
           AND (
             s.booker_id = (SELECT team_id FROM delegates WHERE id = $3 LIMIT 1)
             OR s.target_id = (SELECT team_id FROM delegates WHERE id = $3 LIMIT 1)
