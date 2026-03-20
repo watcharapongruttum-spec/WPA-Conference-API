@@ -414,7 +414,7 @@ class Table < ApplicationRecord
   end
 
 
-  
+
 
   def self.times_today_for(conf_date)
     return [] unless conf_date
@@ -620,7 +620,13 @@ class Table < ApplicationRecord
     bookers = table_schedules.filter_map { |s| s[:booker] }
     members = table_schedules.flat_map { |s| s.dig(:team, :members) || [] }
 
-    (bookers + members)
+    # เพิ่ม: หา team_id ของ booker แล้ว query members ทีเดียว (2 queries เท่านั้น)
+    booker_ids     = bookers.map { |b| b[:id] }.compact.uniq
+    booker_team_ids = Delegate.where(id: booker_ids).pluck(:team_id).compact.uniq
+    booker_members = Delegate.where(team_id: booker_team_ids)
+                              .map { |d| { id: d.id, name: d.name, title: d.title.to_s, company: "" } }
+
+    (bookers + members + booker_members)
       .uniq { |d| d[:id] }
       .sort_by { |d| d[:id] }
       .map do |d|
@@ -633,4 +639,12 @@ class Table < ApplicationRecord
         }
       end
   end
+
+
+
+
+
+
+
+
 end

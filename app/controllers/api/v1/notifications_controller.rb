@@ -46,6 +46,7 @@ module Api
         end
 
         if @notification.update(read_at: Time.current)
+          Rails.cache.delete("dashboard:#{current_delegate.id}:v1")
           render json: @notification, serializer: Api::V1::NotificationSerializer
         else
           render json: {
