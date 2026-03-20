@@ -131,6 +131,29 @@ module Api
         }
       end
 
+
+
+
+
+      def me
+        render json: {
+          valid: true,
+          delegate: {
+            id:         current_delegate.id,
+            name:       current_delegate.name,
+            email:      current_delegate.email,
+            title:      current_delegate.title,
+            company:    current_delegate.company&.name,
+            avatar_url: current_delegate.avatar_url
+          }
+        }
+      end
+
+
+
+
+
+
       private
 
       def friend_ids_of(delegate)

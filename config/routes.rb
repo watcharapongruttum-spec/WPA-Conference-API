@@ -53,6 +53,9 @@ Rails.application.routes.draw do
         member do
           get :qr_code
         end
+        collection do
+          get :me 
+        end
       end
 
       # Schedules
