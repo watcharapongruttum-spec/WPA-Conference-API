@@ -5,7 +5,8 @@ class Notification::LeaveService
     return unless leave_form&.schedule
 
     reporter = leave_form.reported_by
-    booker   = leave_form.schedule.booker
+    # FIX: ใช้ booker_delegate แทน booker เพราะ booker_id คือ team_id ไม่ใช่ delegate_id
+    booker   = leave_form.schedule.booker_delegate
 
     # ไม่แจ้งถ้าไม่มี booker หรือ booker เป็นคนเดียวกับผู้ยื่น
     return if booker.nil? || booker.id == reporter.id
