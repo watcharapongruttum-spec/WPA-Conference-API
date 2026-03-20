@@ -226,7 +226,19 @@ class Schedule < ApplicationRecord
     connection.exec_query(sql, "available_dates", [conference_id, year]).map { |r| r["on_date"].to_s }
   end
 
+
+
+
   def self.format_timeline(rows)
+    schedule_ids = rows.map { |r| r["id"] }.compact
+    leave_forms = LeaveForm
+      .includes(:leave_type)
+      .where(schedule_id: schedule_ids)
+      .order(created_at: :desc)
+      .each_with_object({}) do |lf, h|
+        h[lf.schedule_id] ||= lf
+      end
+
     rows.map do |row|
       case row["type"]
       when "event"
@@ -235,6 +247,7 @@ class Schedule < ApplicationRecord
       when "nomeeting"
         { type: "nomeeting", start_at: row["start_at"], end_at: row["end_at"] }
       else
+        lf = leave_forms[row["id"]]
         {
           type:             "meeting",
           id:               row["id"],
@@ -242,7 +255,16 @@ class Schedule < ApplicationRecord
           country:          row["country"],
           conference_date:  row["conference_date"],
           duration_minutes: row["duration_minutes"],
-          leave:            nil,
+          leave: lf ? {
+            id:          lf.id,
+            status:      lf.status,
+            leave_type: {
+              id:   lf.leave_type_id,
+              name: lf.leave_type&.name
+            },
+            explanation: lf.explanation,
+            reported_at: lf.reported_at
+          } : nil,
           team_delegates:   parse_json_column(row["team_delegates"]),
           start_at:         row["start_at"],
           end_at:           row["end_at"]
