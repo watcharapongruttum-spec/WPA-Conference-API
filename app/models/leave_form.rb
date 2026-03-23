@@ -18,9 +18,6 @@ class LeaveForm < ApplicationRecord
     created_ids = []
     errors      = []
 
-    # ❌ เอา transaction ออก เพราะ rescue ข้างในทำให้ transaction commit บางส่วนได้อยู่แล้ว
-    # ถ้าต้องการ partial success → ไม่ใช้ transaction
-    # ถ้าต้องการ all-or-nothing → ใช้ transaction แต่เอา rescue ออก แล้วให้ raise ลอยขึ้นไป
     leaves.each do |leave|
       lf = create!(
         schedule_id: leave[:schedule_id],
@@ -44,6 +41,7 @@ class LeaveForm < ApplicationRecord
       }
     end
 
+    
     {
       success: errors.empty?,
       created_count: created_ids.size,

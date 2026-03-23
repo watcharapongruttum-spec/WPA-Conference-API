@@ -401,6 +401,30 @@ class Table < ApplicationRecord
     table_number.to_s.strip
   end
 
+
+
+  # def self.times_today_for(conf_date)
+  #   return [] unless conf_date
+
+  #   meeting_times = Schedule
+  #     .where(conference_date_id: conf_date.id)
+  #     .where("booker_id IS NOT NULL")
+  #     .order(:start_at)
+  #     .pluck(:start_at)
+  #     .map { |t| t.in_time_zone(TIMEZONE).iso8601 }
+
+  #   activity_times = ConferenceSchedule
+  #     .where(conference_date_id: conf_date.id)
+  #     .order(:start_at)
+  #     .pluck(:start_at)
+  #     .map { |t| t.in_time_zone(TIMEZONE).iso8601 }
+
+  #   (meeting_times + activity_times).uniq.sort
+  # end
+
+
+
+
   def self.times_today_for(conf_date)
     return [] unless conf_date
 
@@ -408,17 +432,26 @@ class Table < ApplicationRecord
       .where(conference_date_id: conf_date.id)
       .where("booker_id IS NOT NULL")
       .order(:start_at)
-      .pluck(:start_at)
-      .map { |t| t.in_time_zone(TIMEZONE).iso8601 }
+      .pluck(:start_at, :end_at)
+      .flat_map { |s, e| [s.in_time_zone(TIMEZONE).iso8601, e.in_time_zone(TIMEZONE).iso8601] }
 
     activity_times = ConferenceSchedule
       .where(conference_date_id: conf_date.id)
       .order(:start_at)
-      .pluck(:start_at)
-      .map { |t| t.in_time_zone(TIMEZONE).iso8601 }
+      .pluck(:start_at, :end_at)
+      .flat_map { |s, e| [s.in_time_zone(TIMEZONE).iso8601, e.in_time_zone(TIMEZONE).iso8601] }
 
     (meeting_times + activity_times).uniq.sort
   end
+
+
+
+
+
+
+
+
+
 
   def self.conference_days_for(conference)
     return [] unless conference

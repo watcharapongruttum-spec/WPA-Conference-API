@@ -97,12 +97,12 @@ class ApplicationController < ActionController::API
     return nil if payload["token_version"] != delegate.token_version
 
     delegate
-  rescue JWT::DecodeError,
-        JWT::ExpiredSignature,
-        JWT::VerificationError,
-        JWT::InvalidIssuerError => e
-    Rails.logger.warn "JWT Error: #{e.class} - #{e.message}"
-    nil
+    rescue JWT::DecodeError,
+          JWT::ExpiredSignature,
+          JWT::VerificationError,
+          JWT::InvalidIssuerError => e
+      Rails.logger.warn "JWT Error: #{e.class} - #{e.message}"
+      nil
   end
 
 
