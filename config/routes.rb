@@ -51,7 +51,28 @@ Rails.application.routes.draw do
         get "connection_requests", to: "connection_requests#index"
 
 
+        # Announcements
+        delete "announcements/:id", to: "announcements#destroy"
 
+        # Delegates
+        patch "delegates/:id", to: "delegates#update"
+
+        # Notifications
+        delete "notifications/:id",  to: "notifications#destroy"
+        delete "notifications",      to: "notifications#destroy_all"
+
+        # Maintenance
+        delete "maintenance/reset_notifications", to: "maintenance#reset_notifications"
+        delete "maintenance/reset_messages",      to: "maintenance#reset_messages"
+        delete "maintenance/reset_logs",          to: "maintenance#reset_logs"
+        delete "maintenance/reset_all",           to: "maintenance#reset_all"
+
+
+
+
+
+
+        
       end
 
 

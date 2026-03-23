@@ -39,6 +39,40 @@ module Api
             }
           }
         end
+
+
+
+
+        # app/controllers/api/v1/admin/notifications_controller.rb
+        def destroy
+          notification = Notification.find(params[:id])
+          notification.destroy!
+          render json: { success: true, deleted_id: notification.id }
+        rescue ActiveRecord::RecordNotFound
+          render json: { error: "Notification not found" }, status: :not_found
+        end
+
+        def destroy_all
+          scope = Notification.all
+          scope = scope.where(delegate_id: params[:delegate_id]) if params[:delegate_id].present?
+          scope = scope.where(notification_type: params[:type])  if params[:type].present?
+
+          count = scope.count
+          scope.delete_all
+
+          render json: { success: true, deleted_count: count }
+        end
+
+
+
+
+
+
+
+
+
+
+
       end
     end
   end

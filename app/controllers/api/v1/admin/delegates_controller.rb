@@ -42,6 +42,42 @@ module Api
           render json: delegate_json(delegate)
         end
 
+
+
+
+
+
+
+
+        # app/controllers/api/v1/admin/delegates_controller.rb
+        def update
+          delegate = Delegate.find(params[:id])
+
+          delegate.update!(delegate_update_params)
+
+          render json: delegate_json(delegate.reload)
+        rescue ActiveRecord::RecordNotFound
+          render json: { error: "Delegate not found" }, status: :not_found
+        rescue ActiveRecord::RecordInvalid => e
+          render json: { error: e.record.errors.full_messages.join(", ") },
+                status: :unprocessable_entity
+        end
+
+        private
+
+        def delegate_update_params
+          params.permit(:name, :email, :phone)
+        end
+
+
+
+
+
+
+
+
+
+
         def reset_password
           delegate = Delegate.find(params[:id])
           temp_password = delegate.generate_temporary_password(overwrite: true)

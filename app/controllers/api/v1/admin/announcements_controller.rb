@@ -53,4 +53,24 @@ class Api::V1::Admin::AnnouncementsController < Api::V1::Admin::BaseController
       announcement_id: announcement.id
     }, status: :ok
   end
+
+
+
+
+
+  # app/controllers/api/v1/admin/announcements_controller.rb
+  def destroy
+    announcement = Announcement.find(params[:id])
+    announcement.destroy!
+    render json: { success: true, deleted_id: announcement.id }
+  rescue ActiveRecord::RecordNotFound
+    render json: { error: "Announcement not found" }, status: :not_found
+  end
+
+
+
+
+
+
+
 end
