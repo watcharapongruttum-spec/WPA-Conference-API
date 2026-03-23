@@ -82,7 +82,12 @@ Rails.application.routes.draw do
         delete "connections/:id", to: "connections#destroy"
 
 
-        
+        delete "group_chats/:id",                    to: "group_chats#destroy"
+        get    "group_chats/:id/messages",           to: "group_chats#messages"
+        get    "messages/direct",                    to: "messages#direct"
+
+
+
         resources :leave_types, only: %i[index create update destroy]
 
 
