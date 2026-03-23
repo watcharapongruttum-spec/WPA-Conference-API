@@ -61,6 +61,10 @@ Rails.application.routes.draw do
         delete "notifications/:id",  to: "notifications#destroy"
         delete "notifications",      to: "notifications#destroy_all"
 
+        post  "notifications/push",                    to: "notifications#push"
+        patch "notifications/mark_all_read",           to: "notifications#mark_all_read"
+        patch "notifications/:id/mark_read",           to: "notifications#mark_read"
+
         # Maintenance
         delete "maintenance/reset_notifications", to: "maintenance#reset_notifications"
         delete "maintenance/reset_messages",      to: "maintenance#reset_messages"
@@ -69,10 +73,14 @@ Rails.application.routes.draw do
 
 
 
+        get    "maintenance/sidekiq_status",  to: "maintenance#sidekiq_status"
+        get    "maintenance/redis_status",    to: "maintenance#redis_status"
+        get    "delegates/export_csv",        to: "delegates#export_csv"
 
+        # Connections
+        get    "connections",     to: "connections#index"
+        delete "connections/:id", to: "connections#destroy"
 
-
-        
       end
 
 

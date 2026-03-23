@@ -68,6 +68,73 @@ module Api
 
 
 
+        # ส่ง push notification หา delegate คนใดคนหนึ่งโดยตรง
+        def push
+          delegate = Delegate.find_by(id: params[:delegate_id])
+          return render json: { error: "Delegate not found" }, status: :not_found unless delegate
+
+          unless delegate.device_token.present?
+            return render json: { error: "Delegate has no device token" }, status: :unprocessable_entity
+          end
+
+          title   = params[:title].to_s.strip
+          message = params[:message].to_s.strip
+
+          return render json: { error: "title is required" },   status: :unprocessable_entity if title.blank?
+          return render json: { error: "message is required" }, status: :unprocessable_entity if message.blank?
+
+          result = FcmService.send_push(
+            token: delegate.device_token,
+            title: title,
+            body:  message,
+            data:  { type: "admin_push", screen: "home" }
+          )
+
+          if result
+            render json: { success: true, sent_to: { id: delegate.id, name: delegate.name } }
+          else
+            render json: { error: "Failed to send push" }, status: :unprocessable_entity
+          end
+        rescue StandardError => e
+          render json: { error: e.message }, status: :internal_server_error
+        end
+
+        # mark read ทีละ 1
+        def mark_read
+          notification = Notification.find(params[:id])
+          notification.update!(read_at: Time.current) unless notification.read_at.present?
+          render json: { success: true, id: notification.id, read_at: notification.read_at&.iso8601 }
+        rescue ActiveRecord::RecordNotFound
+          render json: { error: "Notification not found" }, status: :not_found
+        end
+
+        # mark all read — กรองตาม delegate หรือ type ได้
+        def mark_all_read
+          scope = Notification.where(read_at: nil)
+          scope = scope.where(delegate_id: params[:delegate_id]) if params[:delegate_id].present?
+          scope = scope.where(notification_type: params[:type])  if params[:type].present?
+
+          count = scope.count
+          scope.update_all(read_at: Time.current)
+
+          render json: { success: true, updated_count: count }
+        end
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

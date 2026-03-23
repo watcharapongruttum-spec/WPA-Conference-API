@@ -3,15 +3,68 @@ module Api
   module V1
     module Admin
       class DelegatesController < Api::V1::Admin::BaseController
+
+        # def index
+        #   page     = (params[:page] || 1).to_i
+        #   per_page = [(params[:per_page] || 20).to_i, 100].min
+        #   keyword  = params[:keyword].to_s.strip.downcase
+
+        #   scope = Delegate
+        #             .joins(:company)
+        #             .includes(:company, :team)
+        #             .where.not(name: [nil, ""])
+
+        #   if keyword.present?
+        #     scope = scope.where(
+        #       "LOWER(delegates.name) LIKE :q OR LOWER(companies.name) LIKE :q",
+        #       q: "%#{keyword}%"
+        #     )
+        #   end
+
+        #   total       = scope.count
+        #   total_pages = (total.to_f / per_page).ceil
+
+        #   delegates = scope
+        #                 .order(name: :asc)
+        #                 .offset((page - 1) * per_page)
+        #                 .limit(per_page)
+
+        #   render json: {
+        #     total:       total,
+        #     page:        page,
+        #     per_page:    per_page,
+        #     total_pages: total_pages,
+        #     delegates:   delegates.map { |d| delegate_json(d) }
+        #   }
+        # end
+
         def index
           page     = (params[:page] || 1).to_i
           per_page = [(params[:per_page] || 20).to_i, 100].min
           keyword  = params[:keyword].to_s.strip.downcase
+          year     = params[:year].presence
 
           scope = Delegate
                     .joins(:company)
                     .includes(:company, :team)
                     .where.not(name: [nil, ""])
+
+          if year.present?
+            scope = scope.where(<<~SQL, year)
+              EXISTS (
+                SELECT 1
+                FROM schedules s
+                JOIN conference_dates cd ON cd.id = s.conference_date_id
+                JOIN conferences co ON co.id = cd.conference_id
+                WHERE co.conference_year = ?
+                  AND (
+                    s.booker_id  = delegates.id
+                    OR s.delegate_id = delegates.id
+                    OR s.target_id   = delegates.team_id
+                  )
+              )
+            SQL
+          end
 
           if keyword.present?
             scope = scope.where(
@@ -36,6 +89,15 @@ module Api
             delegates:   delegates.map { |d| delegate_json(d) }
           }
         end
+
+
+
+
+
+
+
+
+
 
         def show
           delegate = Delegate.includes(:company, :team).find(params[:id])
