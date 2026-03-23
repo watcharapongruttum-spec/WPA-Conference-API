@@ -81,6 +81,15 @@ Rails.application.routes.draw do
         get    "connections",     to: "connections#index"
         delete "connections/:id", to: "connections#destroy"
 
+
+        
+        resources :leave_types, only: %i[index create update destroy]
+
+
+
+
+
+
       end
 
 
