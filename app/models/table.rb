@@ -7,16 +7,9 @@ class Table < ApplicationRecord
 
   TIMEZONE = "Asia/Bangkok"
 
-  # ──────────────────────────────────────────────────────────────
-  # Normalize table_number: "01" → "1", " 2 " → "2"
-  # ──────────────────────────────────────────────────────────────
   def self.normalize_table_number(val)
     val.to_s.strip.gsub(/^0+/, "")
   end
-
-  # ──────────────────────────────────────────────────────────────
-  # Class methods
-  # ──────────────────────────────────────────────────────────────
 
   def self.time_view(params:, current_delegate: nil)
     conference  = resolve_conference
@@ -84,9 +77,6 @@ class Table < ApplicationRecord
     parse_bangkok_datetime(target_year, input_date, input_time, bkk_now)
   end
 
-  # ──────────────────────────────────────────────────────────────
-  # RESOLVE SCHEDULES
-  # ──────────────────────────────────────────────────────────────
   def self.resolve_schedules(datetime, params, target_year)
     conference = resolve_conference
     return [] unless conference
@@ -107,9 +97,6 @@ class Table < ApplicationRecord
     fetch_time_view_rows(conference.id, start_ts, end_ts)
   end
 
-  # ──────────────────────────────────────────────────────────────
-  # หา slot แรกของวัน
-  # ──────────────────────────────────────────────────────────────
   def self.find_first_slot(date, conference, target_year)
     sql = <<~SQL
       SELECT MIN(s.start_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Bangkok') AS first_slot
@@ -137,9 +124,6 @@ class Table < ApplicationRecord
     nil
   end
 
-  # ──────────────────────────────────────────────────────────────
-  # fetch_time_view_rows
-  # ──────────────────────────────────────────────────────────────
   def self.fetch_time_view_rows(conference_id, start_ts, end_ts)
     utc_start = start_ts.utc.strftime("%Y-%m-%d %H:%M:%S")
     utc_end   = end_ts.utc.strftime("%Y-%m-%d %H:%M:%S")
@@ -171,13 +155,27 @@ class Table < ApplicationRecord
         ss.booker_id    AS booker_team_id,
         json_agg(DISTINCT jsonb_build_object(
           'schedule_id', ss.id,
-          'booker', CASE WHEN d_b.id IS NOT NULL THEN jsonb_build_object(
-            'id',         d_b.id,
-            'name',       d_b.name,
-            'title',      COALESCE(d_b.title, ''),
-            'company_id', d_b.company_id,
-            'company',    COALESCE(c_b.name, '')
-          ) ELSE NULL END,
+          'booker_team', (
+            SELECT jsonb_build_object(
+              'team_id',   bt.id,
+              'team_name', bt.name,
+              'company',   COALESCE(c_bt.name, ''),
+              'members', (
+                SELECT json_agg(jsonb_build_object(
+                  'id',      d_b.id,
+                  'name',    d_b.name,
+                  'title',   COALESCE(d_b.title, ''),
+                  'company', COALESCE(c_b.name, '')
+                ) ORDER BY d_b.id)
+                FROM delegates d_b
+                LEFT JOIN companies c_b ON c_b.id = d_b.company_id
+                WHERE d_b.team_id = ss.booker_id
+              )
+            )
+            FROM teams bt
+            LEFT JOIN companies c_bt ON c_bt.id = bt.company_id
+            WHERE bt.id = ss.booker_id
+          ),
           'target_team', CASE WHEN t.id IS NOT NULL THEN jsonb_build_object(
             'team_id',      t.id,
             'team_name',    t.name,
@@ -197,11 +195,8 @@ class Table < ApplicationRecord
           ) ELSE NULL END
         )) AS meetings
       FROM slot_schedules ss
-      -- FIX: booker_id คือ team_id ไม่ใช่ delegate id
-      LEFT JOIN delegates d_b ON d_b.team_id = ss.booker_id
-      LEFT JOIN companies c_b ON c_b.id  = d_b.company_id
-      LEFT JOIN teams     t   ON t.id    = ss.target_id
-      LEFT JOIN companies c_t ON c_t.id  = t.company_id
+      LEFT JOIN teams     t   ON t.id   = ss.target_id
+      LEFT JOIN companies c_t ON c_t.id = t.company_id
       GROUP BY ss.start_at, ss.table_number, ss.booker_id
       ORDER BY ss.start_at
     SQL
@@ -217,11 +212,21 @@ class Table < ApplicationRecord
       start_at     = Time.iso8601(start_at_str).in_time_zone(tz)
       end_at_str   = (start_at + 20.minutes).strftime("%Y-%m-%dT%H:%M:%S+07:00")
 
-      meetings.map do |m|
-        booker_raw = m[:booker].is_a?(Hash) ? m[:booker].transform_keys(&:to_sym) : nil
-        team_raw   = m[:target_team].is_a?(Hash) ? m[:target_team].transform_keys(&:to_sym) : nil
+      meetings.uniq { |m| m[:schedule_id] }.map do |m|
+        booker_team_raw = m[:booker_team].is_a?(Hash) ? m[:booker_team].transform_keys(&:to_sym) : nil
+        team_raw        = m[:target_team].is_a?(Hash) ? m[:target_team].transform_keys(&:to_sym) : nil
 
-        booker = booker_raw&.dig(:id) ? booker_raw : nil
+        booker_team = if booker_team_raw&.dig(:team_id)
+          members = Array(booker_team_raw[:members]).map do |mem|
+            mem.is_a?(Hash) ? mem.transform_keys(&:to_sym) : mem
+          end
+          {
+            id:      booker_team_raw[:team_id],
+            name:    booker_team_raw[:team_name].to_s,
+            company: booker_team_raw[:company].to_s,
+            members: members
+          }
+        end
 
         team = if team_raw&.dig(:team_id)
           members = Array(team_raw[:members]).map do |mem|
@@ -243,10 +248,9 @@ class Table < ApplicationRecord
           start_at_str:   start_at_str,
           end_at_str:     end_at_str,
           table_number:   row["table"],
-          booker_id:      booker&.dig(:id),
           booker_team_id: row["booker_team_id"]&.to_i,
+          booker_team:    booker_team,
           target_id:      team&.dig(:id),
-          booker:         booker,
           team:           team
         }
       end
@@ -255,8 +259,6 @@ class Table < ApplicationRecord
     Rails.logger.error("[Table.fetch_time_view_rows] #{e.message}")
     []
   end
-
-  # ──────────────────────────────────────────────────────────────
 
   def self.resolve_conference_date(datetime, conference, schedules)
     bkk_date = datetime.in_time_zone(TIMEZONE).to_date
@@ -327,7 +329,7 @@ class Table < ApplicationRecord
     end
 
     tables_json = all_tables
-      .select { |t| schedule_by_table[normalize_table_number(t.table_number)]&.any? { |s| s[:booker].present? } }
+      .select { |t| schedule_by_table[normalize_table_number(t.table_number)]&.any? { |s| s[:booker_team].present? } }
       .map { |t| t.to_time_view_json(schedule_by_table, owner_info) }
 
     {
@@ -479,13 +481,12 @@ class Table < ApplicationRecord
       []
     end
 
-    occupied_schedules = table_schedules.select { |s| s[:booker].present? }
+    occupied_schedules = table_schedules.select { |s| s[:booker_team].present? }
 
     is_booth       = table_number.to_s.match?(/\ABooth\s/i)
     info           = owner_info[key] || { team_ids: [], delegate_ids: [], companies: [] }
     owner_team_ids = is_booth ? info[:team_ids] : []
 
-    # FIX: ใช้ booker_team_id แทน booker_id สำหรับ booth filter
     display_schedules = if is_booth && owner_team_ids.any?
       occupied_schedules.filter do |s|
         owner_team_ids.include?(s[:target_id]) || owner_team_ids.include?(s[:booker_team_id])
@@ -516,10 +517,9 @@ class Table < ApplicationRecord
   private
 
   def build_meeting_json(schedule, owner_team_ids = [], owner_companies = [])
-    person_a = schedule[:booker]
-    team     = schedule[:team]
+    booker_team = schedule[:booker_team]
+    team        = schedule[:team]
 
-    # FIX: ใช้ booker_team_id แทน booker_id สำหรับ booth owner check
     booker_is_owner = owner_team_ids.include?(schedule[:booker_team_id])
     target_is_owner = owner_team_ids.include?(schedule[:target_id])
 
@@ -542,17 +542,18 @@ class Table < ApplicationRecord
     guest_company = if booker_is_owner
       team&.dig(:company)
     elsif target_is_owner
-      person_a&.dig(:company)
+      booker_team&.dig(:company)
     end
 
-    booker_json = if person_a
+    booker_team_json = if booker_team
       {
-        id:         person_a[:id],
-        name:       person_a[:name],
-        title:      person_a[:title],
-        company_id: person_a[:company_id],
-        company:    person_a[:company],
-        avatar_url: "https://ui-avatars.com/api/?name=#{CGI.escape(person_a[:name].to_s)}"
+        team_id:      booker_team[:id],
+        team_name:    booker_team[:name],
+        company:      booker_team[:company],
+        members:      booker_team[:members].map do |m|
+          m.merge(avatar_url: "https://ui-avatars.com/api/?name=#{CGI.escape(m[:name].to_s)}")
+        end,
+        member_count: booker_team[:members].size
       }
     end
 
@@ -570,11 +571,11 @@ class Table < ApplicationRecord
     end
 
     meeting = {
-      schedule_id: schedule[:id],
-      start_at:    schedule[:start_at_str],
-      end_at:      schedule[:end_at_str],
-      booker:      booker_json,
-      target_team: target_team_json
+      schedule_id:  schedule[:id],
+      start_at:     schedule[:start_at_str],
+      end_at:       schedule[:end_at_str],
+      booker_team:  booker_team_json,
+      target_team:  target_team_json
     }
 
     if meeting_role
@@ -589,10 +590,10 @@ class Table < ApplicationRecord
   end
 
   def build_delegates_json(table_schedules)
-    bookers = table_schedules.filter_map { |s| s[:booker] }
-    members = table_schedules.flat_map { |s| s.dig(:team, :members) || [] }
+    booker_members = table_schedules.flat_map { |s| s.dig(:booker_team, :members) || [] }
+    target_members = table_schedules.flat_map { |s| s.dig(:team, :members) || [] }
 
-    (bookers + members)
+    (booker_members + target_members)
       .uniq { |d| d[:id] }
       .sort_by { |d| d[:id] }
       .map do |d|
