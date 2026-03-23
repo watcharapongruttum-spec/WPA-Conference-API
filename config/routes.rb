@@ -61,6 +61,8 @@ Rails.application.routes.draw do
 
         # ─── Direct Messages ──────────────────────────────────
         get "messages/direct", to: "messages#direct"
+        get "messages/rooms",  to: "messages#rooms"
+        
 
         # ─── Notifications ────────────────────────────────────
         get    "notifications",                   to: "notifications#index"
