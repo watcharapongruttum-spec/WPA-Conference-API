@@ -30,74 +30,67 @@ Rails.application.routes.draw do
       # end
 
 
-      # config/routes.rb
       namespace :admin do
-        get  "clear_sidekiq",            to: "maintenance#clear_sidekiq"
-        post "announcements",            to: "announcements#create"
-        get  "announcements",            to: "announcements#index"
-        get  "delegates",                to: "delegates#index"
-        get  "delegates/:id",            to: "delegates#show"
-        post "delegates/:id/reset_password", to: "delegates#reset_password"
-        get  "audit_logs",               to: "audit_logs#index"
-        get  "leave_forms",              to: "leave_forms#index"
-        get  "group_chats",              to: "group_chats#index"
-        get  "group_chats/:id",          to: "group_chats#show"
-        get  "dashboard",                to: "dashboard#show"
 
+        # ─── Dashboard ────────────────────────────────────────
+        get "dashboard", to: "dashboard#show"
 
-        get "security_logs",       to: "security_logs#index"
-        get "tables/time_view",    to: "tables#time_view"
-        get "notifications",       to: "notifications#index"
-        get "connection_requests", to: "connection_requests#index"
+        # ─── Delegates ────────────────────────────────────────
+        get    "delegates",                      to: "delegates#index"
+        get    "delegates/export_csv",           to: "delegates#export_csv"
+        get    "delegates/:id",                  to: "delegates#show"
+        patch  "delegates/:id",                  to: "delegates#update"
+        post   "delegates/:id/reset_password",   to: "delegates#reset_password"
 
-
-        # Announcements
+        # ─── Announcements ────────────────────────────────────
+        get    "announcements",     to: "announcements#index"
+        post   "announcements",     to: "announcements#create"
         delete "announcements/:id", to: "announcements#destroy"
 
-        # Delegates
-        patch "delegates/:id", to: "delegates#update"
+        # ─── Leave Forms ──────────────────────────────────────
+        get "leave_forms", to: "leave_forms#index"
 
-        # Notifications
-        delete "notifications/:id",  to: "notifications#destroy"
-        delete "notifications",      to: "notifications#destroy_all"
+        # ─── Leave Types (master data) ────────────────────────
+        resources :leave_types, only: %i[index create update destroy]
 
-        post  "notifications/push",                    to: "notifications#push"
-        patch "notifications/mark_all_read",           to: "notifications#mark_all_read"
-        patch "notifications/:id/mark_read",           to: "notifications#mark_read"
+        # ─── Group Chats ──────────────────────────────────────
+        get    "group_chats",              to: "group_chats#index"
+        get    "group_chats/:id",          to: "group_chats#show"
+        get    "group_chats/:id/messages", to: "group_chats#messages"
+        delete "group_chats/:id",          to: "group_chats#destroy"
 
-        # Maintenance
+        # ─── Direct Messages ──────────────────────────────────
+        get "messages/direct", to: "messages#direct"
+
+        # ─── Notifications ────────────────────────────────────
+        get    "notifications",                   to: "notifications#index"
+        delete "notifications",                   to: "notifications#destroy_all"
+        delete "notifications/:id",               to: "notifications#destroy"
+        post   "notifications/push",              to: "notifications#push"
+        patch  "notifications/mark_all_read",     to: "notifications#mark_all_read"
+        patch  "notifications/:id/mark_read",     to: "notifications#mark_read"
+
+        # ─── Connections ──────────────────────────────────────
+        get    "connections",     to: "connections#index"
+        delete "connections/:id", to: "connections#destroy"
+
+        # ─── Connection Requests ──────────────────────────────
+        get "connection_requests", to: "connection_requests#index"
+
+        # ─── Audit & Security Logs ────────────────────────────
+        get "audit_logs",    to: "audit_logs#index"
+        get "security_logs", to: "security_logs#index"
+
+        # ─── Maintenance ──────────────────────────────────────
+        get    "maintenance/sidekiq_status",      to: "maintenance#sidekiq_status"
+        get    "maintenance/redis_status",        to: "maintenance#redis_status"
+        get    "maintenance/clear_sidekiq",       to: "maintenance#clear_sidekiq"
         delete "maintenance/reset_notifications", to: "maintenance#reset_notifications"
         delete "maintenance/reset_messages",      to: "maintenance#reset_messages"
         delete "maintenance/reset_logs",          to: "maintenance#reset_logs"
         delete "maintenance/reset_all",           to: "maintenance#reset_all"
 
-
-
-        get    "maintenance/sidekiq_status",  to: "maintenance#sidekiq_status"
-        get    "maintenance/redis_status",    to: "maintenance#redis_status"
-        get    "delegates/export_csv",        to: "delegates#export_csv"
-
-        # Connections
-        get    "connections",     to: "connections#index"
-        delete "connections/:id", to: "connections#destroy"
-
-
-        delete "group_chats/:id",                    to: "group_chats#destroy"
-        get    "group_chats/:id/messages",           to: "group_chats#messages"
-        get    "messages/direct",                    to: "messages#direct"
-
-
-
-        resources :leave_types, only: %i[index create update destroy]
-
-
-
-
-
-
       end
-
-
 
 
 
