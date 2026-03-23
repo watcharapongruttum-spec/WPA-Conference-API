@@ -11,7 +11,7 @@ module Api
                     .includes(:delegate)
                     .order(created_at: :desc)
 
-          scope = scope.where(action: params[:action]) if params[:action].present?
+          scope = scope.where(action: params[:log_action])      if params[:log_action].present?
           scope = scope.where(delegate_id: params[:delegate_id]) if params[:delegate_id].present?
 
           total = scope.count
