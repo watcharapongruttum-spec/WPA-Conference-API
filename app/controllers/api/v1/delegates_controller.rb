@@ -13,38 +13,20 @@ module Api
                   .includes(:company, :team)
                   .where.not(name: [nil, ""])
                   .where.not(id: me.id)
-
-        # ✅ default ปี 2025
-        year = params[:year].presence || "2025"
-
-        # scope = scope.where(<<~SQL, year)
-        #   EXISTS (
-        #     SELECT 1
-        #     FROM schedules s
-        #     JOIN conference_dates cd ON cd.id = s.conference_date_id
-        #     JOIN conferences co ON co.id = cd.conference_id
-        #     WHERE co.conference_year = ?
-        #       AND (
-        #             s.booker_id = delegates.id
-        #         OR s.delegate_id = delegates.id
-        #       )
-        #   )
-        # SQL
-
-        scope = scope.where(<<~SQL, year)
-        EXISTS (
-          SELECT 1
-          FROM schedules s
-          JOIN conference_dates cd ON cd.id = s.conference_date_id
-          JOIN conferences co ON co.id = cd.conference_id
-          WHERE co.conference_year = ?
-            AND (
-              s.booker_id  = delegates.id
-              OR s.delegate_id = delegates.id
-              OR s.target_id   = delegates.team_id
-            )
-        )
-      SQL
+                  .where(<<~SQL)
+                    EXISTS (
+                      SELECT 1
+                      FROM schedules s
+                      JOIN conference_dates cd ON cd.id = s.conference_date_id
+                      JOIN conferences co ON co.id = cd.conference_id
+                      WHERE co.conference_year = '2025'
+                        AND (
+                          s.booker_id  = delegates.id
+                          OR s.delegate_id = delegates.id
+                          OR s.target_id   = delegates.team_id
+                        )
+                    )
+                  SQL
 
         if params[:friends_only].to_s == "true"
           scope = scope.where(id: friend_ids_of(me))
