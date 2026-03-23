@@ -1,4 +1,31 @@
-class Api::V1::Admin::AnnouncementsController < ApplicationController
+# app/controllers/api/v1/admin/announcements_controller.rb
+class Api::V1::Admin::AnnouncementsController < Api::V1::Admin::BaseController
+  def index
+    page     = (params[:page] || 1).to_i
+    per_page = [(params[:per_page] || 20).to_i, 100].min
+
+    announcements = Announcement
+                      .order(sent_at: :desc)
+                      .offset((page - 1) * per_page)
+                      .limit(per_page)
+
+    total = Announcement.count
+
+    render json: {
+      total:         total,
+      page:          page,
+      per_page:      per_page,
+      total_pages:   (total.to_f / per_page).ceil,
+      announcements: announcements.map { |a|
+        {
+          id:      a.id,
+          message: a.message,
+          sent_at: a.sent_at&.iso8601
+        }
+      }
+    }
+  end
+
   def create
     message = params[:message] || params.dig(:notification, :message)
 
@@ -12,14 +39,12 @@ class Api::V1::Admin::AnnouncementsController < ApplicationController
       sent_at: Time.current
     )
 
-    # ✅ Real-time ครั้งเดียว — ทุกคนรับพร้อมกันเลย
     ActionCable.server.broadcast("notifications:year:2025", {
       type:    "admin_announce",
       message: message,
       sent_at: announcement.sent_at.iso8601
     })
 
-    # ✅ สร้าง Notification record + FCM ใน background
     AnnouncementBroadcastJob.perform_later(announcement.id)
 
     render json: {

@@ -19,10 +19,48 @@ Rails.application.routes.draw do
         get    '/:id/messages/:message_id/readers', action: :readers, as: :group_chat_readers
       end
 
+
+
+
+
+
+      # namespace :admin do
+      #   get 'clear_sidekiq', to: 'maintenance#clear_sidekiq'
+      #   post 'announcements', to: 'announcements#create'
+      # end
+
+
+      # config/routes.rb
       namespace :admin do
-        get 'clear_sidekiq', to: 'maintenance#clear_sidekiq'
-        post 'announcements', to: 'announcements#create'
+        get  "clear_sidekiq",            to: "maintenance#clear_sidekiq"
+        post "announcements",            to: "announcements#create"
+        get  "announcements",            to: "announcements#index"
+        get  "delegates",                to: "delegates#index"
+        get  "delegates/:id",            to: "delegates#show"
+        post "delegates/:id/reset_password", to: "delegates#reset_password"
+        get  "audit_logs",               to: "audit_logs#index"
+        get  "leave_forms",              to: "leave_forms#index"
+        get  "group_chats",              to: "group_chats#index"
+        get  "group_chats/:id",          to: "group_chats#show"
+        get  "dashboard",                to: "dashboard#show"
+
+
+        get "security_logs",       to: "security_logs#index"
+        get "tables/time_view",    to: "tables#time_view"
+        get "notifications",       to: "notifications#index"
+        get "connection_requests", to: "connection_requests#index"
+
+
+
       end
+
+
+
+
+
+
+
+
 
       # Deeplink
       get '/reset-password', to: 'deeplink#reset_password'

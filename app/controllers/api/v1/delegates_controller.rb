@@ -91,6 +91,13 @@ module Api
                scope: current_delegate
       end
 
+
+
+
+
+
+
+      
       # ---------------- QR CODE ----------------
       require "rqrcode"
       require "base64"
